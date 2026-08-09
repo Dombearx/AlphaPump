@@ -214,16 +214,12 @@ wystarczy.
 | tag                | każdy tworzy, edytuje admin | id deterministyczne → suma       |
 | rekordy, rankingi  | wyłącznie serwer          | pull-only, zawsze przeliczalne     |
 
-Ograniczenie edycji ćwiczeń do autora i administratora nie wynika wprost ze
-specyfikacji, ale bez niego publiczna biblioteka wchodzi w problemy rodem z wiki
-i samo LWW przestaje wystarczać.
+Edycja ćwiczeń jest ograniczona do autora i administratora. Bez tego publiczna
+biblioteka wchodzi w problemy rodem z wiki i samo LWW przestaje wystarczać.
+Reguła jest odzwierciedlona w `specyfikacja_biznesowa.md`.
 
-> **Uwaga — rozbieżność ze specyfikacją.** Powyższe podejście zastępuje opisany
-> w `specyfikacja_biznesowa.md` mechanizm rozwiązywania konfliktów na poziomie
-> dnia z ręcznym wyborem wersji lokalnej albo serwerowej. Sekcja „Konflikty
-> synchronizacji" oraz odpowiednie kryterium akceptacyjne wymagają aktualizacji.
-> Status synchronizacji (online / offline / oczekujące zmiany / błąd) pozostaje
-> bez zmian.
+Status synchronizacji pokazywany użytkownikowi (online / offline / oczekujące
+zmiany / błąd) pozostaje bez zmian — znika jedynie widok ręcznego wyboru wersji.
 
 ## Wykrywanie duplikatów ćwiczeń
 
@@ -275,29 +271,77 @@ Docker Compose: PostgreSQL 17 (z `pgvector` i `pg_trgm`), API, panel admina za
 Caddy. CI na GitHub Actions. Testy: Vitest dla `core` i API, Maestro dla E2E
 mobilnego.
 
-### TLS
+### TLS — świadomie pominięty w MVP
 
-Minipc nie ma publicznego DNS, więc Let's Encrypt przez HTTP-01 nie przejdzie.
-Certyfikat self-signed jest w React Native wyjątkowo uciążliwy — wymaga zmian w
-ATS na iOS i `network_security_config` na Androidzie, o których łatwo zapomnieć
-przy kolejnym buildzie.
+**W MVP nie wystawiamy certyfikatu. API działa po HTTP wewnątrz VPN.**
 
-Rozwiązanie: tania domena z rekordem A wskazującym na adres NetBird minipc
-(`100.x.x.x`) i Caddy z wyzwaniem **DNS-01** (np. przez Cloudflare). Daje to
-publicznie zaufany certyfikat na adres osiągalny wyłącznie w VPN, przy zerowej
-konfiguracji po stronie aplikacji.
+TLS daje trzy rzeczy: szyfrowanie ruchu, uwierzytelnienie serwera i ochronę
+przed manipulacją danych w drodze. NetBird opiera się na WireGuardzie, który
+zapewnia dokładnie to samo — ruch między telefonem a minipc jest szyfrowany
+(ChaCha20-Poly1305), a peery uwierzytelniają się wzajemnie kluczami publicznymi.
+HTTPS byłby tu szyfrowaniem wewnątrz szyfrowania.
+
+W zamian obowiązują cztery warunki:
+
+**Nasłuch wyłącznie na interfejsie NetBird.** Ważniejsze niż certyfikat. Przy
+nasłuchu na `0.0.0.0` każdy w lokalnej sieci minipc dosięgnie API plaintextem z
+pominięciem VPN. Wiązanie musi być na adres NetBird (`100.x.x.x`).
+
+**Wyjątek cleartext w aplikacji, zawężony do jednego hosta.** iOS blokuje HTTP
+przez App Transport Security, Android od API 28 również. W Expo: `ios.infoPlist`
+z wyjątkiem ATS dla naszego hosta oraz `expo-build-properties` z
+`usesCleartextTraffic` po stronie Androida. Wyjątku nie robimy globalnie.
+
+**Sesja w nagłówku, nie w ciasteczku z flagą `Secure`.** Ciasteczko oznaczone
+jako `Secure` nie zostanie wysłane po HTTP. Plugin Expo dla better-auth trzyma
+sesję w SecureStore i przekazuje ją nagłówkiem, więc to naturalna ścieżka —
+trzeba jedynie świadomie nie włączyć `Secure` po stronie serwera.
+
+**Natywne logowanie Google zamiast przepływu przez przeglądarkę.** Google Cloud
+Console wymaga HTTPS dla adresów przekierowania OAuth (poza localhostem).
+Natywny Sign-In tego nie dotyczy: telefon pobiera `idToken` od Google publicznym
+internetem po HTTPS i przekazuje go do naszego API.
+
+Decyzja jest odwracalna — dołożenie Caddy z certyfikatem to zmiana konfiguracji,
+nie refaktor. Wraca na stół dopiero wtedy, gdyby API miało wyjść poza VPN;
+wówczas ścieżką jest domena z rekordem A na adres NetBird i wyzwanie DNS-01.
 
 ### Ruch wychodzący
 
 Minipc potrzebuje dostępu do internetu dla: OpenRouter, pobrania kluczy
-publicznych Google przy weryfikacji `idToken`, odnawiania certyfikatu i obrazów
+publicznych Google przy weryfikacji `idToken`, kopii zapasowych oraz obrazów
 Dockera.
 
-### Kopie zapasowe
+### Kopie zapasowe — Google Drive
 
-Baza na minipc jest jedyną kopią danych całej grupy. `pg_dump` z crona plus
-restic lub borg na zewnętrzny storage. Bez tego awaria dysku kasuje pełną
+Baza na minipc jest jedyną kopią danych całej grupy. Awaria dysku kasuje pełną
 historię treningową wszystkich użytkowników.
+
+Zestaw: **`pg_dump -Fc` → restic → rclone → Google Drive**, uruchamiany z crona.
+
+Restic robi trzy rzeczy naraz, których osobno nie chcemy pisać: deduplikację,
+politykę retencji (`--keep-daily 7 --keep-weekly 4`) i **szyfrowanie po stronie
+klienta**. To ostatnie jest tu istotne — zrzut zawiera dane treningowe całej
+grupy oraz tabele autoryzacji z hashami haseł i kluczami API, a trafia do usługi
+zewnętrznej. Skoro restic szyfruje natywnie, warstwa `crypt` w rclone jest
+zbędna.
+
+Konfiguracja dostępu do Google Drive ma dwie pułapki:
+
+- **Konto usługowe nie zadziała** na zwykłym koncie Google. Service account ma
+  własny Dysk bez przydziału miejsca, a obejście przez Shared Drive wymaga
+  Google Workspace. Używamy więc OAuth na koncie właściciela —
+  `rclone authorize` wykonujemy na maszynie z przeglądarką i przenosimy token na
+  minipc.
+- **Token odświeżania wygasa po 7 dniach**, jeśli aplikacja OAuth w Google Cloud
+  Console pozostaje w stanie „Testing". Trzeba przełączyć ją na „In production".
+  Zakładamy własny client ID (wbudowany w rclone jest współdzielony i
+  limitowany) z zakresem `drive.file`, który daje dostęp wyłącznie do plików
+  utworzonych przez tę aplikację.
+
+Kopia, której nigdy nie odtworzono, nie jest kopią. Raz w miesiącu odtwarzamy
+zrzut do bazy testowej — najlepiej jako zadanie w CI, żeby nie zależało od
+pamięci.
 
 ### Konsekwencja dla UX
 
@@ -329,11 +373,10 @@ jest tu wymaganiem twardym.
 
 ## Otwarte kwestie
 
-- Aktualizacja `specyfikacja_biznesowa.md` w sekcji „Konflikty synchronizacji"
-  i powiązanego kryterium akceptacyjnego.
 - Wybór konkretnego modelu embeddingów w OpenRouter (kandydaci: Qwen3 Embedding,
-  Cohere Embed v4 — oba wielojęzyczne, istotne przy polskich nazwach ćwiczeń).
-- Domena pod certyfikat DNS-01.
+  Cohere Embed v4 — oba wielojęzyczne, co ma znaczenie przy polskich nazwach
+  ćwiczeń). Warto zmierzyć na kilkudziesięciu realnych parach nazw, zanim
+  zapadnie decyzja.
 - Dystrybucja iOS: TestFlight wymaga konta Apple Developer (99 USD rocznie).
   Publikacja w App Store dołożyłaby wymóg Sign in with Apple obok logowania
   Google.
