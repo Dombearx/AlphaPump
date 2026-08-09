@@ -328,6 +328,10 @@ Najważniejsze wymagania UX:
 
 Inspiracją dla przepływu logowania serii jest FitNotes, zwłaszcza w zakresie szybkości zapisu, prostoty formularza i pracy na kontekście dnia oraz ćwiczenia.  [play.google](https://play.google.com/store/apps/details?id=com.github.jamesgay.fitnotes&hl=en_US)
 
+## Eksport i import
+
+Aplikacja musi pozwalać na łatwy eksport i import danych w jakimś standardowym formacie - np json
+
 ## Panel administracyjny
 
 MVP zawiera prosty panel administracyjny. Panel służy do podstawowego zarządzania systemem i nie ma być rozbudowany. 
