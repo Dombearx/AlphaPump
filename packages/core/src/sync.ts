@@ -306,7 +306,14 @@ export type SyncChanges = z.infer<typeof syncChangesSchema>;
 
 export const syncPushResponseSchema = z.object({
   serverTime: isoDateTimeSchema,
-  /** Najwyższy `serverSeq` nadany w tym pushu; `0`, gdy nic nie weszło. */
+  /**
+   * Najwyższy `serverSeq` nadany w tym pushu; `0`, gdy nic nie weszło.
+   *
+   * **To nie jest kursor pullu.** Między kursorem telefonu a tą wartością mogą
+   * leżeć wiersze innych osób, których urządzenie jeszcze nie widziało —
+   * przesunięcie kursora tutaj przeskoczyłoby je bezpowrotnie. Wartość służy do
+   * potwierdzenia, że paczka faktycznie coś zapisała.
+   */
   cursor: z.int().min(0),
   results: z.array(syncResultSchema),
   /** Stan wierszy z paczki **po** rozstrzygnięciu — do wprost zastosowania lokalnie. */

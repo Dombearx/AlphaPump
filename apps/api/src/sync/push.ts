@@ -57,7 +57,10 @@ import {
 } from './rows.js';
 
 export interface PushOutcome {
-  /** Najwyższy `server_seq` nadany w tej paczce; `0`, gdy nic nie weszło. */
+  /**
+   * Najwyższy `server_seq` nadany w tej paczce; `0`, gdy nic nie weszło.
+   * Nie jest kursorem pullu — patrz `syncPushResponseSchema` w rdzeniu.
+   */
   cursor: number;
   results: SyncResult[];
   changes: SyncChanges;
