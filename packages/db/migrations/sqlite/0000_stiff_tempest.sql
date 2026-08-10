@@ -26,6 +26,7 @@ CREATE TABLE `cycles` (
 	`updated_at` integer NOT NULL,
 	`deleted_at` integer,
 	`server_seq` integer,
+	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action,
 	CONSTRAINT "cycles_range_check" CHECK("ends_on" IS NULL OR "ends_on" >= "starts_on")
 );
 --> statement-breakpoint
@@ -53,6 +54,7 @@ CREATE TABLE `exercises` (
 	`updated_at` integer NOT NULL,
 	`deleted_at` integer,
 	`server_seq` integer,
+	FOREIGN KEY (`author_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`primary_tag_id`) REFERENCES `tags`(`id`) ON UPDATE no action ON DELETE no action,
 	CONSTRAINT "exercises_logging_type_check" CHECK("logging_type" IN ('weight_reps', 'weight_time', 'bodyweight_reps', 'bodyweight_time', 'distance_time'))
 );
@@ -102,6 +104,7 @@ CREATE TABLE `workout_sets` (
 	`updated_at` integer NOT NULL,
 	`deleted_at` integer,
 	`server_seq` integer,
+	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`exercise_id`) REFERENCES `exercises`(`id`) ON UPDATE no action ON DELETE no action,
 	CONSTRAINT "workout_sets_measurements_check" CHECK("weight_g" >= 0 AND "reps" > 0 AND "duration_s" > 0 AND "distance_m" > 0 AND "bodyweight_g" >= 0),
 	CONSTRAINT "workout_sets_position_check" CHECK("position" >= 0)

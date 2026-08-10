@@ -2,21 +2,37 @@
  * Schemat SQLite — strona telefonu.
  *
  * Tabele domenowe są kolumna w kolumnę takie same jak w dialekcie PostgreSQL
- * (pilnuje tego `tests/schema-parity.test.ts`). Różnice są trzy i wszystkie
- * wynikają z tego, że telefon jest klientem, a nie źródłem prawdy:
+ * (pilnuje tego `tests/schema-parity.test.ts`). Różnice są dwie i obie wynikają
+ * z tego, że telefon jest klientem, a nie źródłem prawdy:
  *
  * 1. **Użytkownicy to cache.** Bez haseł, sesji i kluczy API — telefon
  *    potrzebuje wyłącznie nicków do rekordów globalnych.
  * 2. **`server_seq` bywa pusty.** Wiersz utworzony offline nie dostał jeszcze
  *    numeru z sekwencji serwera; dostanie go po pierwszym udanym pushu.
- * 3. **Brak kluczy obcych do użytkowników.** Kolejność wierszy w pullu nie jest
- *    gwarantowana, a odrzucenie serii dlatego, że jej autor przyjedzie
- *    w następnej paczce, byłoby utratą danych.
  *
  * Czas jest trzymany jako liczba milisekund (`timestamp_ms`), a dzień
  * treningowy jako tekst `YYYY-MM-DD` — tak samo jak po stronie serwera, gdzie
  * są to `timestamptz` i `date`. Po obu stronach czyta się je jako `Date`
  * i `IsoDate`.
+ *
+ * ## Klucze obce a kolejność wierszy w pullu
+ *
+ * Komplet kluczy obcych jest tu taki sam jak na serwerze — i to jest warunek,
+ * którego kod synchronizacji musi dotrzymać, a nie problem do obejścia przez
+ * zdejmowanie więzów.
+ *
+ * Rzecz w tym, że pull przywozi wiersze posortowane po `server_seq`, czyli
+ * **chronologicznie względem zapisu na serwerze**, a nie topologicznie względem
+ * zależności. Ćwiczenie potrafi więc przyjechać przed swoim tagiem, a seria
+ * przed swoim ćwiczeniem. Przy natychmiastowym sprawdzaniu więzów taki wiersz
+ * zostałby odrzucony — a to znaczy albo wywróconą transakcję pullu i kursor,
+ * który nigdy nie rusza do przodu, albo cicho zgubiony wiersz.
+ *
+ * Rozwiązaniem jest **odroczenie**, nie usunięcie: transakcja pullu (etap 7)
+ * ustawia `PRAGMA defer_foreign_keys = ON`, przez co SQLite przenosi
+ * sprawdzenie na `COMMIT`. Kolejność wewnątrz paczki przestaje mieć znaczenie,
+ * a niespójność faktyczna — taka, której nie domyka żaden wiersz z tej samej
+ * paczki — dalej nie przechodzi.
  */
 
 import { GOAL_METRICS, LOGGING_TYPES, USER_ROLES } from '@alphapump/core';
@@ -89,8 +105,10 @@ export const exercises = sqliteTable(
     id: text('id').primaryKey(),
     name: text('name').notNull(),
     slug: text('slug').notNull(),
-    /** Bez klucza obcego — autor może przyjechać w późniejszej paczce pullu. */
-    authorId: text('author_id').notNull(),
+    /** Autor bywa kimś innym niż właściciel telefonu — biblioteka jest wspólna. */
+    authorId: text('author_id')
+      .notNull()
+      .references(() => users.id),
     loggingType: text('logging_type').$type<LoggingType>().notNull(),
     primaryTagId: text('primary_tag_id')
       .notNull()
@@ -129,8 +147,10 @@ export const workoutSets = sqliteTable(
   'workout_sets',
   {
     id: text('id').primaryKey(),
-    /** Bez klucza obcego — patrz komentarz przy `exercises.author_id`. */
-    userId: text('user_id').notNull(),
+    /** Zawsze właściciel telefonu: pull nie przywozi cudzych serii, bo są prywatne. */
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
     exerciseId: text('exercise_id')
       .notNull()
       .references(() => exercises.id),
@@ -165,7 +185,9 @@ export const cycles = sqliteTable(
   'cycles',
   {
     id: text('id').primaryKey(),
-    userId: text('user_id').notNull(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
     name: text('name').notNull(),
     startsOn: text('starts_on').$type<IsoDate>().notNull(),
     endsOn: text('ends_on').$type<IsoDate>(),

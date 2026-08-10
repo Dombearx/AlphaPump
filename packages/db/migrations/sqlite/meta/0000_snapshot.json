@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "6eb657b2-d0bd-4e53-af9d-81da19172666",
+  "id": "11d9c9f1-e22d-4d50-a103-98421d18303b",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "cycle_goals": {
@@ -215,7 +215,21 @@
           "isUnique": false
         }
       },
-      "foreignKeys": {},
+      "foreignKeys": {
+        "cycles_user_id_users_id_fk": {
+          "name": "cycles_user_id_users_id_fk",
+          "tableFrom": "cycles",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {
@@ -406,6 +420,19 @@
         }
       },
       "foreignKeys": {
+        "exercises_author_id_users_id_fk": {
+          "name": "exercises_author_id_users_id_fk",
+          "tableFrom": "exercises",
+          "tableTo": "users",
+          "columnsFrom": [
+            "author_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "exercises_primary_tag_id_tags_id_fk": {
           "name": "exercises_primary_tag_id_tags_id_fk",
           "tableFrom": "exercises",
@@ -733,6 +760,19 @@
         }
       },
       "foreignKeys": {
+        "workout_sets_user_id_users_id_fk": {
+          "name": "workout_sets_user_id_users_id_fk",
+          "tableFrom": "workout_sets",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "workout_sets_exercise_id_exercises_id_fk": {
           "name": "workout_sets_exercise_id_exercises_id_fk",
           "tableFrom": "workout_sets",
