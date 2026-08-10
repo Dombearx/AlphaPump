@@ -6,7 +6,7 @@ Produkt ma być minimalistyczny, szybki i spójny wizualnie oraz funkcjonalnie. 
 
 ## Zakres MVP
 
-MVP obejmuje logowanie użytkowników, bibliotekę ćwiczeń i tagów, dodawanie własnych ćwiczeń i tagów, logowanie serii dla dowolnego dnia, cykle treningowe, rekordy indywidualne i globalne, wykresy postępu per ćwiczenie, kalendarz, globalne rankingi oraz API do logowania i CRUD serii. MVP obejmuje też tryb ciemny, działanie offline, synchronizację w tle, wykrywanie konfliktów i prosty panel administracyjny do zarządzania użytkownikami oraz bazą danych.  [play.google](https://play.google.com/store/apps/details?id=com.github.jamesgay.fitnotes&hl=en_US)
+MVP obejmuje logowanie użytkowników, bibliotekę ćwiczeń i tagów, dodawanie własnych ćwiczeń i tagów, logowanie serii dla dowolnego dnia, cykle treningowe, rekordy indywidualne i globalne, wykresy postępu per ćwiczenie, kalendarz, globalne rankingi oraz API do logowania i CRUD serii. MVP obejmuje też tryb ciemny, działanie offline, synchronizację w tle, automatyczne rozstrzyganie konfliktów i prosty panel administracyjny do zarządzania użytkownikami oraz bazą danych.  [play.google](https://play.google.com/store/apps/details?id=com.github.jamesgay.fitnotes&hl=en_US)
 
 Poza MVP pozostają rozbudowane funkcje społecznościowe, reset hasła przez e-mail, grupowanie użytkowników w wiele drużyn, wearable integrations, powiadomienia push, rozbudowane plany treningowe i analityka per partia mięśniowa poza widokiem cykli. Te elementy nie są wymagane w pierwszej wersji produktu.  [getfitnotes](https://www.getfitnotes.com/docs/records.html)
 
@@ -49,7 +49,6 @@ Główne encje w systemie:
 - seria,
 - cykl,
 - token API,
-- konflikt synchronizacji,
 - wpis rankingowy,
 - rekord ćwiczenia,
 - rekord globalny ćwiczenia.
@@ -64,7 +63,9 @@ System posiada jedną wspólną bibliotekę ćwiczeń. Użytkownik może filtrow
 - konkretnego użytkownika,
 - tagów.
 
-Nowe ćwiczenia dodawane przez użytkownika trafiają domyślnie do publicznej biblioteki. Podczas dodawania nowego ćwiczenia system ma ostrzegać o podobnych istniejących ćwiczeniach, ale nie blokuje utworzenia nowego wpisu.
+W MVP wszystkie ćwiczenia są publiczne. Nowe ćwiczenia dodawane przez użytkownika trafiają do wspólnej biblioteki i są widoczne dla wszystkich. Ćwiczenia prywatne nie są częścią MVP - jeśli kiedyś powstaną, dopiero wtedy pojawi się rozróżnienie widoczności.
+
+Podczas dodawania nowego ćwiczenia system ma ostrzegać o podobnych istniejących ćwiczeniach, ale nie blokuje utworzenia nowego wpisu.
 
 Ostrzeżenie o podobnych ćwiczeniach działa również bez połączenia z siecią, w oparciu o dane lokalne. Przy dostępnym połączeniu wyszukiwanie podobieństw jest dokładniejsze i obejmuje także ćwiczenia o innej nazwie, lecz tym samym znaczeniu.
 
@@ -88,7 +89,7 @@ Nazewnictwo ćwiczeń ma być unikalne w obrębie pary:
 
 To oznacza, że dwie różne osoby mogą mieć ćwiczenie o tej samej nazwie, ale ten sam użytkownik nie może mieć dwóch własnych ćwiczeń o identycznej nazwie. 
 
-Ćwiczenia, które są używane przez zapisane serie lub zależności systemowe, nie mogą być usuwane w sposób naruszający integralność danych. 
+Ćwiczenie może usunąć wyłącznie jego autor oraz administrator. Ćwiczenia, które są używane przez zapisane serie lub zależności systemowe, nie mogą być usuwane w sposób naruszający integralność danych. 
 
 ## Tagi
 
@@ -232,7 +233,7 @@ Globalny rekord ćwiczenia ma prezentować:
 - datę,
 - notatkę przypisaną do serii.
 
-Globalne rekordy są dostępne tylko dla ćwiczeń publicznych. Nie tworzy się globalnych rekordów dla ćwiczeń prywatnych lub niedostępnych publicznie. 
+Ponieważ w MVP wszystkie ćwiczenia są publiczne, rekordy globalne powstają dla każdego ćwiczenia. Reguła ograniczająca je do ćwiczeń publicznych ma znaczenie dopiero wtedy, gdyby pojawiły się ćwiczenia prywatne. 
 
 ## Wykresy
 
@@ -341,7 +342,9 @@ Inspiracją dla przepływu logowania serii jest FitNotes, zwłaszcza w zakresie 
 
 ## Eksport i import
 
-Aplikacja musi pozwalać na łatwy eksport i import danych w jakimś standardowym formacie - np json
+Aplikacja musi pozwalać na łatwy eksport i import danych w formacie JSON.
+
+Eksport obejmuje serie, ćwiczenia, tagi i cykle użytkownika. Import odtwarza te dane z pliku. Ta sama ścieżka jest wykorzystywana przez systemowy mechanizm kopii zapasowych, dzięki czemu pozostaje regularnie sprawdzana w praktyce.
 
 ## Panel administracyjny
 

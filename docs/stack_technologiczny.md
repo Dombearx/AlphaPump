@@ -2,6 +2,7 @@
 
 Dokument opisuje wybrany stack, architekturę i decyzje projektowe dla AlphaPump.
 Uzupełnia `specyfikacja_biznesowa.md` — tam jest *co*, tutaj *czym* i *jak*.
+Kolejność realizacji opisuje `plan_implementacji.md`.
 
 ## Zasada naczelna
 
@@ -157,8 +158,9 @@ synchronizacji.
 
 **Rekordy i rankingi są cache'em, nie źródłem prawdy.** Specyfikacja wymaga
 pełnego przeliczenia po edycji serii, więc muszą dać się w każdej chwili
-odtworzyć z samych serii. Daje to przy okazji darmowy eksport/import JSON —
-wystarczy zrzucić serie, ćwiczenia i tagi.
+odtworzyć z samych serii. Dzięki temu eksport i kopia zapasowa obejmują wyłącznie
+dane nieodtwarzalne: serie, ćwiczenia, tagi, cykle i minimalne dane
+użytkowników.
 
 **Soft delete wszędzie.** Bez tombstone'ów usunięcie wykonane offline nie ma jak
 dojechać na serwer.
@@ -189,9 +191,16 @@ opisana w specyfikacji. Tagi, jako byt globalny, deduplikują się same:
 > `packages/core` i jest objęta testami traktowanymi jak kontrakt.
 
 Kolor tagu wyliczany jest deterministycznie z hasha sluga na paletę ok. 20
-kolorów. Dzięki temu tag utworzony offline ma od razu finalny kolor i nie zmienia
-go po synchronizacji. Serwer może skorygować przy kolizji, a klient przyjmie jego
-wersję przy pull.
+kolorów. Tag utworzony offline ma więc od razu finalny kolor i nigdy go nie
+zmienia — serwer nie koryguje kolorów. Przy kilkudziesięciu tagach kolizje się
+zdarzą i dwa tagi dostaną ten sam kolor; specyfikacja wymaga odróżnialności „w
+możliwie praktycznym stopniu", więc to akceptowalne, a w zamian kolor jest
+stabilny i identyczny na każdym urządzeniu bez rundy do serwera.
+
+Ćwiczenia wbudowane potrzebują autora, bo `author_id` wchodzi w klucz
+identyfikatora. Przypisujemy je do stałego konta systemowego o zafiksowanym
+identyfikatorze — dzięki temu ich id są takie same w seedzie, w bazie i po
+odtworzeniu z kopii.
 
 ## Synchronizacja
 
@@ -251,13 +260,20 @@ wystarczy.
 
 ### Strategia per encja
 
-| Encja              | Kto zapisuje              | Strategia                          |
-| ------------------ | ------------------------- | ---------------------------------- |
-| seria              | właściciel                | suma + LWW + tombstone             |
-| cykl               | właściciel                | LWW per wiersz                     |
-| ćwiczenie          | **tylko autor** (+ admin) | id deterministyczne → suma; edycja LWW |
-| tag                | każdy tworzy, edytuje admin | id deterministyczne → suma       |
-| rekordy, rankingi  | wyłącznie serwer          | pull-only, zawsze przeliczalne     |
+| Encja                       | Kto zapisuje                | Strategia                              |
+| --------------------------- | --------------------------- | -------------------------------------- |
+| seria                       | właściciel                  | suma + LWW + tombstone                 |
+| cykl                        | właściciel                  | LWW per wiersz                         |
+| ćwiczenie                   | **tylko autor** (+ admin)   | id deterministyczne → suma; edycja LWW |
+| tag                         | każdy tworzy, edytuje admin | id deterministyczne → suma             |
+| rekordy indywidualne        | nikt — dane pochodne        | **nie synchronizowane**, liczone lokalnie z lokalnych serii |
+| rekordy globalne, rankingi  | wyłącznie serwer            | pull-only, przeliczalne z serii        |
+
+Rekordy indywidualne nie przechodzą przez synchronizację w żadną stronę. Są
+funkcją serii użytkownika, a te i tak są w całości na urządzeniu — liczymy je
+lokalnie po każdej zmianie i po każdym pullu. To właśnie dlatego informacja
+o rekordzie działa offline. Rekordy globalne i rankingi wymagają serii wszystkich
+użytkowników, więc powstają na serwerze i schodzą do aplikacji tylko do odczytu.
 
 Edycja ćwiczeń jest ograniczona do autora i administratora. Bez tego publiczna
 biblioteka wchodzi w problemy rodem z wiki i samo LWW przestaje wystarczać.
@@ -312,9 +328,9 @@ binarki aplikacji mobilnej, bo ta jest w praktyce publiczna.
 Własny minipc w sieci NetBird. Telefony podpięte do tej samej sieci widzą serwer;
 API nie jest wystawione na publiczny internet.
 
-Docker Compose: PostgreSQL 17 (z `pgvector` i `pg_trgm`), API, panel admina za
-Caddy. CI na GitHub Actions. Testy: Vitest dla `core` i API, Maestro dla E2E
-mobilnego.
+Docker Compose: PostgreSQL 17 (z `pgvector` i `pg_trgm`), API oraz panel admina
+za Caddy pełniącym rolę zwykłego reverse proxy, bez TLS. CI na GitHub Actions.
+Testy: Vitest dla `core` i API, Maestro dla E2E mobilnego.
 
 ### TLS — świadomie pominięty w MVP
 
@@ -347,10 +363,10 @@ Nasłuch na `0.0.0.0` jest dopuszczony — sieć lokalna minipc jest traktowana 
 zaufana. Oznacza to, że API jest osiągalne plaintextem także z LAN, z pominięciem
 VPN. Decyzja świadoma, do rewizji przy zmianie warunków sieciowych.
 
-Decyzja o braku TLS jest odwracalna — dołożenie Caddy z certyfikatem to zmiana
-konfiguracji, nie refaktor. Wraca na stół dopiero wtedy, gdyby API miało wyjść
-poza VPN; wówczas ścieżką jest domena z rekordem A na adres NetBird i wyzwanie
-DNS-01.
+Decyzja o braku TLS jest odwracalna — Caddy już stoi przed API, więc włączenie
+certyfikatu to zmiana jego konfiguracji, nie refaktor. Wraca na stół dopiero
+wtedy, gdyby API miało wyjść poza VPN; wówczas ścieżką jest domena z rekordem A
+na adres NetBird i wyzwanie DNS-01.
 
 ### Ruch wychodzący
 
@@ -363,15 +379,19 @@ Dockera.
 Baza na minipc jest jedyną kopią danych całej grupy. Awaria dysku kasuje pełną
 historię treningową wszystkich użytkowników.
 
-Nie zrzucamy całej bazy. Kopia obejmuje wyłącznie dane nieodtwarzalne:
+Nie zrzucamy całej bazy. Kopia obejmuje wyłącznie dane nieodtwarzalne.
 
-| Zakres kopii                          | Pominięte i dlaczego                          |
-| ------------------------------------- | --------------------------------------------- |
-| serie                                 | hashe haseł, sesje — dane wrażliwe, zbędne    |
-| cykle                                 | klucze API — użytkownik wygeneruje nowe       |
-| ćwiczenia                             | embeddingi — przeliczalne                     |
-| tagi                                  | rekordy, rankingi — pochodne z serii          |
-| użytkownicy: `id`, e-mail, nick, rola |                                               |
+**W kopii:** serie, ćwiczenia, tagi, cykle oraz minimalne dane użytkowników
+(`id`, e-mail, nick, rola).
+
+**Poza kopią:**
+
+| Pominięte            | Dlaczego                              |
+| -------------------- | ------------------------------------- |
+| hashe haseł, sesje   | wrażliwe, a do odtworzenia zbędne     |
+| klucze API           | użytkownik wygeneruje nowe            |
+| embeddingi           | przeliczalne z nazw ćwiczeń           |
+| rekordy, rankingi    | pochodne z serii                      |
 
 Minimalny zapis użytkowników jest konieczny, mimo że dane logowania pomijamy.
 Bez niego po odtworzeniu `author_id` przy ćwiczeniach i właściciel przy seriach
