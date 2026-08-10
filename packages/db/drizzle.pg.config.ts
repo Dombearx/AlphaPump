@@ -6,7 +6,7 @@ import { defineConfig } from 'drizzle-kit';
  */
 export default defineConfig({
   dialect: 'postgresql',
-  schema: './src/pg/schema.ts',
+  schema: ['./src/pg/schema.ts', './src/pg/auth-schema.ts'],
   out: './migrations/pg',
   dbCredentials: {
     url: process.env.DATABASE_URL ?? 'postgres://alphapump@localhost:5432/alphapump',
