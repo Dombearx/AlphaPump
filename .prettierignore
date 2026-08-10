@@ -6,3 +6,6 @@ pnpm-lock.yaml
 
 # Dokumentacja jest łamana ręcznie — Prettier psuje wyrównanie tabel przy myślnikach.
 *.md
+
+# Migracje generuje drizzle-kit — plików i snapshotów nie formatujemy ręcznie.
+packages/db/migrations/

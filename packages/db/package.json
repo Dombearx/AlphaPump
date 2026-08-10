@@ -2,7 +2,7 @@
   "name": "@alphapump/db",
   "version": "0.0.0",
   "private": true,
-  "description": "Schematy Drizzle: PostgreSQL (serwer) i SQLite (telefon) — etap 2.",
+  "description": "Schematy Drizzle: PostgreSQL (serwer) i SQLite (telefon), migracje i dane startowe.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -10,18 +10,45 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./pg": {
+      "types": "./dist/pg/index.d.ts",
+      "default": "./dist/pg/index.js"
+    },
+    "./sqlite": {
+      "types": "./dist/sqlite/index.d.ts",
+      "default": "./dist/sqlite/index.js"
+    },
+    "./migrations": {
+      "types": "./dist/migrations.d.ts",
+      "default": "./dist/migrations.js"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "migrations"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "generate": "pnpm generate:pg && pnpm generate:sqlite",
+    "generate:pg": "drizzle-kit generate --config drizzle.pg.config.ts",
+    "generate:sqlite": "drizzle-kit generate --config drizzle.sqlite.config.ts",
+    "check": "drizzle-kit check --config drizzle.pg.config.ts && drizzle-kit check --config drizzle.sqlite.config.ts",
     "clean": "rimraf dist .turbo"
   },
+  "dependencies": {
+    "@alphapump/core": "workspace:*",
+    "drizzle-orm": "^0.45.2"
+  },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.4",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.19.2",
+    "better-sqlite3": "^13.0.3",
+    "drizzle-kit": "^0.31.10",
     "rimraf": "^6.0.1",
     "typescript": "catalog:",
     "vitest": "catalog:"

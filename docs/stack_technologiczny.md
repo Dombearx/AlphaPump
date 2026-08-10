@@ -238,6 +238,16 @@ wierszy na użytkownika, PowerSync staje się właściwym wyborem.
 - po każdym pullu przeliczane są dane pochodne (rekordy, cykle) dla dotkniętych
   ćwiczeń.
 
+Paczka pullu jest posortowana po `server_seq`, czyli chronologicznie względem
+zapisu na serwerze — a nie topologicznie względem zależności. Ćwiczenie potrafi
+więc przyjechać przed swoim tagiem, a seria przed swoim ćwiczeniem. Klucze obce
+po stronie telefonu zostają takie same jak na serwerze, a transakcja pullu
+ustawia `PRAGMA defer_foreign_keys = ON`: SQLite przenosi wtedy sprawdzenie na
+`COMMIT`, więc kolejność wewnątrz paczki przestaje mieć znaczenie, a
+niespójność, której nie domyka żaden wiersz z tej samej paczki, dalej nie
+przechodzi. Zdejmowanie kluczy obcych z bazy lokalnej dawałoby to samo za cenę
+bazy, w której nikt już niczego nie pilnuje.
+
 ### Rozstrzyganie konfliktów
 
 Dodanie serii **nie jest konfliktem**. Każda seria ma własny identyfikator
