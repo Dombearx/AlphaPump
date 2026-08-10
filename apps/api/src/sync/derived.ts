@@ -20,6 +20,11 @@
  * synchronizację w żadną stronę, bo są funkcją serii użytkownika, a te są
  * w całości na jego telefonie. Właśnie dlatego informacja o rekordzie działa
  * bez sieci.
+ *
+ * > **Do zrobienia w etapie 11.** Wypełnienie tej listy jest wpisane wprost
+ * > w kryterium ukończenia etapu 11 w `docs/plan_implementacji.md`, żeby zaczep
+ * > bez wpiętego przeliczenia nie został pustym miejscem, o którym nikt nie
+ * > pamięta.
  */
 
 import type { Database } from '../db.js';
