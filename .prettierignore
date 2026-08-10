@@ -1,0 +1,8 @@
+node_modules/
+dist/
+coverage/
+.turbo/
+pnpm-lock.yaml
+
+# Dokumentacja jest łamana ręcznie — Prettier psuje wyrównanie tabel przy myślnikach.
+*.md
