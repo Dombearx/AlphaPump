@@ -12,7 +12,9 @@ Poza MVP pozostają rozbudowane funkcje społecznościowe, reset hasła przez e-
 
 ## Platformy i użytkownicy
 
-Aplikacja ma działać na telefonach z Androidem i iOS. Wsparcie dla tabletów nie jest wymaganiem MVP. 
+Aplikacja ma działać na telefonach z Androidem i iOS. Wsparcie dla tabletów nie jest wymaganiem MVP.
+
+Pierwsze wydanie obejmuje Androida. Wsparcie iOS dochodzi w kolejnym kroku i pozostaje wymaganiem docelowym - aplikacja jest budowana tak, aby dodanie iOS nie wymagało zmian w kodzie. 
 
 W systemie występują dwie role:
 - użytkownik,

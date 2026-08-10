@@ -78,6 +78,32 @@ Dwie pułapki do zapamiętania:
 
 Stan czysto UI-owy (filtry, otwarte modale) trzyma Zustand. Dane siedzą w SQLite.
 
+## iOS — odłożone, ale nie zamknięte
+
+Pierwsza wersja wychodzi na Androida. W grupie jest jedna osoba na iOS, więc
+platforma docelowo wchodzi — i decyzja o jej odłożeniu nie pociąga za sobą
+żadnych zmian w kodzie, bo React Native dzieli tę samą bazę kodu między
+platformami.
+
+Utrzymanie otwartych drzwi kosztuje trzy rzeczy:
+
+- **Build na symulator iOS w CI od pierwszego dnia.** Buildy na symulator jako
+  jedyne nie wymagają płatnego konta Apple, bo nie przechodzą podpisywania kodu.
+  Wychwytują dokładnie to, co psuje się niezauważenie przy pracy wyłącznie na
+  Androidzie: biblioteki bez wsparcia iOS, błędy kompilacji natywnej, konflikty
+  zależności natywnych. Uruchomienie takiego buildu wymaga Maca, ale samo
+  zbudowanie w chmurze EAS — nie, a to kompilacja wyłapuje regresje.
+- **Sprawdzanie wsparcia iOS przy doborze bibliotek.** Tania dyscyplina, droga
+  do nadrobienia wstecz.
+- **Konfiguracja ATS w `app.json` od razu**, obok androidowej. Jeden blok, który
+  inaczej zostanie zapomniany na rok.
+
+Gdy przyjdzie czas: konto Apple Developer (99 USD rocznie), poświadczenia
+podpisywania w EAS, dystrybucja przez TestFlight. Bez przepisywania kodu.
+
+Sign in with Apple staje się wymagane dopiero przy publikacji w App Store —
+TestFlight go nie wymaga.
+
 ## Backend
 
 Hono + Drizzle + Zod na Node 22+, PostgreSQL 17.
@@ -382,9 +408,68 @@ Konfiguracja dostępu do Google Drive ma dwie pułapki:
   limitowany) z zakresem `drive.file`, który daje dostęp wyłącznie do plików
   utworzonych przez tę aplikację.
 
+### Szyfrowanie i odtwarzanie
+
+`age` działa asymetrycznie — jeden klucz szyfruje, drugi odszyfrowuje. Parę
+generujemy raz:
+
+```
+age-keygen -o klucz-alphapump.txt
+```
+
+Powstaje plik z kluczem prywatnym (`AGE-SECRET-KEY-1...`) oraz wypisany klucz
+publiczny (`age1...`).
+
+Na minipc trafia **wyłącznie klucz publiczny**. Kluczem publicznym można jedynie
+zaszyfrować, więc włamanie na minipc nie daje dostępu do kopii leżących na
+Dysku. Przy szyfrowaniu hasłem hasło musiałoby siedzieć w cronie i przejęcie
+serwera oznaczałoby przejęcie wszystkich kopii.
+
+Tworzenie kopii:
+
+```
+pnpm --filter api export --format=json \
+  | gzip \
+  | age -r age1... \
+  > alphapump-$(date +%F).json.gz.age
+rclone copy alphapump-*.json.gz.age gdrive:alphapump-backups/
+```
+
+Odtwarzanie:
+
+```
+rclone copy gdrive:alphapump-backups/alphapump-2026-08-10.json.gz.age .
+age -d -i klucz-alphapump.txt alphapump-2026-08-10.json.gz.age | gunzip > backup.json
+pnpm --filter api import backup.json
+```
+
+Ostatni krok to ten sam import, którego używa funkcja importu danych
+użytkownika — dzięki czemu ścieżka odtwarzania jest sprawdzana przy normalnym
+korzystaniu z aplikacji, a nie dopiero w sytuacji awaryjnej.
+
+#### Przechowywanie klucza prywatnego
+
+Najczęstsza przyczyna bezużytecznych kopii zapasowych: klucz prywatny leżał
+wyłącznie na maszynie, której te kopie dotyczyły.
+
+- klucz **nigdy** nie leży na minipc,
+- klucz **nigdy** nie leży na Google Drive obok kopii,
+- minimum dwa niezależne miejsca: menedżer haseł oraz wydruk (klucz age to jedna
+  linia tekstu).
+
+Comiesięczna próba odtworzenia w CI również potrzebuje klucza. Zamiast wystawiać
+tam klucz główny, szyfrujemy do dwóch odbiorców naraz — `age` przyjmuje wiele
+flag `-r`:
+
+```
+age -r age1_klucz_glowny -r age1_klucz_ci
+```
+
+CI dostaje własny klucz w sekretach repozytorium, klucz główny pozostaje poza
+zasięgiem automatyki.
+
 Kopia, której nigdy nie odtworzono, nie jest kopią. Raz w miesiącu odtwarzamy
-eksport do bazy testowej — najlepiej jako zadanie w CI, żeby nie zależało od
-pamięci.
+eksport do bazy testowej jako zadanie w CI, żeby nie zależało to od pamięci.
 
 ### Konsekwencja dla UX
 
@@ -420,12 +505,5 @@ jest tu wymaganiem twardym.
   Cohere Embed v4 — oba wielojęzyczne, co ma znaczenie przy polskich nazwach
   ćwiczeń). Warto zmierzyć na kilkudziesięciu realnych parach nazw, zanim
   zapadnie decyzja.
-- **Czy w grupie ktokolwiek używa iPhone'a.** iOS nie pozwala zainstalować
-  aplikacji niepodpisanej certyfikatem Apple — to ograniczenie systemu, nie
-  sklepu. Darmowe Apple ID podpisuje buildy wygasające po 7 dniach i wymaga
-  podpięcia telefonu do Maca, co dla grupy znajomych nie działa. Realna
-  dystrybucja to TestFlight, a ten wymaga konta Apple Developer za 99 USD
-  rocznie. Android nie ma odpowiednika tego wymogu — wystarczy przesłać APK.
-  Jeśli w ekipie nie ma iPhone'ów, koszt znika, a powierzchnia testowania maleje
-  o połowę. Publikacja w App Store dołożyłaby wymóg Sign in with Apple obok
-  logowania Google.
+- Termin wejścia iOS i moment zakupu konta Apple Developer — patrz sekcja
+  „iOS — odłożone, ale nie zamknięte".
