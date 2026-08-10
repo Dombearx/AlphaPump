@@ -169,11 +169,30 @@ wersję przy pull.
 
 ## Synchronizacja
 
-Silnik własny, oparty na outboxie i kursorze. Rozważane były PowerSync,
+Rozwiązanie własne, oparte na outboxie i kursorze. Rozważane były PowerSync,
 ElectricSQL i Zero — dwa ostatnie odpadają, bo świadomie nie obsługują pełnego
-trybu offline. PowerSync jest dojrzały, ale wprowadza dodatkową usługę do
-infrastruktury, a zakres realnej synchronizacji dwukierunkowej jest tu wąski:
-biblioteka ćwiczeń, tagi, rekordy globalne i rankingi jadą wyłącznie w dół.
+trybu offline.
+
+PowerSync odpada z innego powodu. Po przyjęciu automatycznego rozstrzygania
+konfliktów (suma / LWW / usunięcie wygrywa) jego model konfliktów pasuje do
+naszego **dokładnie** — argument „nie obsłuży naszej semantyki" nie obowiązuje.
+Decydują trzy inne rzeczy:
+
+- **To przestało być silnikiem.** Zostają: tabela `outbox`, `POST /sync/push`,
+  `GET /sync/pull?since=`. Rozstrzyganie konfliktów to jedna klauzula SQL:
+  `INSERT ... ON CONFLICT (id) DO UPDATE WHERE excluded.updated_at > updated_at`.
+- **Ścieżka zapisu i tak jest nasza.** PowerSync nie pisze do Postgresa — jego
+  handler `uploadData` woła nasze API. Kolejkę na kliencie i endpointy zapisu
+  piszemy tak czy inaczej; PowerSync przejmuje realnie tylko kierunek pobierania.
+- **Koszt operacyjny.** Trzeci proces na minipc, replikacja logiczna Postgresa
+  i DSL reguł synchronizacji w YAML do nauczenia.
+
+Do tego skala: kilkanaście osób i biblioteka ćwiczeń rzędu kilkuset wierszy.
+Wartość PowerSync ujawnia się przy częściowej synchronizacji dużych zbiorów —
+my ściągamy bibliotekę raz, a potem tylko delty po kursorze.
+
+Próg opłacalności: gdyby produkt stał się wielodostępnym SaaS z setkami tysięcy
+wierszy na użytkownika, PowerSync staje się właściwym wyborem.
 
 ### Mechanika
 
@@ -281,11 +300,7 @@ zapewnia dokładnie to samo — ruch między telefonem a minipc jest szyfrowany
 (ChaCha20-Poly1305), a peery uwierzytelniają się wzajemnie kluczami publicznymi.
 HTTPS byłby tu szyfrowaniem wewnątrz szyfrowania.
 
-W zamian obowiązują cztery warunki:
-
-**Nasłuch wyłącznie na interfejsie NetBird.** Ważniejsze niż certyfikat. Przy
-nasłuchu na `0.0.0.0` każdy w lokalnej sieci minipc dosięgnie API plaintextem z
-pominięciem VPN. Wiązanie musi być na adres NetBird (`100.x.x.x`).
+W zamian obowiązują trzy warunki:
 
 **Wyjątek cleartext w aplikacji, zawężony do jednego hosta.** iOS blokuje HTTP
 przez App Transport Security, Android od API 28 również. W Expo: `ios.infoPlist`
@@ -302,9 +317,14 @@ Console wymaga HTTPS dla adresów przekierowania OAuth (poza localhostem).
 Natywny Sign-In tego nie dotyczy: telefon pobiera `idToken` od Google publicznym
 internetem po HTTPS i przekazuje go do naszego API.
 
-Decyzja jest odwracalna — dołożenie Caddy z certyfikatem to zmiana konfiguracji,
-nie refaktor. Wraca na stół dopiero wtedy, gdyby API miało wyjść poza VPN;
-wówczas ścieżką jest domena z rekordem A na adres NetBird i wyzwanie DNS-01.
+Nasłuch na `0.0.0.0` jest dopuszczony — sieć lokalna minipc jest traktowana jako
+zaufana. Oznacza to, że API jest osiągalne plaintextem także z LAN, z pominięciem
+VPN. Decyzja świadoma, do rewizji przy zmianie warunków sieciowych.
+
+Decyzja o braku TLS jest odwracalna — dołożenie Caddy z certyfikatem to zmiana
+konfiguracji, nie refaktor. Wraca na stół dopiero wtedy, gdyby API miało wyjść
+poza VPN; wówczas ścieżką jest domena z rekordem A na adres NetBird i wyzwanie
+DNS-01.
 
 ### Ruch wychodzący
 
@@ -317,14 +337,37 @@ Dockera.
 Baza na minipc jest jedyną kopią danych całej grupy. Awaria dysku kasuje pełną
 historię treningową wszystkich użytkowników.
 
-Zestaw: **`pg_dump -Fc` → restic → rclone → Google Drive**, uruchamiany z crona.
+Nie zrzucamy całej bazy. Kopia obejmuje wyłącznie dane nieodtwarzalne:
 
-Restic robi trzy rzeczy naraz, których osobno nie chcemy pisać: deduplikację,
-politykę retencji (`--keep-daily 7 --keep-weekly 4`) i **szyfrowanie po stronie
-klienta**. To ostatnie jest tu istotne — zrzut zawiera dane treningowe całej
-grupy oraz tabele autoryzacji z hashami haseł i kluczami API, a trafia do usługi
-zewnętrznej. Skoro restic szyfruje natywnie, warstwa `crypt` w rclone jest
-zbędna.
+| Zakres kopii                          | Pominięte i dlaczego                          |
+| ------------------------------------- | --------------------------------------------- |
+| serie                                 | hashe haseł, sesje — dane wrażliwe, zbędne    |
+| cykle                                 | klucze API — użytkownik wygeneruje nowe       |
+| ćwiczenia                             | embeddingi — przeliczalne                     |
+| tagi                                  | rekordy, rankingi — pochodne z serii          |
+| użytkownicy: `id`, e-mail, nick, rola |                                               |
+
+Minimalny zapis użytkowników jest konieczny, mimo że dane logowania pomijamy.
+Bez niego po odtworzeniu `author_id` przy ćwiczeniach i właściciel przy seriach
+wskazywałyby w próżnię — użytkownicy zalogowaliby się ponownie przez Google,
+dostali nowe identyfikatory, a odtworzone dane zostałyby osierocone. Zachowanie
+samego `id` i e-maila wystarcza: po restore dopasowanie następuje po adresie
+e-mail, a powiązania zostają nienaruszone.
+
+Zestaw: **eksport JSON → gzip → `age` → `rclone copy` → Google Drive**, z crona.
+
+Eksport używa **dokładnie tego samego kodu, którego specyfikacja wymaga do
+eksportu i importu danych przez użytkownika**. Jeden serializer, przetestowany
+tym, że jest używany w dwóch miejscach — i gwarancja, że ścieżka odtwarzania nie
+zardzewieje, bo korzystają z niej także zwykli użytkownicy.
+
+Szyfrowanie przez `age` (jedno polecenie w pipe, klucz publiczny odbiorcy).
+Wybrane nie dlatego, że wymagamy silnej ochrony, lecz dlatego, że jest tak samo
+proste jak rozwiązania słabsze — a plik zawiera adresy e-mail i pełną historię
+treningową wszystkich użytkowników i trafia do usługi zewnętrznej.
+
+Retencja: pliki nazwane datą, `rclone delete --min-age 90d`. Przy tej wielkości
+danych dedup i polityki retencji restica są zbędną złożonością.
 
 Konfiguracja dostępu do Google Drive ma dwie pułapki:
 
@@ -340,7 +383,7 @@ Konfiguracja dostępu do Google Drive ma dwie pułapki:
   utworzonych przez tę aplikację.
 
 Kopia, której nigdy nie odtworzono, nie jest kopią. Raz w miesiącu odtwarzamy
-zrzut do bazy testowej — najlepiej jako zadanie w CI, żeby nie zależało od
+eksport do bazy testowej — najlepiej jako zadanie w CI, żeby nie zależało od
 pamięci.
 
 ### Konsekwencja dla UX
@@ -377,6 +420,12 @@ jest tu wymaganiem twardym.
   Cohere Embed v4 — oba wielojęzyczne, co ma znaczenie przy polskich nazwach
   ćwiczeń). Warto zmierzyć na kilkudziesięciu realnych parach nazw, zanim
   zapadnie decyzja.
-- Dystrybucja iOS: TestFlight wymaga konta Apple Developer (99 USD rocznie).
-  Publikacja w App Store dołożyłaby wymóg Sign in with Apple obok logowania
-  Google.
+- **Czy w grupie ktokolwiek używa iPhone'a.** iOS nie pozwala zainstalować
+  aplikacji niepodpisanej certyfikatem Apple — to ograniczenie systemu, nie
+  sklepu. Darmowe Apple ID podpisuje buildy wygasające po 7 dniach i wymaga
+  podpięcia telefonu do Maca, co dla grupy znajomych nie działa. Realna
+  dystrybucja to TestFlight, a ten wymaga konta Apple Developer za 99 USD
+  rocznie. Android nie ma odpowiednika tego wymogu — wystarczy przesłać APK.
+  Jeśli w ekipie nie ma iPhone'ów, koszt znika, a powierzchnia testowania maleje
+  o połowę. Publikacja w App Store dołożyłaby wymóg Sign in with Apple obok
+  logowania Google.
