@@ -69,8 +69,18 @@ jobs:
       - name: Kompilacja na symulator
         # `CODE_SIGNING_ALLOWED=NO` to właśnie ten warunek, dzięki któremu build
         # nie potrzebuje konta Apple Developer.
+        #
+        # Pełne wyjście xcodebuild to w przeważającej części zrzuty zmiennych
+        # środowiskowych każdego celu z osobna. Przy błędzie tonie w nich jedyna
+        # linia, która cokolwiek mówi, a log bywa ucinany, zanim się do niej
+        # dojdzie. Dlatego całość ląduje w pliku, a do wyjścia joba trafia
+        # wyciąg — i to na samym końcu, gdzie na pewno da się go przeczytać.
+        #
+        # `-quiet` celowo nie jest użyte: tłumi też wyjście faz skryptowych,
+        # czyli dokładnie to, co przy tego rodzaju awarii jest jedynym tropem.
         run: |
-          xcodebuild \
+          set -o pipefail
+          if xcodebuild \
             -workspace ios/AlphaPump.xcworkspace \
             -scheme AlphaPump \
             -configuration Debug \
@@ -78,4 +88,24 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath ios/build \
             CODE_SIGNING_ALLOWED=NO \
-            build
+            build > ios/xcodebuild.log 2>&1; then
+            echo "Kompilacja przeszła."
+            exit 0
+          fi
+
+          # Zrzuty zmiennych i linie `cd` znikają — zostaje to, co niesie treść.
+          sed -E '/^[[:space:]]*export /d; /^[[:space:]]*cd [^ ]*$/d' \
+            ios/xcodebuild.log > ios/xcodebuild.trimmed.log
+
+          echo "::group::Linie z błędami"
+          grep -nE 'error:|\*\* BUILD FAILED|The following build commands failed|Command .* failed' \
+            ios/xcodebuild.trimmed.log | tail -n 80 || true
+          echo "::endgroup::"
+
+          echo "::group::Otoczenie faz skryptowych"
+          grep -n 'PhaseScriptExecution' -A 40 ios/xcodebuild.trimmed.log | tail -n 200 || true
+          echo "::endgroup::"
+
+          echo "Ogon logu:"
+          tail -n 120 ios/xcodebuild.trimmed.log
+          exit 1
