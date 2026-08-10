@@ -259,8 +259,5 @@ rozbudowane funkcje społecznościowe, wiele drużyn, integracje z urządzeniami
 ubieralnymi, powiadomienia push, rozbudowane plany treningowe oraz analityka per
 partia mięśniowa poza widokiem cykli.
 
-Poza zakresem MVP są także ćwiczenia prywatne — w pierwszej wersji cała
-biblioteka jest publiczna.
-
 Bot Discord nie jest częścią tego planu. Etap 3 dostarcza API i tokeny, których
 bot potrzebuje; sam bot to osobny projekt.

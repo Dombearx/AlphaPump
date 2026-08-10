@@ -63,7 +63,7 @@ System posiada jedną wspólną bibliotekę ćwiczeń. Użytkownik może filtrow
 - konkretnego użytkownika,
 - tagów.
 
-W MVP wszystkie ćwiczenia są publiczne. Nowe ćwiczenia dodawane przez użytkownika trafiają do wspólnej biblioteki i są widoczne dla wszystkich. Ćwiczenia prywatne nie są częścią MVP - jeśli kiedyś powstaną, dopiero wtedy pojawi się rozróżnienie widoczności.
+Nowe ćwiczenia dodawane przez użytkownika trafiają do wspólnej biblioteki i są widoczne dla wszystkich.
 
 Podczas dodawania nowego ćwiczenia system ma ostrzegać o podobnych istniejących ćwiczeniach, ale nie blokuje utworzenia nowego wpisu.
 
@@ -225,15 +225,13 @@ Po edycji lub usunięciu serii rekordy muszą zostać przeliczone historycznie o
 
 ## Rekordy globalne ćwiczeń
 
-Dla ćwiczeń publicznych system ma wyznaczać także rekordy globalne liczone na podstawie serii wszystkich użytkowników. Rekordy globalne są liczone tym samym mechanizmem co rekordy indywidualne, czyli z użyciem frontu Pareto dla danego ćwiczenia. 
+System ma wyznaczać dla każdego ćwiczenia także rekordy globalne, liczone na podstawie serii wszystkich użytkowników. Rekordy globalne są liczone tym samym mechanizmem co rekordy indywidualne, czyli z użyciem frontu Pareto dla danego ćwiczenia. 
 
 Globalny rekord ćwiczenia ma prezentować:
 - wartość,
 - nick autora,
 - datę,
 - notatkę przypisaną do serii.
-
-Ponieważ w MVP wszystkie ćwiczenia są publiczne, rekordy globalne powstają dla każdego ćwiczenia. Reguła ograniczająca je do ćwiczeń publicznych ma znaczenie dopiero wtedy, gdyby pojawiły się ćwiczenia prywatne. 
 
 ## Wykresy
 
@@ -362,12 +360,12 @@ Nie są wymagane rozbudowane workflow moderacyjne ani zaawansowane narzędzia an
 
 Serie użytkownika są prywatne. Inni użytkownicy nie mają dostępu do pełnej historii serii danego użytkownika. 
 
-Publicznie widoczne mogą być:
-- ćwiczenia publiczne,
-- globalne rekordy dla ćwiczeń publicznych,
+Publicznie widoczne są:
+- ćwiczenia,
+- globalne rekordy ćwiczeń,
 - dane rankingowe użytkowników wynikające z agregacji.
 
-W przypadku globalnych rekordów dla ćwiczeń publicznych widoczne są wartość, nick, data i notatka serii. 
+W przypadku globalnych rekordów widoczne są wartość, nick, data i notatka serii. 
 
 ## Reguły biznesowe
 
@@ -382,7 +380,6 @@ Najważniejsze reguły biznesowe:
 - dodanie serii historycznej działa tak samo jak dodanie serii bieżącej,
 - ćwiczenie może edytować tylko jego autor lub administrator,
 - konflikty synchronizacji rozstrzygane są automatycznie, bez udziału użytkownika,
-- globalne rekordy istnieją tylko dla ćwiczeń publicznych,
 - usunięcie tagu używanego przez ćwiczenia jest zabronione,
 - usunięcie encji nie może naruszać spójności danych.
 
