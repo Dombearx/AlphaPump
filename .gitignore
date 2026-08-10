@@ -18,3 +18,8 @@ pnpm-debug.log*
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Katalogi natywne generuje `expo prebuild` — trzymamy je poza repozytorium,
+# bo źródłem prawdy jest app.config.js i wtyczki, a nie wygenerowany projekt.
+apps/mobile/android/
+apps/mobile/ios/

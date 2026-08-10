@@ -1,0 +1,81 @@
+name: iOS (symulator)
+
+# Build na symulator iOS od pierwszego dnia — mimo że pierwsze wydanie idzie
+# na Androida.
+#
+# Buildy na symulator jako jedyne nie wymagają płatnego konta Apple, bo nie
+# przechodzą podpisywania kodu. Wyłapują dokładnie to, co przy pracy wyłącznie
+# na Androidzie psuje się niezauważenie: biblioteki bez wsparcia iOS, błędy
+# kompilacji natywnej i konflikty zależności natywnych. Naprawianie tego po roku
+# kosztuje wielokrotnie więcej niż utrzymanie tego joba.
+#
+# Job chodzi na płatnym runnerze macOS, więc jest zawężony do zmian, które mogą
+# ruszyć warstwę natywną — a nie do każdego PR-a.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/ios-simulator.yml'
+  pull_request:
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/ios-simulator.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  EXPO_NO_TELEMETRY: 1
+  DO_NOT_TRACK: 1
+
+jobs:
+  build:
+    name: Kompilacja natywna
+    runs-on: macos-15
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Instalacja zależności
+        run: pnpm install --frozen-lockfile
+        working-directory: .
+
+      # Aplikacja importuje skompilowane `@alphapump/core` i `@alphapump/db`.
+      - name: Budowa pakietów współdzielonych
+        run: pnpm --filter @alphapump/core --filter @alphapump/db build
+        working-directory: .
+
+      - name: Generowanie projektu natywnego
+        run: pnpm exec expo prebuild --platform ios --clean
+
+      - name: Kompilacja na symulator
+        # `CODE_SIGNING_ALLOWED=NO` to właśnie ten warunek, dzięki któremu build
+        # nie potrzebuje konta Apple Developer.
+        run: |
+          xcodebuild \
+            -workspace ios/AlphaPump.xcworkspace \
+            -scheme AlphaPump \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath ios/build \
+            CODE_SIGNING_ALLOWED=NO \
+            build

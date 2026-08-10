@@ -9,3 +9,6 @@ pnpm-lock.yaml
 
 # Migracje generuje drizzle-kit — plików i snapshotów nie formatujemy ręcznie.
 packages/db/migrations/
+
+# Bundle migracji SQLite powstaje ze skryptu — patrz scripts/build-sqlite-bundle.ts.
+packages/db/src/sqlite/migrations-bundle.ts

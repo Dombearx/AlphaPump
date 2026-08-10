@@ -22,6 +22,10 @@
     "./migrations": {
       "types": "./dist/migrations.d.ts",
       "default": "./dist/migrations.js"
+    },
+    "./sqlite-migrations": {
+      "types": "./dist/sqlite/migrations-bundle.d.ts",
+      "default": "./dist/sqlite/migrations-bundle.js"
     }
   },
   "files": [
@@ -33,9 +37,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "generate": "pnpm generate:pg && pnpm generate:sqlite",
+    "generate": "pnpm generate:pg && pnpm generate:sqlite && pnpm generate:bundle",
     "generate:pg": "drizzle-kit generate --config drizzle.pg.config.ts",
     "generate:sqlite": "drizzle-kit generate --config drizzle.sqlite.config.ts",
+    "generate:bundle": "node --experimental-strip-types scripts/build-sqlite-bundle.ts",
     "check": "drizzle-kit check --config drizzle.pg.config.ts && drizzle-kit check --config drizzle.sqlite.config.ts",
     "clean": "rimraf dist .turbo"
   },
