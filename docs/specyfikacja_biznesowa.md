@@ -6,13 +6,15 @@ Produkt ma być minimalistyczny, szybki i spójny wizualnie oraz funkcjonalnie. 
 
 ## Zakres MVP
 
-MVP obejmuje logowanie użytkowników, bibliotekę ćwiczeń i tagów, dodawanie własnych ćwiczeń i tagów, logowanie serii dla dowolnego dnia, cykle treningowe, rekordy indywidualne i globalne, wykresy postępu per ćwiczenie, kalendarz, globalne rankingi oraz API do logowania i CRUD serii. MVP obejmuje też tryb ciemny, działanie offline, synchronizację w tle, wykrywanie konfliktów i prosty panel administracyjny do zarządzania użytkownikami oraz bazą danych.  [play.google](https://play.google.com/store/apps/details?id=com.github.jamesgay.fitnotes&hl=en_US)
+MVP obejmuje logowanie użytkowników, bibliotekę ćwiczeń i tagów, dodawanie własnych ćwiczeń i tagów, logowanie serii dla dowolnego dnia, cykle treningowe, rekordy indywidualne i globalne, wykresy postępu per ćwiczenie, kalendarz, globalne rankingi oraz API do logowania i CRUD serii. MVP obejmuje też tryb ciemny, działanie offline, synchronizację w tle, automatyczne rozstrzyganie konfliktów i prosty panel administracyjny do zarządzania użytkownikami oraz bazą danych.  [play.google](https://play.google.com/store/apps/details?id=com.github.jamesgay.fitnotes&hl=en_US)
 
 Poza MVP pozostają rozbudowane funkcje społecznościowe, reset hasła przez e-mail, grupowanie użytkowników w wiele drużyn, wearable integrations, powiadomienia push, rozbudowane plany treningowe i analityka per partia mięśniowa poza widokiem cykli. Te elementy nie są wymagane w pierwszej wersji produktu.  [getfitnotes](https://www.getfitnotes.com/docs/records.html)
 
 ## Platformy i użytkownicy
 
-Aplikacja ma działać na telefonach z Androidem i iOS. Wsparcie dla tabletów nie jest wymaganiem MVP. 
+Aplikacja ma działać na telefonach z Androidem i iOS. Wsparcie dla tabletów nie jest wymaganiem MVP.
+
+Pierwsze wydanie obejmuje Androida. Wsparcie iOS dochodzi w kolejnym kroku i pozostaje wymaganiem docelowym - aplikacja jest budowana tak, aby dodanie iOS nie wymagało zmian w kodzie. 
 
 W systemie występują dwie role:
 - użytkownik,
@@ -47,7 +49,6 @@ Główne encje w systemie:
 - seria,
 - cykl,
 - token API,
-- konflikt synchronizacji,
 - wpis rankingowy,
 - rekord ćwiczenia,
 - rekord globalny ćwiczenia.
@@ -62,7 +63,13 @@ System posiada jedną wspólną bibliotekę ćwiczeń. Użytkownik może filtrow
 - konkretnego użytkownika,
 - tagów.
 
-Nowe ćwiczenia dodawane przez użytkownika trafiają domyślnie do publicznej biblioteki. Podczas dodawania nowego ćwiczenia system ma ostrzegać o podobnych istniejących ćwiczeniach, ale nie blokuje utworzenia nowego wpisu. 
+Nowe ćwiczenia dodawane przez użytkownika trafiają do wspólnej biblioteki i są widoczne dla wszystkich.
+
+Podczas dodawania nowego ćwiczenia system ma ostrzegać o podobnych istniejących ćwiczeniach, ale nie blokuje utworzenia nowego wpisu.
+
+Ostrzeżenie o podobnych ćwiczeniach działa również bez połączenia z siecią, w oparciu o dane lokalne. Przy dostępnym połączeniu wyszukiwanie podobieństw jest dokładniejsze i obejmuje także ćwiczenia o innej nazwie, lecz tym samym znaczeniu.
+
+Ćwiczenie może edytować wyłącznie jego autor oraz administrator. Pozostali użytkownicy mogą z ćwiczenia korzystać, ale nie mogą zmieniać jego nazwy, tagów ani notatki. 
 
 Każde ćwiczenie zawiera:
 - nazwę,
@@ -82,7 +89,7 @@ Nazewnictwo ćwiczeń ma być unikalne w obrębie pary:
 
 To oznacza, że dwie różne osoby mogą mieć ćwiczenie o tej samej nazwie, ale ten sam użytkownik nie może mieć dwóch własnych ćwiczeń o identycznej nazwie. 
 
-Ćwiczenia, które są używane przez zapisane serie lub zależności systemowe, nie mogą być usuwane w sposób naruszający integralność danych. 
+Ćwiczenie może usunąć wyłącznie jego autor oraz administrator. Ćwiczenia, które są używane przez zapisane serie lub zależności systemowe, nie mogą być usuwane w sposób naruszający integralność danych. 
 
 ## Tagi
 
@@ -218,15 +225,13 @@ Po edycji lub usunięciu serii rekordy muszą zostać przeliczone historycznie o
 
 ## Rekordy globalne ćwiczeń
 
-Dla ćwiczeń publicznych system ma wyznaczać także rekordy globalne liczone na podstawie serii wszystkich użytkowników. Rekordy globalne są liczone tym samym mechanizmem co rekordy indywidualne, czyli z użyciem frontu Pareto dla danego ćwiczenia. 
+System ma wyznaczać dla każdego ćwiczenia także rekordy globalne, liczone na podstawie serii wszystkich użytkowników. Rekordy globalne są liczone tym samym mechanizmem co rekordy indywidualne, czyli z użyciem frontu Pareto dla danego ćwiczenia. 
 
 Globalny rekord ćwiczenia ma prezentować:
 - wartość,
 - nick autora,
 - datę,
 - notatkę przypisaną do serii.
-
-Globalne rekordy są dostępne tylko dla ćwiczeń publicznych. Nie tworzy się globalnych rekordów dla ćwiczeń prywatnych lub niedostępnych publicznie. 
 
 ## Wykresy
 
@@ -297,13 +302,18 @@ Szczegółowe informacje mogą być dostępne po tapnięciu ikony statusu. Brak 
 
 ### Konflikty synchronizacji
 
-Konflikty mają być wykrywane przez system. W przypadku konfliktu użytkownik ma otrzymać widok rozwiązania konfliktu na poziomie całego dnia.  [codememory](https://codememory.com/blog/building-offline-first-mobile-apps)
+Każda seria otrzymuje globalnie unikalny identyfikator w momencie utworzenia, także bez połączenia z siecią. Dzięki temu dodanie serii na dwóch urządzeniach offline nie jest konfliktem - są to dwa odrębne zapisy, które po synchronizacji trafiają do systemu razem.
 
-W MVP użytkownik wybiera jedną z dwóch wersji:
-- zachowaj wersję lokalną,
-- zachowaj wersję serwerową.
+Konflikt może powstać wyłącznie wtedy, gdy ten sam zapis zostanie zmieniony niezależnie na dwóch urządzeniach.  [codememory](https://codememory.com/blog/building-offline-first-mobile-apps)
 
-Nie jest wymagane ręczne scalanie poszczególnych pól. Takie podejście jest zgodne z lekkim, zrozumiałym sposobem obsługi konfliktów w aplikacji offline-first, gdy automatyczne rozstrzyganie nie jest pożądane.  [endmr11.github](https://endmr11.github.io/system_design/en/mobile/storage/conflict-resolution.html)
+Rozstrzyganie konfliktów jest automatyczne i nie wymaga decyzji użytkownika:
+- dodanie różnych serii na wielu urządzeniach - zachowywane są wszystkie serie,
+- edycja tej samej serii na wielu urządzeniach - obowiązuje wersja zapisana później,
+- usunięcie serii na jednym urządzeniu i edycja na drugim - obowiązuje usunięcie.
+
+Te same zasady obowiązują dla cykli, ćwiczeń i tagów.
+
+MVP nie zawiera widoku ręcznego rozwiązywania konfliktów. Użytkownik nigdy nie jest proszony o wybór między wersją lokalną a serwerową.
 
 ## UX i UI
 
@@ -330,7 +340,9 @@ Inspiracją dla przepływu logowania serii jest FitNotes, zwłaszcza w zakresie 
 
 ## Eksport i import
 
-Aplikacja musi pozwalać na łatwy eksport i import danych w jakimś standardowym formacie - np json
+Aplikacja musi pozwalać na łatwy eksport i import danych w formacie JSON.
+
+Eksport obejmuje serie, ćwiczenia, tagi i cykle użytkownika. Import odtwarza te dane z pliku. Ta sama ścieżka jest wykorzystywana przez systemowy mechanizm kopii zapasowych, dzięki czemu pozostaje regularnie sprawdzana w praktyce.
 
 ## Panel administracyjny
 
@@ -348,12 +360,12 @@ Nie są wymagane rozbudowane workflow moderacyjne ani zaawansowane narzędzia an
 
 Serie użytkownika są prywatne. Inni użytkownicy nie mają dostępu do pełnej historii serii danego użytkownika. 
 
-Publicznie widoczne mogą być:
-- ćwiczenia publiczne,
-- globalne rekordy dla ćwiczeń publicznych,
+Publicznie widoczne są:
+- ćwiczenia,
+- globalne rekordy ćwiczeń,
 - dane rankingowe użytkowników wynikające z agregacji.
 
-W przypadku globalnych rekordów dla ćwiczeń publicznych widoczne są wartość, nick, data i notatka serii. 
+W przypadku globalnych rekordów widoczne są wartość, nick, data i notatka serii. 
 
 ## Reguły biznesowe
 
@@ -366,8 +378,8 @@ Najważniejsze reguły biznesowe:
 - typ logowania ćwiczenia po utworzeniu jest niezmienny,
 - usunięcie lub edycja serii przelicza rekordy, cykle, wykresy i rankingi,
 - dodanie serii historycznej działa tak samo jak dodanie serii bieżącej,
-- konflikty synchronizacji rozstrzyga się na poziomie dnia,
-- globalne rekordy istnieją tylko dla ćwiczeń publicznych,
+- ćwiczenie może edytować tylko jego autor lub administrator,
+- konflikty synchronizacji rozstrzygane są automatycznie, bez udziału użytkownika,
 - usunięcie tagu używanego przez ćwiczenia jest zabronione,
 - usunięcie encji nie może naruszać spójności danych.
 
@@ -392,7 +404,7 @@ Przykładowe kryteria akceptacyjne dla MVP:
 - użytkownik może dodać serię dla dowolnej daty z kalendarza,
 - aplikacja działa bez internetu i pozwala zapisywać serie, ćwiczenia, tagi oraz odczytywać historię,
 - po powrocie internetu dane synchronizują się bez blokowania pracy,
-- konflikt danych dla dnia powoduje pojawienie się widoku wyboru wersji lokalnej albo serwerowej,
+- równoległa praca na dwóch urządzeniach offline nie powoduje po synchronizacji ani utraty serii, ani duplikatów,
 - cykl poprawnie zlicza serie, czas lub dystans zgodnie z definicją celu,
 - po usunięciu serii postęp cyklu zmniejsza się odpowiednio,
 - po dodaniu serii rekordowej użytkownik dostaje informację o rekordzie,
