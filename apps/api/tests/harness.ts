@@ -18,6 +18,7 @@ import { createApp } from '../src/app.js';
 import { createAuth } from '../src/auth.js';
 import type { AppConfig } from '../src/config.js';
 import type { Database } from '../src/db.js';
+import type { DerivedRecomputation } from '../src/sync/derived.js';
 import { users } from '../src/schema.js';
 
 export const TEST_CONFIG: AppConfig = {
@@ -39,6 +40,11 @@ export interface TestUser {
   headers: Record<string, string>;
 }
 
+export interface HarnessOptions {
+  /** Przeliczenia danych pochodnych wołane po pushu — test podstawia własne. */
+  derived?: readonly DerivedRecomputation[];
+}
+
 export interface Harness {
   db: Database;
   request: (path: string, init?: RequestInit) => Promise<Response>;
@@ -57,14 +63,14 @@ export interface Harness {
 
 const BASE = 'http://localhost:3000';
 
-export async function createHarness(): Promise<Harness> {
+export async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
   const client = new PGlite();
   const db = drizzle(client) as unknown as Database;
   await migrate(drizzle(client), { migrationsFolder: pgMigrationsFolder });
   await seedPostgres(db);
 
   const auth = createAuth(db, TEST_CONFIG);
-  const app = createApp({ db, auth }, TEST_CONFIG);
+  const app = createApp({ db, auth, derived: options.derived }, TEST_CONFIG);
 
   const request = async (path: string, init: RequestInit = {}) =>
     app.fetch(new Request(BASE + path, init));

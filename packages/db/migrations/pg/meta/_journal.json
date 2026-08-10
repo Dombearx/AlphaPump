@@ -15,6 +15,20 @@
       "when": 1786358470463,
       "tag": "0001_broken_thor",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786386182110,
+      "tag": "0002_vengeful_vivisector",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1786386476482,
+      "tag": "0003_crazy_kitty_pryde",
+      "breakpoints": true
     }
   ]
 }

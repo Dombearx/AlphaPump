@@ -57,6 +57,8 @@ const syncColumns = () => ({
   deletedAt: integer('deleted_at', { mode: 'timestamp_ms' }),
   /** Pusty do czasu, aż serwer potwierdzi wiersz i nada mu numer z sekwencji. */
   serverSeq: integer('server_seq'),
+  /** Urządzenie ostatniego zapisu — rozstrzyga remis `updated_at` przy LWW. */
+  deviceId: text('device_id'),
 });
 
 const oneOf = (column: string, values: readonly string[]) =>
@@ -64,12 +66,18 @@ const oneOf = (column: string, values: readonly string[]) =>
 
 /* ---------------------------------------------------------------- użytkownik */
 
-/** Cache użytkowników — tylko to, co potrzebne do pokazania cudzego nicku. */
+/**
+ * Cache użytkowników — tylko to, co potrzebne do pokazania cudzego nicku.
+ *
+ * `email` jest pusty dla wszystkich poza właścicielem telefonu. Adresy
+ * pozostałych osób nie są potrzebne do niczego, co robi aplikacja, a pull
+ * jedzie do każdego urządzenia w grupie — nie ma powodu ich tam rozsyłać.
+ */
 export const users = sqliteTable(
   'users',
   {
     id: text('id').primaryKey(),
-    email: text('email').notNull(),
+    email: text('email'),
     nickname: text('nickname').notNull(),
     role: text('role').$type<UserRole>().notNull().default('user'),
     ...syncColumns(),

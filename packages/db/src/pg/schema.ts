@@ -54,6 +54,12 @@ const syncColumns = () => ({
   /** Tombstone. Wiersz usunięty nigdy nie znika — inaczej pull nie miałby czego przywieźć. */
   deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'date' }),
   serverSeq: bigint('server_seq', { mode: 'number' }).notNull().default(nextServerSeq),
+  /**
+   * Urządzenie, które zapisało ten wiersz jako ostatnie. Jedyne zastosowanie:
+   * deterministyczne rozstrzygnięcie remisu `updated_at` przy LWW. Puste dla
+   * zapisów, które przyszły zwykłym CRUD-em, a nie synchronizacją.
+   */
+  deviceId: text('device_id'),
 });
 
 /** `x IN ('a', 'b')` z listy stałych domenowych — wartości wchodzą do migracji. */
@@ -86,9 +92,16 @@ export const users = pgTable(
     banExpires: timestamp('ban_expires', { withTimezone: true, mode: 'date' }),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+    /**
+     * Konta też schodzą pullem — telefon potrzebuje nicków, żeby pokazać, czyje
+     * jest ćwiczenie i czyj rekord globalny. Numer z tej samej sekwencji co
+     * reszta, więc `GET /sync/pull?since=` dalej ma **jeden** kursor.
+     */
+    serverSeq: bigint('server_seq', { mode: 'number' }).notNull().default(nextServerSeq),
   },
   (table) => [
     uniqueIndex('users_email_unique').on(table.email),
+    index('users_server_seq_idx').on(table.serverSeq),
     check('users_role_check', oneOf('role', USER_ROLES)),
   ],
 );

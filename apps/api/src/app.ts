@@ -24,6 +24,7 @@ import { createExerciseRouter, exerciseRoutes } from './routes/exercises.js';
 import { createHealthRouter, healthRoutes } from './routes/health.js';
 import { createMeRouter, meRoutes } from './routes/me.js';
 import { createSetRouter, setRoutes } from './routes/sets.js';
+import { createSyncRouter, syncRoutes } from './routes/sync.js';
 import { createTagRouter, tagRoutes } from './routes/tags.js';
 
 /** Wersja wystawiana w OpenAPI i w healthchecku. */
@@ -37,6 +38,7 @@ export const documentedRoutes: RouteSpec[] = [
   ...exerciseRoutes,
   ...setRoutes,
   ...cycleRoutes,
+  ...syncRoutes,
 ];
 
 export function createApp(dependencies: AppDependencies, config: AppConfig) {
@@ -89,6 +91,7 @@ export function createApp(dependencies: AppDependencies, config: AppConfig) {
   secured.route('/', createExerciseRouter(dependencies));
   secured.route('/', createSetRouter(dependencies));
   secured.route('/', createCycleRouter(dependencies));
+  secured.route('/', createSyncRouter(dependencies));
 
   app.route('/', secured);
 
