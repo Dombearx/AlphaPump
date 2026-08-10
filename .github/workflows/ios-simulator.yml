@@ -78,6 +78,10 @@ jobs:
         #
         # `-quiet` celowo nie jest użyte: tłumi też wyjście faz skryptowych,
         # czyli dokładnie to, co przy tego rodzaju awarii jest jedynym tropem.
+        #
+        # `ARCHS=arm64` zawęża build do architektury runnera. Symulator na
+        # maszynie Apple Silicon i tak uruchamia arm64; slice x86_64 wydłużał
+        # kompilację dwukrotnie po to, żeby nikt go nigdy nie odpalił.
         run: |
           set -o pipefail
           if xcodebuild \
@@ -88,6 +92,8 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath ios/build \
             CODE_SIGNING_ALLOWED=NO \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=NO \
             build > ios/xcodebuild.log 2>&1; then
             echo "Kompilacja przeszła."
             exit 0
@@ -97,15 +103,13 @@ jobs:
           sed -E '/^[[:space:]]*export /d; /^[[:space:]]*cd [^ ]*$/d' \
             ios/xcodebuild.log > ios/xcodebuild.trimmed.log
 
-          echo "::group::Linie z błędami"
-          grep -nE 'error:|\*\* BUILD FAILED|The following build commands failed|Command .* failed' \
-            ios/xcodebuild.trimmed.log | tail -n 80 || true
+          echo "::group::Co się nie zbudowało"
+          grep -nE '\*\* BUILD FAILED|The following build commands failed|Command .* failed' \
+            ios/xcodebuild.trimmed.log | tail -n 40 || true
           echo "::endgroup::"
 
-          echo "::group::Otoczenie faz skryptowych"
-          grep -n 'PhaseScriptExecution' -A 40 ios/xcodebuild.trimmed.log | tail -n 200 || true
-          echo "::endgroup::"
-
-          echo "Ogon logu:"
-          tail -n 120 ios/xcodebuild.trimmed.log
+          # Kontekst po każdym `error:` — i to na samym końcu wyjścia, bo tylko
+          # ogon logu joba daje się potem odczytać w całości.
+          echo "Fragmenty z błędami:"
+          grep -nE 'error:' -A 15 ios/xcodebuild.trimmed.log | tail -n 160 || true
           exit 1
