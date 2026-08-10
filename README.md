@@ -15,3 +15,49 @@ w tle.
 
 Przy rozbieżności między dokumentami rozstrzyga specyfikacja biznesowa dla
 wymagań i dokument stacku dla rozwiązań technicznych.
+
+## Struktura repozytorium
+
+Monorepo na pnpm workspaces i Turborepo.
+
+```
+apps/
+  mobile/       Expo (Android + iOS)          — etap 5 i dalsze
+  api/          Hono (REST + sync + LLM)      — etap 3 i dalsze
+  admin/        Vite + React (panel)          — etap 13
+packages/
+  core/         logika domenowa, bez I/O      — etap 1 ✔
+  db/           schematy Drizzle: PG + SQLite — etap 2
+  api-client/   typowany klient (Hono RPC)    — etap 3
+```
+
+`packages/core` jest sercem projektu: front Pareto, cykle, podpowiedzi,
+identyfikatory i schematy Zod. Nie ma tam żadnego I/O, bo dokładnie ten sam kod
+liczy rekordy na telefonie (offline) i na serwerze — rozjazd między nimi byłby
+niewidoczny w kodzie i bardzo widoczny dla użytkownika.
+
+## Uruchamianie
+
+Wymagania: Node 22+ i pnpm 10+ (`corepack enable`).
+
+```
+pnpm install
+```
+
+| Polecenie        | Co robi                                             |
+| ---------------- | --------------------------------------------------- |
+| `pnpm build`     | buduje wszystkie pakiety (Turborepo, z cache)        |
+| `pnpm test`      | uruchamia testy jednostkowe (Vitest)                 |
+| `pnpm typecheck` | sprawdza typy w każdym pakiecie                      |
+| `pnpm lint`      | ESLint + sprawdzenie formatowania Prettierem         |
+| `pnpm lint:fix`  | to samo, z automatyczną poprawą                      |
+
+Te same cztery kroki wykonuje CI (`.github/workflows/ci.yml`) na każdym pull
+requeście, w tej samej kolejności i tymi samymi poleceniami.
+
+### Kontrakt identyfikatorów
+
+`slug()` oraz deterministyczne identyfikatory ćwiczeń i tagów są objęte testami
+golden (`packages/core/tests/golden/identifiers.ts`). Ich zmiana przepisuje
+identyfikatory istniejących wierszy, więc czerwony test golden nie jest testem
+do poprawienia — to sygnał, że zmiana wymaga świadomej decyzji i migracji.

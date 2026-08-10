@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    // Pusta lista typów globalnych: rdzeń nie zna Node'a, więc I/O nie ma jak się tu wkraść.
+    "types": []
+  },
+  "include": ["src"]
+}

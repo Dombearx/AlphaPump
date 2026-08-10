@@ -1,0 +1,18 @@
+{
+  "name": "@alphapump/mobile",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Aplikacja mobilna (Expo, Android + iOS) — etapy 5 i dalsze.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "clean": "rimraf dist .turbo"
+  },
+  "devDependencies": {
+    "rimraf": "^6.0.1",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
