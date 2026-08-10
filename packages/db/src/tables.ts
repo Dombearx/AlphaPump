@@ -26,8 +26,20 @@ export type SyncedTable = (typeof SYNCED_TABLES)[number];
  * `updated_at` rozstrzyga LWW, `deleted_at` jest tombstonem (bez niego
  * usunięcie wykonane offline nie miałoby jak dojechać na serwer), a
  * `server_seq` jest kursorem pobierania.
+ *
+ * `device_id` istnieje wyłącznie po to, żeby remis `updated_at` miał
+ * rozstrzygnięcie **deterministyczne**. Bez niego dwa urządzenia, których
+ * zegary wskazały tę samą milisekundę, mogłyby zbiec się do różnych wersji
+ * wiersza w zależności od kolejności pushy — a to jest dokładnie ta klasa
+ * błędu, której nikt nigdy nie zauważy w logach.
  */
-export const SYNC_COLUMNS = ['created_at', 'updated_at', 'deleted_at', 'server_seq'] as const;
+export const SYNC_COLUMNS = [
+  'created_at',
+  'updated_at',
+  'deleted_at',
+  'server_seq',
+  'device_id',
+] as const;
 
 /**
  * Sekwencja, z której serwer nadaje `server_seq`. Jedna, wspólna dla wszystkich

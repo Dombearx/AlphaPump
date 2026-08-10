@@ -1,0 +1,52 @@
+/**
+ * Korzeń aplikacji.
+ *
+ * Kolejność importów na górze pliku ma znaczenie: `react-native-get-random-values`
+ * musi wejść **przed** czymkolwiek, co sięga po `crypto.getRandomValues` —
+ * a robi to generator UUID-ów z `@alphapump/core`, czyli praktycznie każdy zapis.
+ * Hermes nie ma tego API wbudowanego i bez polyfilla identyfikator serii
+ * wywala się dopiero na urządzeniu.
+ *
+ * Motyw jest ciemny i nie ma przełącznika. Specyfikacja wymaga dark theme,
+ * a jeden motyw znaczy jeden zestaw kolorów do utrzymania.
+ */
+
+import 'react-native-get-random-values';
+import '../global.css';
+
+import { Stack } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { useEffect } from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { configureGoogleSignIn } from '../src/auth/google';
+import { appConfig, isGoogleSignInConfigured } from '../src/config/index';
+import { DatabaseProvider } from '../src/db/provider';
+import { COLORS } from '../src/theme';
+
+export default function RootLayout() {
+  useEffect(() => {
+    if (isGoogleSignInConfigured(appConfig)) configureGoogleSignIn(appConfig);
+  }, []);
+
+  return (
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: COLORS.base }}>
+      <SafeAreaProvider>
+        <StatusBar style="light" />
+        <DatabaseProvider>
+          <Stack
+            screenOptions={{
+              headerStyle: { backgroundColor: COLORS.surface },
+              headerTintColor: COLORS.text,
+              contentStyle: { backgroundColor: COLORS.base },
+              animation: 'fade',
+            }}
+          >
+            <Stack.Screen name="index" options={{ title: 'Dziś' }} />
+            <Stack.Screen name="sign-in" options={{ title: 'Logowanie', headerShown: false }} />
+          </Stack>
+        </DatabaseProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
+  );
+}

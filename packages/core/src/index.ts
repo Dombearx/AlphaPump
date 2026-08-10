@@ -18,3 +18,4 @@ export * from './records.js';
 export * from './cycles.js';
 export * from './suggestions.js';
 export * from './schemas.js';
+export * from './sync.js';

@@ -16,6 +16,31 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
+    /**
+     * Pliki konfiguracyjne narzędzi (Babel, Metro, `app.config.js`) i wtyczki
+     * Expo są CommonJS-em — czyta je Node, a nie bundler aplikacji. Bez tego
+     * bloku `require`, `module` i `__dirname` wyglądają jak niezadeklarowane
+     * globalne, a `require()` jak zakazany import.
+     */
+    files: ['**/*.js', '**/*.cjs'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: {
+        module: 'writable',
+        exports: 'writable',
+        require: 'readonly',
+        process: 'readonly',
+        __dirname: 'readonly',
+        __filename: 'readonly',
+        console: 'readonly',
+        URL: 'readonly',
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
+    },
+  },
+  {
     rules: {
       '@typescript-eslint/consistent-type-imports': [
         'error',

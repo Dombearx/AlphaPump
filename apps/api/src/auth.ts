@@ -19,6 +19,7 @@
  */
 
 import { apiKey } from '@better-auth/api-key';
+import { expo } from '@better-auth/expo';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { admin, bearer } from 'better-auth/plugins';
@@ -115,6 +116,13 @@ export function createAuth(db: Database, config: AppConfig) {
        */
       apiKey({ rateLimit: { enabled: true, timeWindow: 60_000, maxRequests: 120 } }),
       admin({ defaultRole: 'user', adminRoles: ['admin'] }),
+      /**
+       * Obsługa sesji po stronie React Native: dopuszcza schemat deep linków
+       * aplikacji jako zaufane pochodzenie i rozumie nagłówek, którym klient
+       * Expo przedstawia swoje. Bez tego żądania z telefonu wyglądałyby dla
+       * serwera jak przychodzące z nieznanego origina.
+       */
+      expo(),
     ],
   });
 }

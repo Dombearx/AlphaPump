@@ -1,0 +1,141 @@
+name: iOS (symulator)
+
+# Build na symulator iOS od pierwszego dnia — mimo że pierwsze wydanie idzie
+# na Androida.
+#
+# Buildy na symulator jako jedyne nie wymagają płatnego konta Apple, bo nie
+# przechodzą podpisywania kodu. Wyłapują dokładnie to, co przy pracy wyłącznie
+# na Androidzie psuje się niezauważenie: biblioteki bez wsparcia iOS, błędy
+# kompilacji natywnej i konflikty zależności natywnych. Naprawianie tego po roku
+# kosztuje wielokrotnie więcej niż utrzymanie tego joba.
+#
+# Job chodzi na płatnym runnerze macOS, więc jest zawężony do zmian, które mogą
+# ruszyć warstwę natywną — a nie do każdego PR-a.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/ios-simulator.yml'
+  pull_request:
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/ios-simulator.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  EXPO_NO_TELEMETRY: 1
+  DO_NOT_TRACK: 1
+
+jobs:
+  build:
+    name: Kompilacja natywna
+    # Obraz musi nieść Xcode ze Swiftem co najmniej 6.2 — patrz krok „Wybór
+    # Xcode". `macos-15` ma domyślnie 16.4 (Swift 6.1), czyli za mało.
+    runs-on: macos-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      # Expo SDK 57 buduje ExpoModulesJSI z pakietu SPM deklarującego
+      # `swift-tools-version: 6.2`. Starszy Swift odbija taki manifest
+      # komunikatem „Could not resolve package dependencies" — który brzmi jak
+      # problem z siecią albo z zależnościami, a jest zwykłą różnicą wersji.
+      # Dlatego wybieramy najnowszy Xcode z obrazu i sprawdzamy wersję **przed**
+      # kompilacją: inaczej awaria wychodzi po kilku minutach, w miejscu bez
+      # związku z przyczyną.
+      - name: Wybór Xcode
+        working-directory: .
+        run: |
+          echo "Dostępne wersje Xcode na obrazie:"
+          ls -d /Applications/Xcode*.app
+          newest=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          sudo xcode-select -s "$newest"
+          xcodebuild -version
+          swift --version
+
+          required=6.2
+          installed=$(swift --version | sed -nE 's/.*Swift version ([0-9]+\.[0-9]+).*/\1/p' | head -1)
+          if [ "$(printf '%s\n%s\n' "$required" "$installed" | sort -V | head -1)" != "$required" ]; then
+            echo "::error::Obraz ma Swift $installed, a ExpoModulesJSI wymaga co najmniej $required."
+            exit 1
+          fi
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Instalacja zależności
+        run: pnpm install --frozen-lockfile
+        working-directory: .
+
+      # Aplikacja importuje skompilowane `@alphapump/core` i `@alphapump/db`.
+      - name: Budowa pakietów współdzielonych
+        run: pnpm --filter @alphapump/core --filter @alphapump/db build
+        working-directory: .
+
+      - name: Generowanie projektu natywnego
+        run: pnpm exec expo prebuild --platform ios --clean
+
+      - name: Kompilacja na symulator
+        # `CODE_SIGNING_ALLOWED=NO` to właśnie ten warunek, dzięki któremu build
+        # nie potrzebuje konta Apple Developer.
+        #
+        # Pełne wyjście xcodebuild to w przeważającej części zrzuty zmiennych
+        # środowiskowych każdego celu z osobna. Przy błędzie tonie w nich jedyna
+        # linia, która cokolwiek mówi, a log bywa ucinany, zanim się do niej
+        # dojdzie. Dlatego całość ląduje w pliku, a do wyjścia joba trafia
+        # wyciąg — i to na samym końcu, gdzie na pewno da się go przeczytać.
+        #
+        # `-quiet` celowo nie jest użyte: tłumi też wyjście faz skryptowych,
+        # czyli dokładnie to, co przy tego rodzaju awarii jest jedynym tropem.
+        #
+        # `ARCHS=arm64` zawęża build do architektury runnera. Symulator na
+        # maszynie Apple Silicon i tak uruchamia arm64; slice x86_64 wydłużał
+        # kompilację dwukrotnie po to, żeby nikt go nigdy nie odpalił.
+        run: |
+          set -o pipefail
+          if xcodebuild \
+            -workspace ios/AlphaPump.xcworkspace \
+            -scheme AlphaPump \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath ios/build \
+            CODE_SIGNING_ALLOWED=NO \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=NO \
+            build > ios/xcodebuild.log 2>&1; then
+            echo "Kompilacja przeszła."
+            exit 0
+          fi
+
+          # Zrzuty zmiennych i linie `cd` znikają — zostaje to, co niesie treść.
+          sed -E '/^[[:space:]]*export /d; /^[[:space:]]*cd [^ ]*$/d' \
+            ios/xcodebuild.log > ios/xcodebuild.trimmed.log
+
+          echo "::group::Co się nie zbudowało"
+          grep -nE '\*\* BUILD FAILED|The following build commands failed|Command .* failed' \
+            ios/xcodebuild.trimmed.log | tail -n 40 || true
+          echo "::endgroup::"
+
+          # Kontekst po każdym `error:` — i to na samym końcu wyjścia, bo tylko
+          # ogon logu joba daje się potem odczytać w całości.
+          echo "Fragmenty z błędami:"
+          grep -nE 'error:' -A 15 ios/xcodebuild.trimmed.log | tail -n 160 || true
+          exit 1

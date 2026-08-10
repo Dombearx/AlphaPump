@@ -92,7 +92,10 @@ jest spełnione, zanim powstanie aplikacja mobilna.
 - `POST /sync/push` i `GET /sync/pull?since=`,
 - rozstrzyganie konfliktów: suma, LWW po `updated_at`, wygrywające usunięcie,
 - przycinanie timestampów z przyszłości, rozstrzyganie remisów po `device_id`,
-- przeliczanie danych pochodnych po stronie serwera,
+- przeliczanie danych pochodnych po stronie serwera — na tym etapie powstaje
+  wyłącznie zbieranie zakresu dotkniętego pushem i miejsce wpięcia przeliczeń,
+  bo jedyne serwerowe dane pochodne wchodzą dopiero w etapie 11 i tam jest ten
+  dług odnotowany,
 - porządkowanie tombstone'ów.
 
 **Gotowe, gdy:** testy integracyjne symulujące dwa urządzenia pracujące offline
@@ -182,12 +185,25 @@ odpowiednio zmniejsza postęp.
 
 - serwerowe wyznaczanie rekordów globalnych,
 - rankingi: objętość ciężaru, suma dystansu, zestawienia osiągnięć,
+- **wpięcie przeliczania po pushu — dług z etapu 4** (patrz niżej),
 - ekrany w aplikacji, zasilane danymi tylko do odczytu,
 - pilnowanie prywatności: na zewnątrz wychodzą wyłącznie wartość, nick, data
   i notatka serii.
 
+> **Dług z etapu 4.** Etap 4 wymagał „przeliczania danych pochodnych po stronie
+> serwera", ale przeliczać nie było czego: jedyne dane pochodne trzymane na
+> serwerze to właśnie rekordy globalne i rankingi, a rekordy indywidualne
+> z definicji nie przechodzą przez synchronizację. Powstał więc sam zaczep —
+> `apps/api/src/sync/derived.ts` zbiera po każdym pushu zakres dotknięty zmianą
+> (para użytkownik + ćwiczenie) i przepuszcza go przez pustą listę przeliczeń,
+> wołaną z `POST /sync/push`. **Ten etap ma tę listę wypełnić.** Zakres jest
+> zbierany, bo po zapisie nie da się go już odtworzyć, a przeliczanie wszystkiego
+> przy każdym pushu jest liniowe względem całej bazy.
+
 **Gotowe, gdy:** rankingi zgadzają się z niezależnym przeliczeniem z surowych
-serii, a historia serii pozostaje niedostępna dla innych użytkowników.
+serii, historia serii pozostaje niedostępna dla innych użytkowników, a zapis
+serii przez `POST /sync/push` przelicza rekordy globalne dotkniętych ćwiczeń —
+czyli lista przeliczeń w `derived.ts` przestaje być pusta.
 
 ## Etap 12 — Wyszukiwanie semantyczne i LLM
 
