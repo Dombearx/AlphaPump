@@ -5,7 +5,14 @@
  * ćwiczenia. Dzięki temu „lawka" znajduje „Ławkę", a użytkownik nie musi trafiać
  * w ogonki, żeby zapisać serię.
  *
- * Funkcja jest tu, a nie w komponencie, żeby dało się ją przetestować bez
+ * Zapytanie jest dzielone na słowa i **każde** musi trafić: „sztanga lezac"
+ * znajduje „Wyciskanie sztangi leżąc" niezależnie od kolejności, w jakiej padły.
+ * To jest cała „pełnotekstowość" tej warstwy i celowo nie ma jej więcej —
+ * przy bibliotece rzędu setek wpisów przejście po tablicy trwa ułamek
+ * milisekundy, a indeks FTS trzeba by utrzymywać w zgodzie z każdym pullem,
+ * czyli dołożyć wyzwalacze i drugą ścieżkę, w której dane mogą się rozjechać.
+ *
+ * Funkcje są tu, a nie w komponencie, żeby dało się je przetestować bez
  * renderowania ekranu.
  */
 
@@ -17,14 +24,20 @@ export interface SearchableExercise {
   tagName: string;
 }
 
+/** Słowa zapytania; pusta tablica znaczy „pokaż wszystko". */
+function queryTokens(query: string): string[] {
+  return slug(query).split('-').filter(Boolean);
+}
+
 export function filterExercises<T extends SearchableExercise>(
   exercises: readonly T[],
   query: string,
 ): T[] {
-  const needle = slug(query);
-  if (needle.length === 0) return [...exercises];
+  const tokens = queryTokens(query);
+  if (tokens.length === 0) return [...exercises];
 
-  return exercises.filter(
-    (exercise) => slug(exercise.name).includes(needle) || slug(exercise.tagName).includes(needle),
-  );
+  return exercises.filter((exercise) => {
+    const haystack = `${slug(exercise.name)}-${slug(exercise.tagName)}`;
+    return tokens.every((token) => haystack.includes(token));
+  });
 }

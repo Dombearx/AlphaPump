@@ -11,7 +11,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { COLORS } from '../theme';
 
 /* ------------------------------------------------------------------ przyciski */
@@ -148,6 +148,72 @@ export function Row({ children, onPress, onLongPress, selected = false }: RowPro
     >
       {children}
     </Pressable>
+  );
+}
+
+/**
+ * Chips — filtr i wybór jednej wartości z krótkiej listy.
+ *
+ * Ten sam klocek obsługuje filtr tagów w bibliotece, wybór metryki celu i wybór
+ * typu logowania. Rozwijana lista byłaby na to za ciężka: wszystkie te zbiory
+ * mają po kilka pozycji, a chips pokazuje je bez ani jednego dodatkowego
+ * naciśnięcia.
+ */
+export function Chip({
+  label,
+  selected = false,
+  color,
+  onPress,
+}: {
+  label: string;
+  selected?: boolean;
+  /** Kropka w kolorze tagu; pomijana tam, gdzie chips nie dotyczy tagu. */
+  color?: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      className={`flex-row items-center gap-2 rounded-full border px-3 py-2 active:opacity-70 ${
+        selected ? 'border-accent bg-surface' : 'border-border bg-base'
+      }`}
+    >
+      {color !== undefined && <TagDot color={color} />}
+      <Text className={selected ? 'text-text' : 'text-muted'}>{label}</Text>
+    </Pressable>
+  );
+}
+
+/** Rząd chipsów przewijany w poziomie — filtrów bywa więcej niż szerokości. */
+export function ChipRow({ children }: { children: ReactNode }) {
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerClassName="flex-row gap-2 pr-4"
+      keyboardShouldPersistTaps="handled"
+    >
+      {children}
+    </ScrollView>
+  );
+}
+
+/**
+ * Pasek postępu pozycji cyklu. Udział jest już przycięty do jedynki przez
+ * rdzeń — nadmiar nie ma jak wyjechać poza pasek.
+ */
+export function ProgressBar({ ratio, done = false }: { ratio: number; done?: boolean }) {
+  const percent = Math.round(Math.min(Math.max(ratio, 0), 1) * 100);
+
+  return (
+    <View className="h-2 overflow-hidden rounded-full bg-border">
+      <View
+        className={`h-2 rounded-full ${done ? 'bg-success' : 'bg-accent'}`}
+        style={{ width: `${percent}%` }}
+      />
+    </View>
   );
 }
 

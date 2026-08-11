@@ -10,9 +10,19 @@
  * cache'a do unieważniania i nie ma ekranu, który czeka na sieć.
  */
 
-import type { IsoDate } from '@alphapump/core';
-import { exercises, tags, users, workoutSets, type SqliteDatabase } from '@alphapump/db/sqlite';
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { SYSTEM_USER_ID, type IsoDate } from '@alphapump/core';
+import {
+  cycleGoals,
+  cycles,
+  exerciseTags,
+  exercises,
+  tags,
+  users,
+  workoutSets,
+  type SqliteDatabase,
+} from '@alphapump/db/sqlite';
+import { aliasedTable, and, asc, count, eq, gte, isNotNull, isNull, ne, sql } from 'drizzle-orm';
+import { union } from 'drizzle-orm/sqlite-core';
 
 /**
  * Serie jednego dnia wraz z opisem ćwiczenia.
@@ -121,6 +131,8 @@ export function exerciseDetails(db: SqliteDatabase, exerciseId: string) {
       name: exercises.name,
       loggingType: exercises.loggingType,
       note: exercises.note,
+      authorId: exercises.authorId,
+      tagId: exercises.primaryTagId,
       tagName: tags.name,
       tagColor: tags.color,
       authorNickname: users.nickname,
@@ -135,6 +147,29 @@ export function exerciseDetails(db: SqliteDatabase, exerciseId: string) {
 export type ExerciseDetailsRow = Awaited<ReturnType<typeof exerciseDetails>>[number];
 
 /**
+ * Skąd pochodzi ćwiczenie. Autorem wbudowanych jest konto systemowe — innego
+ * znacznika nie potrzeba, bo autor i tak wchodzi w klucz identyfikatora.
+ */
+export type LibrarySource = 'all' | 'built-in' | 'community';
+
+export interface LibraryFilter {
+  /** Tag główny **albo** dodatkowy — filtr biblioteki jest szerszy niż cykle. */
+  tagId?: string | null;
+  source?: LibrarySource;
+}
+
+function librarySourceCondition(source: LibrarySource) {
+  switch (source) {
+    case 'built-in':
+      return eq(exercises.authorId, SYSTEM_USER_ID);
+    case 'community':
+      return ne(exercises.authorId, SYSTEM_USER_ID);
+    case 'all':
+      return undefined;
+  }
+}
+
+/**
  * Biblioteka do wyboru ćwiczenia, z licznikiem serii użytkownika.
  *
  * Licznik jest podzapytaniem, a nie złączeniem: złączenie z seriami rozmnożyłoby
@@ -142,8 +177,12 @@ export type ExerciseDetailsRow = Awaited<ReturnType<typeof exerciseDetails>>[num
  * policzenie tego, o co pytamy. Ćwiczenia używane wcześniej idą na górę —
  * przy „możliwie najmniejszej liczbie kroków do zapisania serii" to zwykle one
  * są tym, czego użytkownik szuka.
+ *
+ * Filtr po tagu obejmuje tag główny **i** dodatkowe: w bibliotece tag jest
+ * etykietą do przeglądania, a nie kryterium zaliczania serii do cyklu — tam
+ * liczy się wyłącznie tag główny.
  */
-export function exerciseLibrary(db: SqliteDatabase, userId: string) {
+export function exerciseLibrary(db: SqliteDatabase, userId: string, filter: LibraryFilter = {}) {
   const usage = sql<number>`(
     select count(*) from ${workoutSets}
     where ${workoutSets.exerciseId} = ${exercises.id}
@@ -158,11 +197,21 @@ export function exerciseLibrary(db: SqliteDatabase, userId: string) {
       and ${workoutSets.deletedAt} is null
   )`;
 
+  const tagged =
+    filter.tagId == null
+      ? undefined
+      : sql`(${exercises.primaryTagId} = ${filter.tagId} or exists (
+          select 1 from ${exerciseTags}
+          where ${exerciseTags.exerciseId} = ${exercises.id}
+            and ${exerciseTags.tagId} = ${filter.tagId}
+        ))`;
+
   return db
     .select({
       id: exercises.id,
       name: exercises.name,
       loggingType: exercises.loggingType,
+      authorId: exercises.authorId,
       tagId: exercises.primaryTagId,
       tagName: tags.name,
       tagColor: tags.color,
@@ -171,11 +220,161 @@ export function exerciseLibrary(db: SqliteDatabase, userId: string) {
     })
     .from(exercises)
     .innerJoin(tags, eq(tags.id, exercises.primaryTagId))
-    .where(isNull(exercises.deletedAt))
+    .where(and(isNull(exercises.deletedAt), librarySourceCondition(filter.source ?? 'all'), tagged))
     .orderBy(sql`set_count desc`, asc(exercises.name));
 }
 
 export type LibraryRow = Awaited<ReturnType<typeof exerciseLibrary>>[number];
+
+/**
+ * Tagi z licznikiem ćwiczeń — chipsy filtra biblioteki.
+ *
+ * Licznik obejmuje ćwiczenia, dla których tag jest główny **albo** dodatkowy,
+ * czyli dokładnie to, co pokaże filtr po naciśnięciu chipsa. Tagi bez ani
+ * jednego ćwiczenia też są na liście: dopiero co utworzony tag musi dać się
+ * wybrać przy dodawaniu pierwszego ćwiczenia z tego obszaru.
+ */
+export function tagLibrary(db: SqliteDatabase) {
+  // Przynależność ćwiczenia do tagu ma dwa źródła — tag główny i tagi dodatkowe
+  // — więc liczymy ją z sumy obu zbiorów. `UNION` (a nie `UNION ALL`) odsiewa
+  // ćwiczenie wskazujące ten sam tag dwa razy, choć schemat i tak na to nie
+  // pozwala; kosztu nie ma, a wynik przestaje zależeć od tej gwarancji.
+  //
+  // Złączenie zamiast skorelowanego podzapytania jest tu **konieczne**: przy
+  // zapytaniu z jedną tabelą Drizzle pomija kwalifikatory kolumn, więc
+  // `tags.id` i `exercises.id` w podzapytaniu stałyby się tym samym `"id"`.
+  const membership = union(
+    db
+      .select({ tagId: exercises.primaryTagId, exerciseId: exercises.id })
+      .from(exercises)
+      .where(isNull(exercises.deletedAt)),
+    db
+      .select({ tagId: exerciseTags.tagId, exerciseId: exerciseTags.exerciseId })
+      .from(exerciseTags)
+      .innerJoin(exercises, eq(exercises.id, exerciseTags.exerciseId))
+      .where(isNull(exercises.deletedAt)),
+  ).as('tag_membership');
+
+  return db
+    .select({
+      id: tags.id,
+      name: tags.name,
+      color: tags.color,
+      exerciseCount: count(membership.exerciseId).as('exercise_count'),
+    })
+    .from(tags)
+    .leftJoin(membership, eq(membership.tagId, tags.id))
+    .where(isNull(tags.deletedAt))
+    .groupBy(tags.id, tags.name, tags.color)
+    .orderBy(asc(tags.name));
+}
+
+export type TagLibraryRow = Awaited<ReturnType<typeof tagLibrary>>[number];
+
+/** Tagi dodatkowe jednego ćwiczenia, w kolejności zapisanej przy edycji. */
+export function additionalTagsOf(db: SqliteDatabase, exerciseId: string) {
+  return db
+    .select({ id: tags.id, name: tags.name, color: tags.color })
+    .from(exerciseTags)
+    .innerJoin(tags, eq(tags.id, exerciseTags.tagId))
+    .where(eq(exerciseTags.exerciseId, exerciseId))
+    .orderBy(asc(exerciseTags.position));
+}
+
+/* --------------------------------------------------------------------- cykle */
+
+/**
+ * Cykle użytkownika. Archiwalne są osobnym widokiem, a nie doklejką do listy
+ * aktywnych — cykl zamknięty ogląda się rzadko i nie ma powodu, żeby zajmował
+ * miejsce na ekranie, na który wchodzi się w trakcie treningu.
+ */
+export function cycleList(db: SqliteDatabase, userId: string, archived = false) {
+  return db
+    .select({
+      id: cycles.id,
+      name: cycles.name,
+      startsOn: cycles.startsOn,
+      endsOn: cycles.endsOn,
+      archivedAt: cycles.archivedAt,
+    })
+    .from(cycles)
+    .where(
+      and(
+        eq(cycles.userId, userId),
+        isNull(cycles.deletedAt),
+        archived ? isNotNull(cycles.archivedAt) : isNull(cycles.archivedAt),
+      ),
+    )
+    .orderBy(asc(cycles.startsOn), asc(cycles.name));
+}
+
+export type CycleListRow = Awaited<ReturnType<typeof cycleList>>[number];
+
+/**
+ * Pozycje celu wszystkich żywych cykli użytkownika, z nazwami zakresu.
+ *
+ * Nazwy ćwiczenia i tagu są dołączane tutaj, bo pozycja celu bez nich jest
+ * nieczytelna („12 czego?"), a doczytywanie ich osobno na ekranie oznaczałoby
+ * drugie zapytanie na każdą pozycję.
+ */
+export function cycleGoalList(db: SqliteDatabase, userId: string) {
+  const goalTag = aliasedTable(tags, 'goal_tag');
+
+  return db
+    .select({
+      id: cycleGoals.id,
+      cycleId: cycleGoals.cycleId,
+      metric: cycleGoals.metric,
+      target: cycleGoals.target,
+      exerciseId: cycleGoals.exerciseId,
+      tagId: cycleGoals.tagId,
+      position: cycleGoals.position,
+      exerciseName: exercises.name,
+      tagName: goalTag.name,
+      tagColor: goalTag.color,
+    })
+    .from(cycleGoals)
+    .innerJoin(cycles, eq(cycles.id, cycleGoals.cycleId))
+    .leftJoin(exercises, eq(exercises.id, cycleGoals.exerciseId))
+    .leftJoin(goalTag, eq(goalTag.id, cycleGoals.tagId))
+    .where(and(eq(cycles.userId, userId), isNull(cycles.deletedAt)))
+    .orderBy(asc(cycleGoals.cycleId), asc(cycleGoals.position));
+}
+
+export type CycleGoalRow = Awaited<ReturnType<typeof cycleGoalList>>[number];
+
+/**
+ * Serie do liczenia postępu cykli — od wskazanego dnia w górę.
+ *
+ * Każdy wiersz niesie tag główny swojego ćwiczenia, bo to on rozstrzyga cele
+ * tagowe. Dzięki temu postęp liczy się z jednego zapytania, bez dociągania
+ * biblioteki obok. Dolna granica dnia jest po to, żeby ekran cykli nie czytał
+ * całej historii treningowej — do celów i tak liczą się wyłącznie serie
+ * z zakresów cykli.
+ */
+export function setsForCycles(db: SqliteDatabase, userId: string, from: IsoDate) {
+  return db
+    .select({
+      id: workoutSets.id,
+      exerciseId: workoutSets.exerciseId,
+      performedOn: workoutSets.performedOn,
+      durationS: workoutSets.durationS,
+      distanceM: workoutSets.distanceM,
+      primaryTagId: exercises.primaryTagId,
+    })
+    .from(workoutSets)
+    .innerJoin(exercises, eq(exercises.id, workoutSets.exerciseId))
+    .where(
+      and(
+        eq(workoutSets.userId, userId),
+        isNull(workoutSets.deletedAt),
+        gte(workoutSets.performedOn, from),
+      ),
+    )
+    .orderBy(asc(workoutSets.performedOn));
+}
+
+export type CycleSetRow = Awaited<ReturnType<typeof setsForCycles>>[number];
 
 /** Konto właściciela urządzenia — nick pokazywany w nagłówku. */
 export function localUser(db: SqliteDatabase, userId: string) {

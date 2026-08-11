@@ -17,6 +17,7 @@ import {
   requiredMeasurements,
   secondsToDuration,
   usesBodyweight,
+  type GoalMetric,
   type LoggingType,
   type MeasurementKey,
   type SetMeasurements,
@@ -203,6 +204,66 @@ export function parseValue(kind: MeasurementKind, text: string): number | null {
     case 'reps':
       return parseCount(text);
   }
+}
+
+/* ------------------------------------------------------- nazwy i cele cyklu */
+
+/** Typ logowania po ludzku — pokazywany przy tworzeniu ćwiczenia. */
+export const LOGGING_TYPE_LABELS: Readonly<Record<LoggingType, string>> = {
+  weight_reps: 'Ciężar i powtórzenia',
+  weight_time: 'Ciężar i czas',
+  bodyweight_reps: 'Masa ciała i powtórzenia',
+  bodyweight_time: 'Masa ciała i czas',
+  distance_time: 'Dystans i czas',
+};
+
+export const GOAL_METRIC_LABELS: Readonly<Record<GoalMetric, string>> = {
+  sets: 'Serie',
+  duration: 'Czas',
+  distance: 'Dystans',
+};
+
+/**
+ * Metryka celu ma tę samą postać co pomiar serii, z którego się liczy — cel
+ * czasowy pokazuje `mm:ss`, dystansowy metry albo kilometry. Liczba serii jest
+ * po prostu liczbą.
+ */
+export function formatMetric(metric: GoalMetric, value: number): string {
+  switch (metric) {
+    case 'sets':
+      return String(value);
+    case 'duration':
+      return formatDuration(value);
+    case 'distance':
+      return formatDistance(value);
+  }
+}
+
+/** Wartość celu wpisana ręcznie. `null` znaczy „puste albo niepoprawne". */
+export function parseMetricTarget(metric: GoalMetric, text: string): number | null {
+  switch (metric) {
+    case 'sets':
+      return parseCount(text);
+    case 'duration':
+      return parseDuration(text);
+    case 'distance':
+      return parseDistance(text);
+  }
+}
+
+export function metricUnit(metric: GoalMetric): string {
+  switch (metric) {
+    case 'sets':
+      return 'serii';
+    case 'duration':
+      return '';
+    case 'distance':
+      return 'm';
+  }
+}
+
+export function metricPlaceholder(metric: GoalMetric): string {
+  return metric === 'duration' ? 'mm:ss' : '0';
 }
 
 /** Klawiatura pasująca do pola — czas i ciężar potrzebują znaków spoza cyfr. */

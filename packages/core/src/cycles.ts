@@ -13,7 +13,7 @@
  * temu usunięcie serii po prostu zmniejsza postęp, bez korekt wstecznych.
  */
 
-import { isWithinRange, type IsoDate } from './dates.js';
+import { addDays, differenceInDays, isWithinRange, type IsoDate } from './dates.js';
 import type { GoalMetric } from './schemas.js';
 
 /** Minimum, jakiego algorytm potrzebuje od serii. `WorkoutSet` to spełnia. */
@@ -180,4 +180,55 @@ export function findMatchingCycles<T extends CycleMatchable>(
 /** Pozycje jeszcze niezrealizowane — źródło skrótu wyboru ćwiczenia z cyklu. */
 export function remainingGoals(progress: CycleProgress): GoalProgress[] {
   return progress.goals.filter((goal) => !goal.completed);
+}
+
+/* ------------------------------------------------------------------- okresy */
+
+/**
+ * Zakres dat cyklu. Osobny typ, bo reset i podgląd poprzednich okresów operują
+ * na samym zakresie — pozycje celu zostają te same.
+ */
+export interface CycleRange {
+  startsOn: IsoDate;
+  endsOn: IsoDate | null;
+}
+
+/** Długość cyklu w dniach; `null` dla cyklu bez daty końca. */
+export function cycleLengthDays(range: CycleRange): number | null {
+  if (range.endsOn === null) return null;
+  return differenceInDays(range.startsOn, range.endsOn) + 1;
+}
+
+/**
+ * Zakres po resecie. Reset to przesunięcie początku liczenia — koniec jedzie
+ * za nim o tyle samo dni, więc „cel miesięczny" po resecie dalej trwa miesiąc.
+ *
+ * Historii nie ruszamy i ruszać nie ma czego: postęp jest liczony z serii, więc
+ * poprzednie realizacje da się przeliczyć w każdej chwili — patrz
+ * `previousCyclePeriod`.
+ */
+export function resetCycleRange(range: CycleRange, startsOn: IsoDate): CycleRange {
+  const length = cycleLengthDays(range);
+  return { startsOn, endsOn: length === null ? null : addDays(startsOn, length - 1) };
+}
+
+/**
+ * Okres poprzedzający bieżący — okno tej samej długości, przyklejone do niego
+ * od dołu. `offset` równy dwóm daje okres przedostatni i tak dalej.
+ *
+ * To jest odpowiedź na wymaganie „sprawdzenie, na jakim poziomie użytkownik
+ * zrealizował cykl w poprzednich okresach". Nie trzymamy żadnej osobnej tabeli
+ * realizacji: skoro postęp jest liczony z serii, a serie zostają, wystarczy
+ * policzyć go dla wcześniejszego okna. Postęp poprzedniego okresu liczy się
+ * przez `computeCycleProgress` z cyklem podmienionym na ten zakres.
+ *
+ * Cykl bez daty końca nie ma długości, więc nie ma też poprzedniego okresu —
+ * wtedy `null`.
+ */
+export function previousCyclePeriod(range: CycleRange, offset = 1): CycleRange | null {
+  const length = cycleLengthDays(range);
+  if (length === null || offset < 1) return null;
+
+  const startsOn = addDays(range.startsOn, -offset * length);
+  return { startsOn, endsOn: addDays(startsOn, length - 1) };
 }
