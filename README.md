@@ -22,13 +22,13 @@ Monorepo na pnpm workspaces i Turborepo.
 
 ```
 apps/
-  mobile/       Expo (Android + iOS)          — etap 5 ✔, ekrany od etapu 6
+  mobile/       Expo (Android + iOS)          — etapy 5 ✔, 6 ✔ i 7 ✔
   api/          Hono (REST + sync + LLM)      — etapy 3 ✔ i 4 ✔
   admin/        Vite + React (panel)          — etap 13
 packages/
   core/         logika domenowa, bez I/O      — etapy 1 ✔ i 4 ✔
   db/           schematy Drizzle: PG + SQLite — etap 2 ✔
-  api-client/   typowany klient (Hono RPC)    — etap 7
+  api-client/   typowany klient (Hono RPC)    — pusty do etapu 13 (panel)
 ```
 
 `packages/core` jest sercem projektu: front Pareto, cykle, podpowiedzi,
@@ -145,6 +145,49 @@ Baza lokalna to SQLite otwarty z `enableChangeListener: true` — bez tego
 Migracje jadą do aplikacji jako moduł (`@alphapump/db/sqlite-migrations`), bo na
 telefonie nie ma katalogu, z którego migrator mógłby je przeczytać; generuje go
 `pnpm --filter @alphapump/db generate:bundle`, a test pilnuje, że jest aktualny.
+
+#### Logowanie serii
+
+Ekran dnia (`src/screens/day.tsx`) obsługuje dzień bieżący i historyczny — to ten
+sam komponent, wołany z dwóch tras. Zapis idzie przez `src/db/sets.ts`, gdzie
+w jednej transakcji dzieją się trzy rzeczy: wiersz trafia do bazy, jego
+identyfikator do outboxu, a pomiary przez front Pareto z `@alphapump/core`.
+Dlatego informacja o rekordzie pojawia się natychmiast i **bez sieci**.
+
+Rekordy indywidualne nie są nigdzie trzymane — liczy je `@alphapump/core` przy
+rysowaniu ekranu, z serii leżących w bazie lokalnej. Tabela pochodna byłaby
+drugim źródłem prawdy o czymś, co i tak liczy się w milisekundach, i wymagałaby
+przeliczania po każdej edycji, każdym usunięciu i każdym pullu.
+
+#### Wymiana danych
+
+Kolejka wysyłki (`outbox`) i kursor (`sync_state`) to tabele istniejące wyłącznie
+po stronie telefonu. Wpis w outboxie nie niesie treści mutacji, tylko wskazuje
+zmieniony wiersz — treść czytamy dopiero przy składaniu paczki, żeby na serwer
+pojechało to, co użytkownik widzi na ekranie, a nie stan sprzed trzech edycji
+zrobionych w tunelu.
+
+Paczka pullu zapisuje się razem z kursorem, w jednej transakcji z
+`PRAGMA defer_foreign_keys = ON`: wiersze jadą w kolejności `server_seq`, więc
+seria potrafi wyprzedzić własne ćwiczenie, ale niespójność, której nie domyka
+żaden wiersz z tej samej paczki, dalej nie przechodzi.
+
+Wiersz przychodzący nie wygrywa automatycznie — przechodzi przez
+`resolveSyncConflict` z `@alphapump/core`, czyli tę samą funkcję, którą serwer
+rozstrzyga pushe. Bez tego odpowiedź na push cofałaby edycję zrobioną w trakcie
+wysyłki.
+
+Brak łączności jest stanem pracy, a nie awarią: serwer stoi za NetBirdem, więc
+telefon z pełnym zasięgiem bywa poza VPN-em, a systemowy stan sieci i tak mówi
+wtedy „połączony". Jedynym uczciwym testem jest próba dobicia się do API, więc
+nieudane żądanie pokazujemy jako spokojne „offline", a ponawianie wycofuje się
+dwukrotnie, do godzinnego sufitu.
+
+Telefon rozmawia z API zwykłym `fetch`em (`src/sync/transport.ts`), a odpowiedzi
+sprawdza schematami Zod z `@alphapump/core` — tymi samymi, którymi serwer
+waliduje własne wyjście. Klient RPC z `@alphapump/api-client` czeka na panel
+administracyjny: wciągnięcie typów serwera do aplikacji dołożyłoby zależność
+między telefonem a backendem, a kontrakt i tak jest już opisany schematami.
 
 Osobny workflow (`.github/workflows/ios-simulator.yml`) kompiluje aplikację na
 symulator iOS. Buildy na symulator jako jedyne nie wymagają płatnego konta Apple

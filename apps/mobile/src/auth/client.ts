@@ -34,3 +34,17 @@ export const authClient = createAuthClient({
 });
 
 export const { useSession, signIn, signUp, signOut } = authClient;
+
+/**
+ * Ciasteczko sesji do doklejenia do żądań spoza better-auth — czyli do
+ * synchronizacji, która chodzi zwykłym `fetch`em po własnych endpointach.
+ *
+ * Rzutowanie jest konsekwencją tego samego rozjazdu sygnatur, przez który
+ * wtyczka wchodzi z `@ts-expect-error` powyżej: skoro typ wtyczki nie daje się
+ * dopiąć, nie ma jak wyprowadzić z niego akcji, którą wtyczka dokłada. Metoda
+ * istnieje i jest udokumentowana — brakuje wyłącznie jej typu.
+ */
+export function sessionCookie(): string {
+  const client = authClient as unknown as { getCookie?: () => string };
+  return client.getCookie?.() ?? '';
+}
