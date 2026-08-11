@@ -41,6 +41,7 @@ import {
   gte,
   isNotNull,
   isNull,
+  lte,
   max,
   ne,
   or,
@@ -130,6 +131,36 @@ export function groupDaySets(rows: readonly DaySetRow[]): DayExerciseGroup[] {
     .sort((a, b) => a.startedAt - b.startedAt)
     .map(({ startedAt: _startedAt, ...group }) => group);
 }
+
+/**
+ * Liczba serii w każdym dniu zakresu — treść kafelków kalendarza.
+ *
+ * Zapytanie oddaje wyłącznie dni, w których coś się wydarzyło; dni puste nie
+ * mają czego przynosić z bazy i siatkę uzupełnia nimi `calendarWeeks`. Zakres
+ * jest domknięty obustronnie i pokrywa **całą siatkę**, razem z ogonami
+ * sąsiednich miesięcy — inaczej pierwszy wiersz miesiąca pokazywałby zera tam,
+ * gdzie trening był.
+ */
+export function daySetCounts(db: SqliteDatabase, userId: string, from: IsoDate, to: IsoDate) {
+  return db
+    .select({
+      performedOn: workoutSets.performedOn,
+      sets: count(workoutSets.id),
+    })
+    .from(workoutSets)
+    .where(
+      and(
+        eq(workoutSets.userId, userId),
+        isNull(workoutSets.deletedAt),
+        gte(workoutSets.performedOn, from),
+        lte(workoutSets.performedOn, to),
+      ),
+    )
+    .groupBy(workoutSets.performedOn)
+    .orderBy(asc(workoutSets.performedOn));
+}
+
+export type DayCountRow = Awaited<ReturnType<typeof daySetCounts>>[number];
 
 /** Serie jednego ćwiczenia — cała historia użytkownika, w porządku chronologicznym. */
 export function exerciseHistory(db: SqliteDatabase, userId: string, exerciseId: string) {

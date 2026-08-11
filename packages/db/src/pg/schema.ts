@@ -286,6 +286,62 @@ export const cycleGoals = pgTable(
   ],
 );
 
+/* --------------------------------------------------- rekordy globalne (etap 11) */
+
+/**
+ * Rekord globalny ćwiczenia — front Pareto po seriach **wszystkich** użytkowników.
+ *
+ * Tabela jest cache'em, nie źródłem prawdy: w każdej chwili odtwarzalnym
+ * z samych serii tym samym `computeRecords`, którym telefon liczy rekordy
+ * indywidualne. Stoi tu z dwóch powodów, z których żaden nie jest wygodą:
+ *
+ * 1. Wyliczenie frontu wymaga serii **cudzych**, a te są prywatne — telefon nie
+ *    ma ich i mieć nie będzie. Rekord globalny musi więc powstać na serwerze.
+ * 2. Ranking „liczba rekordów" jest zliczeniem po tej tabeli. Bez niej trzeba by
+ *    przy każdym pytaniu przeliczać front dla każdego ćwiczenia z osobna.
+ *
+ * Tabela nie jest synchronizowana i nie ma kolumn synchronizacyjnych — telefon
+ * czyta rekordy globalne wyłącznie odczytem sieciowym, tak jak rankingi.
+ * Przeliczenie jest wpięte w `POST /sync/push` oraz w CRUD serii i podmienia
+ * komplet wierszy dotkniętego ćwiczenia (patrz `apps/api/src/derived/`).
+ *
+ * `ON DELETE CASCADE` na obu kluczach jest tu istotny: twarde usunięcie serii
+ * przez porządkowanie tombstone'ów nie może zostawić rekordu wskazującego na
+ * nieistniejący wiersz.
+ */
+export const exerciseRecords = pgTable(
+  'exercise_records',
+  {
+    exerciseId: text('exercise_id')
+      .notNull()
+      .references(() => exercises.id, { onDelete: 'cascade' }),
+    setId: text('set_id')
+      .notNull()
+      .references(() => workoutSets.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    performedOn: date('performed_on', { mode: 'string' }).$type<IsoDate>().notNull(),
+    /** Miejsce na froncie po posortowaniu malejąco po osiach — kolejność prezentacji. */
+    position: integer('position').notNull().default(0),
+    weightG: integer('weight_g'),
+    reps: integer('reps'),
+    durationS: integer('duration_s'),
+    distanceM: integer('distance_m'),
+    note: text('note'),
+    /** Kiedy front był ostatnio przeliczany — jedyna informacja diagnostyczna. */
+    computedAt: timestamp('computed_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({ name: 'exercise_records_pk', columns: [table.exerciseId, table.setId] }),
+    index('exercise_records_exercise_idx').on(table.exerciseId, table.position),
+    /** Ranking „liczba rekordów" to zliczenie po tym indeksie. */
+    index('exercise_records_user_idx').on(table.userId),
+  ],
+);
+
 export type UserRow = typeof users.$inferSelect;
 export type TagRow = typeof tags.$inferSelect;
 export type ExerciseRow = typeof exercises.$inferSelect;
@@ -293,3 +349,4 @@ export type ExerciseTagRow = typeof exerciseTags.$inferSelect;
 export type WorkoutSetRow = typeof workoutSets.$inferSelect;
 export type CycleRow = typeof cycles.$inferSelect;
 export type CycleGoalRow = typeof cycleGoals.$inferSelect;
+export type ExerciseRecordRow = typeof exerciseRecords.$inferSelect;

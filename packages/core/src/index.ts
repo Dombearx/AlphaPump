@@ -15,6 +15,7 @@ export * from './ids.js';
 export * from './tag-color.js';
 export * from './logging-type.js';
 export * from './records.js';
+export * from './rankings.js';
 export * from './similarity.js';
 export * from './cycles.js';
 export * from './suggestions.js';

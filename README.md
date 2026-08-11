@@ -22,12 +22,12 @@ Monorepo na pnpm workspaces i Turborepo.
 
 ```
 apps/
-  mobile/       Expo (Android + iOS)          — etapy 5 ✔, 6 ✔, 7 ✔, 8 ✔ i 9 ✔
-  api/          Hono (REST + sync + LLM)      — etapy 3 ✔ i 4 ✔
+  mobile/       Expo (Android + iOS)          — etapy 5 ✔, 6 ✔, 7 ✔, 8 ✔, 9 ✔, 10 ✔ i 11 ✔
+  api/          Hono (REST + sync + LLM)      — etapy 3 ✔, 4 ✔ i 11 ✔
   admin/        Vite + React (panel)          — etap 13
 packages/
-  core/         logika domenowa, bez I/O      — etapy 1 ✔, 4 ✔, 8 ✔ i 9 ✔
-  db/           schematy Drizzle: PG + SQLite — etap 2 ✔
+  core/         logika domenowa, bez I/O      — etapy 1 ✔, 4 ✔, 8 ✔, 9 ✔ i 11 ✔
+  db/           schematy Drizzle: PG + SQLite — etapy 2 ✔ i 11 ✔
   api-client/   typowany klient (Hono RPC)    — pusty do etapu 13 (panel)
 ```
 
@@ -88,11 +88,33 @@ Serwer sam uruchamia migracje przed przyjęciem pierwszego żądania.
 | `/openapi.json`   | dokumentacja generowana z tych samych schematów Zod          |
 | `/me`             | konto powiązane z sesją albo kluczem API                     |
 | `/tags`, `/exercises`, `/sets`, `/cycles` | CRUD danych                          |
+| `/exercises/:id/records` | rekordy globalne ćwiczenia                          |
+| `/rankings?metric=`      | ranking objętości, dystansu albo liczby rekordów    |
 | `/sync/push`, `/sync/pull` | wymiana danych z urządzeniem                      |
 
 Uwierzytelnienie idzie dwiema drogami: nagłówkiem `Authorization: Bearer …`
 (sesja, tak korzysta aplikacja) albo `x-api-key` (token API, tak korzysta bot
 Discord). Serie są prywatne — także administrator nie widzi cudzej historii.
+
+### Rekordy globalne i rankingi
+
+Rekord globalny to front Pareto po seriach **wszystkich** użytkowników, liczony
+tym samym `computeRecords` z `@alphapump/core`, którym telefon liczy rekordy
+indywidualne. Wyniki leżą w `exercise_records` — to jedyne dane pochodne trzymane
+na serwerze i jedyny cache, jaki tu istnieje. Przeliczenie jest wpięte w listę
+`apps/api/src/derived/` i wołane po każdej zmianie serii: po `POST /sync/push`
+oraz po CRUD-zie serii, żeby bot Discord też podbijał rekordy, a nie zostawiał
+ich nieaktualnymi. Ćwiczenie przelicza się **od zera**, bo usunięcie serii
+potrafi wskrzesić rekord, który wcześniej został zdominowany.
+
+Rankingi objętości i dystansu są zwykłymi sumami po seriach, liczonymi w chwili
+pytania — nie mają cache'u i nie mają jak rozjechać się z surowymi danymi.
+Ranking „liczba rekordów" jest zliczeniem po `exercise_records`.
+
+Granica prywatności jest twarda: na zewnątrz wychodzi wyłącznie wartość, nick,
+data i notatka serii. Kształt `globalRecordSchema` w rdzeniu jest tej reguły
+zapisem — nie ma w nim identyfikatora serii ani konta, więc żaden endpoint nie
+odda przypadkiem punktu zaczepienia do cudzej historii.
 
 ### Synchronizacja
 
@@ -158,6 +180,29 @@ Rekordy indywidualne nie są nigdzie trzymane — liczy je `@alphapump/core` prz
 rysowaniu ekranu, z serii leżących w bazie lokalnej. Tabela pochodna byłaby
 drugim źródłem prawdy o czymś, co i tak liczy się w milisekundach, i wymagałaby
 przeliczania po każdej edycji, każdym usunięciu i każdym pullu.
+
+#### Kalendarz i wykresy
+
+Kalendarz (`src/screens/calendar.tsx`) pokazuje miesiąc albo tydzień z liczbą
+serii w kafelku dnia; wejście w dzień prowadzi do **tego samego** widoku, co dzień
+bieżący. Osobnej osi czasu nie ma, bo pokazywałaby to samo drugi raz.
+
+Ekran analityczny ćwiczenia przełącza metryki chipsami, a ich zestaw wynika
+z typu logowania — przy biegu nie ma czego pokazywać na osi ciężaru. Wykres jest
+narysowany zwykłymi `View` (`src/ui/chart.tsx`): biblioteka wykresów dołożyłaby
+moduł natywny do budowania na obu platformach, a specyfikacja mówi o „prostych,
+minimalistycznych wykresach". Siatka kalendarza i punkty wykresu powstają
+w czystych modułach (`src/calendar.ts`, `src/chart-data.ts`), więc jedno i drugie
+ma testy bez renderowania ekranu.
+
+#### Rekordy globalne i rankingi na telefonie
+
+To jedyne dwa miejsca w aplikacji, które czekają na sieć — i jedyne, które mogą:
+liczą się z serii wszystkich użytkowników, a cudze serie są prywatne i nigdy nie
+zjadą na telefon. Odczyt idzie przez `src/remote/`, bez cache'u i bez outboxu,
+a brak łączności pokazujemy jako spokojne „offline" z przyciskiem ponowienia —
+tymi samymi klasami błędów co synchronizacja. Reszta aplikacji, łącznie
+z rekordami indywidualnymi, dalej działa w trybie samolotowym.
 
 #### Wymiana danych
 

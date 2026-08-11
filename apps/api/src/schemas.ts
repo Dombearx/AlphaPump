@@ -18,6 +18,7 @@ import {
   cycleGoalInputSchema,
   displayNameSchema,
   isoDateSchema,
+  rankingMetricSchema,
   updateExerciseInputSchema,
   uuidSchema,
   createExerciseInputSchema,
@@ -62,6 +63,14 @@ export const listSetsQuerySchema = z.object({
   exerciseId: uuidSchema.optional(),
   limit: z.coerce.number().int().min(1).max(500).default(200),
   offset: z.coerce.number().int().min(0).default(0),
+});
+
+/* ------------------------------------------------------------------ ranking */
+
+export const rankingQuerySchema = z.object({
+  metric: rankingMetricSchema.default('volume'),
+  /** Ranking jednej grupy znajomych jest krótki; limit chroni przed pomyłką. */
+  limit: z.coerce.number().int().min(1).max(200).default(50),
 });
 
 /* ---------------------------------------------------------------------- cykl */

@@ -20,7 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSession } from '../auth/client';
 import { db } from '../db/client';
 import { daySets, groupDaySets, type DayExerciseGroup } from '../db/queries';
-import { formatDaySubtitle, formatDayTitle, today as currentDay } from '../day-labels';
+import { formatDaySubtitle, formatDayTitle, setsPlural, today as currentDay } from '../day-labels';
 import { formatSet } from '../measurements';
 import { Button, Card, EmptyState, IconButton, Loading, Row, TagDot } from '../ui/primitives';
 import { SyncBadge } from '../ui/sync-badge';
@@ -72,7 +72,7 @@ export function DayScreen({ day }: { day: IsoDate }) {
           <View className="items-center">
             <Text className="text-text">{formatDaySubtitle(day, today)}</Text>
             <Text className="text-xs text-muted">
-              {total === 0 ? 'brak serii' : `${String(total)} ${plural(total)}`}
+              {total === 0 ? 'brak serii' : `${String(total)} ${setsPlural(total)}`}
             </Text>
           </View>
 
@@ -100,6 +100,23 @@ export function DayScreen({ day }: { day: IsoDate }) {
             onPress={() => router.push('/library')}
           />
           <Button grow variant="secondary" label="Cykle" onPress={() => router.push('/cycles')} />
+        </View>
+
+        {/* Kalendarz i rankingi to przeglądanie, nie zapisywanie — stoją niżej
+            i węziej niż to, po co sięga się w trakcie treningu. */}
+        <View className="flex-row gap-2">
+          <Button
+            grow
+            variant="secondary"
+            label="Kalendarz"
+            onPress={() => router.push('/calendar')}
+          />
+          <Button
+            grow
+            variant="secondary"
+            label="Rankingi"
+            onPress={() => router.push('/rankings')}
+          />
         </View>
 
         {groups.length === 0 ? (
@@ -151,11 +168,4 @@ function ExerciseGroup({ group, onPress }: { group: DayExerciseGroup; onPress: (
       </View>
     </Card>
   );
-}
-
-function plural(count: number): string {
-  const tens = count % 100;
-  const ones = count % 10;
-  if (count === 1) return 'seria';
-  return ones >= 2 && ones <= 4 && !(tens >= 12 && tens <= 14) ? 'serie' : 'serii';
 }

@@ -29,6 +29,7 @@ import {
   updateSetBodySchema,
 } from '../schemas.js';
 import { exercises, workoutSets } from '../schema.js';
+import { emptyScope, noteAffectedSet, recomputeDerived } from '../sync/derived.js';
 import { stampDelete, stampWrite } from '../sync-columns.js';
 
 const setListSchema = z.array(workoutSetSchema);
@@ -105,6 +106,19 @@ export const setRoutes: RouteSpec[] = [
 export function createSetRouter(dependencies: AppDependencies) {
   const router = new Hono<AppEnvironment>();
   const { db } = dependencies;
+  const recomputations = dependencies.derived ?? [];
+
+  /**
+   * Zmiana serii rusza dane pochodne dokładnie tak samo, jak zrobiłby to push —
+   * bot Discord dopisujący serie tym API musi podbijać rekordy globalne, a nie
+   * zostawiać je za sobą nieaktualne. Zakres zbieramy tu z tego samego powodu,
+   * dla którego robi to push: po zapisie nie da się go już odtworzyć.
+   */
+  const recompute = async (userId: string, exerciseIds: readonly string[]) => {
+    const scope = emptyScope();
+    for (const exerciseId of exerciseIds) noteAffectedSet(scope, userId, exerciseId);
+    await recomputeDerived(db, scope, recomputations);
+  };
 
   const loadExercise = async (exerciseId: string) => {
     const [row] = await db
@@ -223,6 +237,7 @@ export function createSetRouter(dependencies: AppDependencies) {
       })
       .returning();
 
+    await recompute(principal.id, [input.exerciseId]);
     return context.json(toSetDto(row!), 201);
   });
 
@@ -263,6 +278,8 @@ export function createSetRouter(dependencies: AppDependencies) {
         .where(eq(workoutSets.id, id))
         .returning();
 
+      // Przeniesienie serii między ćwiczeniami rusza rekordy po obu stronach.
+      await recompute(principal.id, [existing.exerciseId, exerciseId]);
       return context.json(toSetDto(row!));
     },
   );
@@ -271,8 +288,10 @@ export function createSetRouter(dependencies: AppDependencies) {
     const principal = context.get('principal');
     const { id } = context.req.valid('param');
 
-    await loadOwnSet(id, principal.id);
+    const existing = await loadOwnSet(id, principal.id);
     await db.update(workoutSets).set(stampDelete()).where(eq(workoutSets.id, id));
+
+    await recompute(principal.id, [existing.exerciseId]);
     return context.body(null, 204);
   });
 

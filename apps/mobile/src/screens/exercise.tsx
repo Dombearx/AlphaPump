@@ -18,6 +18,7 @@ import { today as currentDay } from '../day-labels';
 import { useLocalAuthor } from '../hooks';
 import { LOGGING_TYPE_LABELS } from '../measurements';
 import { useRequestSync } from '../sync/provider';
+import { GlobalRecordsCard } from '../ui/global-records';
 import { Button, Card, Chip, ChipRow, EmptyState, Loading, TagDot } from '../ui/primitives';
 
 export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
@@ -113,9 +114,20 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
               }`}
         </Text>
 
+        {/* Rekordy globalne są jedyną rzeczą na tym ekranie, która wymaga sieci
+            — dlatego stoją w osobnej karcie, która sama radzi sobie z jej
+            brakiem. Reszta ekranu ma działać w trybie samolotowym. */}
+        <GlobalRecordsCard exerciseId={exerciseId} loggingType={exercise.loggingType} />
+
         <Button
           label="Zapisz serię dziś"
           onPress={() => router.push(`/day/${currentDay()}/log/${exerciseId}`)}
+        />
+
+        <Button
+          variant="secondary"
+          label="Wykresy postępu"
+          onPress={() => router.push(`/library/${exerciseId}/chart`)}
         />
 
         {mayModify && (
