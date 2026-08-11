@@ -22,11 +22,11 @@ Monorepo na pnpm workspaces i Turborepo.
 
 ```
 apps/
-  mobile/       Expo (Android + iOS)          — etapy 5 ✔, 6 ✔ i 7 ✔
+  mobile/       Expo (Android + iOS)          — etapy 5 ✔, 6 ✔, 7 ✔, 8 ✔ i 9 ✔
   api/          Hono (REST + sync + LLM)      — etapy 3 ✔ i 4 ✔
   admin/        Vite + React (panel)          — etap 13
 packages/
-  core/         logika domenowa, bez I/O      — etapy 1 ✔ i 4 ✔
+  core/         logika domenowa, bez I/O      — etapy 1 ✔, 4 ✔, 8 ✔ i 9 ✔
   db/           schematy Drizzle: PG + SQLite — etap 2 ✔
   api-client/   typowany klient (Hono RPC)    — pusty do etapu 13 (panel)
 ```

@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   computeCycleProgress,
+  cycleLengthDays,
   findMatchingCycles,
   goalContribution,
   goalMatchesExercise,
   goalScope,
   isDayWithinCycle,
+  previousCyclePeriod,
   remainingGoals,
+  resetCycleRange,
   setMatchesGoal,
   type CycleMatchable,
   type CycleMatchableExercise,
@@ -228,6 +231,59 @@ describe('computeCycleProgress', () => {
     const sets = [makeSet({ exerciseId: 'nieznane', performedOn: '2026-08-02', reps: 10 })];
     const progress = computeCycleProgress(dwanascieSeriiNaBiceps, sets, () => undefined);
     expect(progress.goals[0]?.current).toBe(0);
+  });
+});
+
+describe('okresy cyklu', () => {
+  const sierpien = { startsOn: '2026-08-01', endsOn: '2026-08-31' };
+
+  it('długość zakresu jest liczona z oboma brzegami', () => {
+    expect(cycleLengthDays(sierpien)).toBe(31);
+    expect(cycleLengthDays({ startsOn: '2026-08-01', endsOn: '2026-08-01' })).toBe(1);
+    expect(cycleLengthDays({ startsOn: '2026-08-01', endsOn: null })).toBeNull();
+  });
+
+  it('reset przesuwa koniec razem z początkiem', () => {
+    expect(resetCycleRange(sierpien, '2026-09-01')).toEqual({
+      startsOn: '2026-09-01',
+      endsOn: '2026-10-01',
+    });
+  });
+
+  it('reset cyklu bez końca zostawia go bez końca', () => {
+    expect(resetCycleRange({ startsOn: '2026-08-01', endsOn: null }, '2026-09-01')).toEqual({
+      startsOn: '2026-09-01',
+      endsOn: null,
+    });
+  });
+
+  it('poprzedni okres przykleja się do bieżącego od dołu', () => {
+    expect(previousCyclePeriod(sierpien)).toEqual({
+      startsOn: '2026-07-01',
+      endsOn: '2026-07-31',
+    });
+    expect(previousCyclePeriod(sierpien, 2)).toEqual({
+      startsOn: '2026-05-31',
+      endsOn: '2026-06-30',
+    });
+  });
+
+  it('cykl bez końca nie ma poprzedniego okresu', () => {
+    expect(previousCyclePeriod({ startsOn: '2026-08-01', endsOn: null })).toBeNull();
+  });
+
+  it('postęp poprzedniego okresu liczy się tym samym kodem, na podmienionym zakresie', () => {
+    const miesiac = cycle({ startsOn: '2026-08-01', endsOn: '2026-08-31' });
+    const sets = [
+      makeSet({ exerciseId: 'uginanie', performedOn: '2026-07-10', reps: 10 }),
+      makeSet({ exerciseId: 'uginanie', performedOn: '2026-08-10', reps: 10 }),
+    ];
+
+    const poprzedni = previousCyclePeriod(miesiac);
+    const progress = computeCycleProgress({ ...miesiac, ...poprzedni! }, sets, exerciseById);
+
+    // Historia zostaje w seriach, więc realizacja sprzed resetu jest dalej do policzenia.
+    expect(progress.goals[0]?.current).toBe(1);
   });
 });
 

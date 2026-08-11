@@ -90,6 +90,18 @@ export function DayScreen({ day }: { day: IsoDate }) {
           <Button variant="secondary" label="Wróć do dziś" onPress={() => goToDay(today)} />
         )}
 
+        {/* Biblioteka i cykle są jedno naciśnięcie od dnia, ale poniżej nawigacji
+            dnia — to dzień jest ekranem, po który sięga się w trakcie treningu. */}
+        <View className="flex-row gap-2">
+          <Button
+            grow
+            variant="secondary"
+            label="Biblioteka"
+            onPress={() => router.push('/library')}
+          />
+          <Button grow variant="secondary" label="Cykle" onPress={() => router.push('/cycles')} />
+        </View>
+
         {groups.length === 0 ? (
           <EmptyState
             title="Nic tu jeszcze nie ma"
