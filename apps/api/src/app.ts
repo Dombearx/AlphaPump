@@ -17,12 +17,15 @@ import { logger } from 'hono/logger';
 import type { AppConfig } from './config.js';
 import type { AppDependencies, AppEnvironment } from './context.js';
 import { ApiError, toErrorResponse } from './errors.js';
+import { DERIVED_RECOMPUTATIONS } from './derived/index.js';
 import { authenticate } from './middleware/authenticate.js';
 import { buildOpenApiDocument, type RouteSpec } from './openapi.js';
 import { createCycleRouter, cycleRoutes } from './routes/cycles.js';
 import { createExerciseRouter, exerciseRoutes } from './routes/exercises.js';
 import { createHealthRouter, healthRoutes } from './routes/health.js';
 import { createMeRouter, meRoutes } from './routes/me.js';
+import { createRankingRouter, rankingRoutes } from './routes/rankings.js';
+import { createRecordRouter, recordRoutes } from './routes/records.js';
 import { createSetRouter, setRoutes } from './routes/sets.js';
 import { createSyncRouter, syncRoutes } from './routes/sync.js';
 import { createTagRouter, tagRoutes } from './routes/tags.js';
@@ -38,11 +41,21 @@ export const documentedRoutes: RouteSpec[] = [
   ...exerciseRoutes,
   ...setRoutes,
   ...cycleRoutes,
+  ...recordRoutes,
+  ...rankingRoutes,
   ...syncRoutes,
 ];
 
 export function createApp(dependencies: AppDependencies, config: AppConfig) {
   const app = new Hono<AppEnvironment>();
+
+  // Pominięcie listy przeliczeń daje zestaw domyślny, a nie brak przeliczania:
+  // rekordy globalne nie mają jak zostać nieprzeliczone przez przeoczenie
+  // w złożeniu aplikacji. Test, który chce zajrzeć w zakres, podstawia własną.
+  const resolved: AppDependencies = {
+    ...dependencies,
+    derived: dependencies.derived ?? DERIVED_RECOMPUTATIONS,
+  };
 
   if (config.nodeEnv !== 'test') app.use('*', logger());
 
@@ -68,7 +81,7 @@ export function createApp(dependencies: AppDependencies, config: AppConfig) {
   );
 
   // --- bez uwierzytelnienia -------------------------------------------------
-  app.route('/', createHealthRouter(dependencies));
+  app.route('/', createHealthRouter(resolved));
 
   app.get('/openapi.json', (context) =>
     context.json(
@@ -85,13 +98,15 @@ export function createApp(dependencies: AppDependencies, config: AppConfig) {
 
   // --- reszta wymaga konta --------------------------------------------------
   const secured = new Hono<AppEnvironment>();
-  secured.use('*', authenticate(dependencies));
-  secured.route('/', createMeRouter(dependencies));
-  secured.route('/', createTagRouter(dependencies));
-  secured.route('/', createExerciseRouter(dependencies));
-  secured.route('/', createSetRouter(dependencies));
-  secured.route('/', createCycleRouter(dependencies));
-  secured.route('/', createSyncRouter(dependencies));
+  secured.use('*', authenticate(resolved));
+  secured.route('/', createMeRouter(resolved));
+  secured.route('/', createTagRouter(resolved));
+  secured.route('/', createExerciseRouter(resolved));
+  secured.route('/', createSetRouter(resolved));
+  secured.route('/', createCycleRouter(resolved));
+  secured.route('/', createRecordRouter(resolved));
+  secured.route('/', createRankingRouter(resolved));
+  secured.route('/', createSyncRouter(resolved));
 
   app.route('/', secured);
 

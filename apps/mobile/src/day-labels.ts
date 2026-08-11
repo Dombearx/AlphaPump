@@ -70,6 +70,18 @@ export function today(now: Date = new Date()): IsoDate {
   return toIsoDate(now);
 }
 
-function capitalize(value: string): string {
+export function capitalize(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+/**
+ * Odmiana słowa „seria" przez liczbę — po polsku zależy od dwóch ostatnich cyfr,
+ * a nie od samej ostatniej. Stoi tu raz, bo licznik serii pokazuje i widok dnia,
+ * i kalendarz.
+ */
+export function setsPlural(count: number): string {
+  const tens = count % 100;
+  const ones = count % 10;
+  if (count === 1) return 'seria';
+  return ones >= 2 && ones <= 4 && !(tens >= 12 && tens <= 14) ? 'serie' : 'serii';
 }

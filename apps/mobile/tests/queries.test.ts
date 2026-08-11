@@ -8,7 +8,13 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createSet } from '../src/db/sets';
-import { exerciseDetails, exerciseHistory, exerciseLibrary, localUser } from '../src/db/queries';
+import {
+  daySetCounts,
+  exerciseDetails,
+  exerciseHistory,
+  exerciseLibrary,
+  localUser,
+} from '../src/db/queries';
 import { filterExercises } from '../src/exercise-search';
 import {
   EXERCISES,
@@ -84,6 +90,22 @@ describe('zapytania ekranów', () => {
 
     expect(await exerciseHistory(local.db, TEST_USER.id, EXERCISES.bench!.id)).toHaveLength(1);
     expect(await exerciseHistory(local.db, 'ktos-inny', EXERCISES.bench!.id)).toHaveLength(0);
+  });
+
+  it('kalendarz dostaje liczbę serii dla dnia, w którym coś było', async () => {
+    await addBench();
+    await addBench();
+
+    const rows = await daySetCounts(local.db, TEST_USER.id, '2026-08-01', '2026-08-31');
+
+    expect(rows).toEqual([{ performedOn: DAY, sets: 2 }]);
+  });
+
+  it('licznik kalendarza nie wychodzi poza zakres ani poza konto', async () => {
+    await addBench();
+
+    expect(await daySetCounts(local.db, TEST_USER.id, '2026-09-01', '2026-09-30')).toEqual([]);
+    expect(await daySetCounts(local.db, 'ktos-inny', '2026-08-01', '2026-08-31')).toEqual([]);
   });
 
   it('konto właściciela urządzenia czyta się z bazy lokalnej', async () => {

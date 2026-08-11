@@ -29,10 +29,11 @@ export interface AppDependencies {
   db: Database;
   auth: Auth;
   /**
-   * Przeliczenia danych pochodnych wołane po każdym pushu. Pusta lista jest
-   * stanem zamierzonym do etapu 11 — jedyne dane pochodne trzymane na serwerze
-   * to rekordy globalne i rankingi, a rekordy indywidualne nie przechodzą przez
-   * synchronizację w żadną stronę.
+   * Przeliczenia danych pochodnych wołane po każdej zmianie serii — pushem albo
+   * zwykłym CRUD-em. Pominięcie pola daje zestaw domyślny
+   * (`DERIVED_RECOMPUTATIONS`), więc produkcja nie ma jak zostać bez
+   * przeliczania rekordów globalnych; test podstawia tu własną listę, także
+   * pustą.
    */
   derived?: readonly DerivedRecomputation[];
 }

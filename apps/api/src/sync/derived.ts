@@ -14,17 +14,16 @@
  *    wszystkiego przy każdym pushu jest liniowe względem całej bazy.
  * 2. **Miejsce wpięcia przeliczeń** — lista wołana po każdym pushu.
  *
- * Lista jest dziś pusta i to jest stan zamierzony: jedyne dane pochodne
- * trzymane na serwerze to rekordy globalne i rankingi, a te powstają w etapie
- * 11. Rekordy indywidualne nie wchodzą tu w ogóle — nie przechodzą przez
- * synchronizację w żadną stronę, bo są funkcją serii użytkownika, a te są
- * w całości na jego telefonie. Właśnie dlatego informacja o rekordzie działa
- * bez sieci.
+ * Samą listę wypełnia `../derived/index.ts` — do etapu 11 była pusta, bo jedyne
+ * dane pochodne trzymane na serwerze to rekordy globalne i rankingi, a te
+ * powstały dopiero tam. Rekordy indywidualne nie wchodzą tu w ogóle — nie
+ * przechodzą przez synchronizację w żadną stronę, bo są funkcją serii
+ * użytkownika, a te są w całości na jego telefonie. Właśnie dlatego informacja
+ * o rekordzie działa bez sieci.
  *
- * > **Do zrobienia w etapie 11.** Wypełnienie tej listy jest wpisane wprost
- * > w kryterium ukończenia etapu 11 w `docs/plan_implementacji.md`, żeby zaczep
- * > bez wpiętego przeliczenia nie został pustym miejscem, o którym nikt nie
- * > pamięta.
+ * Ten moduł dalej nie wie, co konkretnie się przelicza, i wiedzieć nie musi:
+ * zbieranie zakresu jest częścią pushu, a lista przeliczeń — częścią złożenia
+ * aplikacji.
  */
 
 import type { Database } from '../db.js';
