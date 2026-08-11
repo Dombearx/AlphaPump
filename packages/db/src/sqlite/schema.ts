@@ -9,6 +9,9 @@
  *    potrzebuje wyłącznie nicków do rekordów globalnych.
  * 2. **`server_seq` bywa pusty.** Wiersz utworzony offline nie dostał jeszcze
  *    numeru z sekwencji serwera; dostanie go po pierwszym udanym pushu.
+ * 3. **Dwie tabele istnieją tylko tutaj.** `outbox` i `sync_state` opisują stan
+ *    wymiany danych jednego urządzenia — serwer nie ma o nich pojęcia i mieć
+ *    nie musi.
  *
  * Czas jest trzymany jako liczba milisekund (`timestamp_ms`), a dzień
  * treningowy jako tekst `YYYY-MM-DD` — tak samo jak po stronie serwera, gdzie
@@ -35,8 +38,8 @@
  * paczki — dalej nie przechodzi.
  */
 
-import { GOAL_METRICS, LOGGING_TYPES, USER_ROLES } from '@alphapump/core';
-import type { GoalMetric, IsoDate, LoggingType, UserRole } from '@alphapump/core';
+import { GOAL_METRICS, LOGGING_TYPES, SYNC_ENTITIES, USER_ROLES } from '@alphapump/core';
+import type { GoalMetric, IsoDate, LoggingType, SyncEntity, UserRole } from '@alphapump/core';
 import { sql } from 'drizzle-orm';
 import {
   check,
@@ -230,6 +233,68 @@ export const cycleGoals = sqliteTable(
   ],
 );
 
+/* ------------------------------------------------- tabele wyłącznie lokalne */
+
+/**
+ * Outbox — dziennik wierszy, które czekają na wysłanie.
+ *
+ * Wpis nie niesie treści mutacji, tylko wskazuje **który wiersz** się zmienił.
+ * To nie jest oszczędność miejsca, tylko warunek poprawności: paczka pushu
+ * wysyła pełny stan wiersza, więc treść zapisana w chwili edycji zdążyłaby się
+ * zestarzeć, zanim urządzenie odzyska łączność. Odczyt stanu dopiero przy
+ * składaniu paczki gwarantuje, że na serwer jedzie to, co użytkownik widzi na
+ * ekranie.
+ *
+ * Klucz `seq` rośnie monotonicznie i to on domyka wyścig: push zabiera wpisy do
+ * zanotowanego `seq`, a edycja wykonana w trakcie wysyłki dokłada wpis
+ * z numerem wyższym, więc nie zostanie skasowana wraz z potwierdzoną paczką.
+ * Duplikaty w obrębie jednej paczki są nieszkodliwe — składanie żądania grupuje
+ * wpisy po parze encja + wiersz.
+ *
+ * Tabela nie jest synchronizowana i nie ma odpowiednika po stronie serwera:
+ * kolejka wysyłki jest sprawą jednego urządzenia. Nie ma też kluczy obcych —
+ * wpis musi przeżyć wiersz, do którego się odnosi.
+ */
+export const outbox = sqliteTable(
+  'outbox',
+  {
+    seq: integer('seq').primaryKey({ autoIncrement: true }),
+    entity: text('entity').$type<SyncEntity>().notNull(),
+    rowId: text('row_id').notNull(),
+    queuedAt: integer('queued_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (table) => [
+    index('outbox_row_idx').on(table.entity, table.rowId),
+    check('outbox_entity_check', oneOf('entity', SYNC_ENTITIES)),
+  ],
+);
+
+/**
+ * Stan synchronizacji urządzenia — dokładnie jeden wiersz, wymuszony `check`iem.
+ *
+ * Kursor `server_seq` musi przeżyć restart aplikacji: urządzenie, które zaczyna
+ * od zera po każdym uruchomieniu, przy każdym starcie ściąga całą historię.
+ * Trzymanie go w bazie, a nie w `AsyncStorage`, daje jeszcze jedno — kursor
+ * przesuwa się w tej samej transakcji, w której zapisują się wiersze paczki,
+ * więc przerwany pull nie zostawia kursora przed danymi ani za nimi.
+ */
+export const syncState = sqliteTable(
+  'sync_state',
+  {
+    id: integer('id').primaryKey(),
+    /** Ostatni `server_seq`, który urządzenie ma u siebie. */
+    cursor: integer('cursor').notNull().default(0),
+    pulledAt: integer('pulled_at', { mode: 'timestamp_ms' }),
+    pushedAt: integer('pushed_at', { mode: 'timestamp_ms' }),
+    /** Ostatni błąd; kasowany przy pierwszej udanej wymianie. */
+    lastError: text('last_error'),
+  },
+  () => [check('sync_state_singleton_check', sql.raw('"id" = 1'))],
+);
+
+/** Identyfikator jedynego wiersza `sync_state`. */
+export const SYNC_STATE_ID = 1;
+
 export type UserRow = typeof users.$inferSelect;
 export type TagRow = typeof tags.$inferSelect;
 export type ExerciseRow = typeof exercises.$inferSelect;
@@ -237,3 +302,5 @@ export type ExerciseTagRow = typeof exerciseTags.$inferSelect;
 export type WorkoutSetRow = typeof workoutSets.$inferSelect;
 export type CycleRow = typeof cycles.$inferSelect;
 export type CycleGoalRow = typeof cycleGoals.$inferSelect;
+export type OutboxRow = typeof outbox.$inferSelect;
+export type SyncStateRow = typeof syncState.$inferSelect;

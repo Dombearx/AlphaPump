@@ -13,6 +13,8 @@ import {
   cycles,
   exerciseTags,
   exercises,
+  outbox,
+  syncState,
   tags,
   users,
   workoutSets,
@@ -81,6 +83,10 @@ export async function seedSqlite(db: SqliteDatabase): Promise<SeedSummary> {
 }
 
 export async function truncateSqlite(db: SqliteDatabase): Promise<void> {
+  // Kolejka wysyłki i kursor idą razem z danymi. Outbox wskazujący na wiersze,
+  // których już nie ma, wysłałby przy najbliższym pushu paczkę bez treści.
+  await db.delete(outbox);
+  await db.delete(syncState);
   await db.delete(cycleGoals);
   await db.delete(cycles);
   await db.delete(workoutSets);

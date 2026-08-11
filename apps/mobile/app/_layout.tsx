@@ -22,6 +22,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { configureGoogleSignIn } from '../src/auth/google';
 import { appConfig, isGoogleSignInConfigured } from '../src/config/index';
 import { DatabaseProvider } from '../src/db/provider';
+import { SyncProvider } from '../src/sync/provider';
 import { COLORS } from '../src/theme';
 
 export default function RootLayout() {
@@ -34,17 +35,24 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <StatusBar style="light" />
         <DatabaseProvider>
-          <Stack
-            screenOptions={{
-              headerStyle: { backgroundColor: COLORS.surface },
-              headerTintColor: COLORS.text,
-              contentStyle: { backgroundColor: COLORS.base },
-              animation: 'fade',
-            }}
-          >
-            <Stack.Screen name="index" options={{ title: 'Dziś' }} />
-            <Stack.Screen name="sign-in" options={{ title: 'Logowanie', headerShown: false }} />
-          </Stack>
+          {/* Silnik synchronizacji stoi **wewnątrz** bazy, a nie obok niej:
+              wymiana danych pisze do tych samych tabel, więc nie ma prawa
+              ruszyć, zanim przejdą migracje. */}
+          <SyncProvider>
+            <Stack
+              screenOptions={{
+                headerStyle: { backgroundColor: COLORS.surface },
+                headerTintColor: COLORS.text,
+                contentStyle: { backgroundColor: COLORS.base },
+                // Przejścia między dniami i ekranem serii mają być natychmiastowe
+                // — „bardzo szybko" ze specyfikacji dotyczy też nawigacji.
+                animation: 'fade',
+              }}
+            >
+              <Stack.Screen name="index" options={{ title: 'Dziś' }} />
+              <Stack.Screen name="sign-in" options={{ title: 'Logowanie', headerShown: false }} />
+            </Stack>
+          </SyncProvider>
         </DatabaseProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

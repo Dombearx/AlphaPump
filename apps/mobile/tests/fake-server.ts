@@ -1,0 +1,255 @@
+/**
+ * Serwer synchronizacji w pamięci.
+ *
+ * Nie jest atrapą zwracającą przygotowane odpowiedzi — implementuje protokół:
+ * nadaje `server_seq` z jednej sekwencji, przycina znaczniki czasu z przyszłości
+ * i rozstrzyga konflikty **tą samą funkcją z `@alphapump/core`**, którą robi to
+ * prawdziwe API. Dzięki temu test „dwa urządzenia offline" sprawdza zachowanie
+ * aplikacji, a nie zgodność z wymyślonymi odpowiedziami.
+ *
+ * Czego tu nie ma: uwierzytelnienia, uprawnień i trwałości. Te sprawdzają testy
+ * integracyjne `@alphapump/api` — powtarzanie ich tutaj oznaczałoby utrzymywanie
+ * drugiej implementacji serwera.
+ */
+
+import {
+  clampRevision,
+  isWrite,
+  resolveSyncConflict,
+  slug,
+  tagColor,
+  type SyncChanges,
+  type SyncPullResponse,
+  type SyncPushRequest,
+  type SyncPushResponse,
+  type SyncResult,
+  type SyncRevision,
+  type SyncedCycle,
+  type SyncedExercise,
+  type SyncedTag,
+  type SyncedUser,
+  type SyncedWorkoutSet,
+} from '@alphapump/core';
+import type { SyncTransport } from '../src/sync/transport';
+
+type Stored<T> = T & { deviceId: string | null };
+
+interface Row {
+  serverSeq: number;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+  deviceId: string | null;
+}
+
+export interface FakeServerOptions {
+  /** Kim jest właściciel serii — fałszywy serwer ma jedno konto. */
+  userId: string;
+  /** Zegar serwera; domyślnie prawdziwy. */
+  now?: () => Date;
+}
+
+export class FakeSyncServer implements SyncTransport {
+  private sequence = 0;
+  private readonly users = new Map<string, Stored<SyncedUser>>();
+  private readonly tags = new Map<string, Stored<SyncedTag>>();
+  private readonly exercises = new Map<string, Stored<SyncedExercise>>();
+  private readonly cycles = new Map<string, Stored<SyncedCycle>>();
+  private readonly sets = new Map<string, Stored<SyncedWorkoutSet>>();
+
+  /** Liczniki do sprawdzania, że aplikacja nie dobija się do sieci bez potrzeby. */
+  pushCalls = 0;
+  pullCalls = 0;
+  /** Ustawione na błąd sprawia, że każde żądanie kończy się tym błędem. */
+  failWith: Error | null = null;
+
+  constructor(private readonly options: FakeServerOptions) {}
+
+  private get now(): Date {
+    return this.options.now?.() ?? new Date();
+  }
+
+  private next(): number {
+    this.sequence += 1;
+    return this.sequence;
+  }
+
+  private guard(): void {
+    if (this.failWith !== null) throw this.failWith;
+  }
+
+  /** Wstawia konto, żeby pull miał czym zaspokoić klucz obcy serii. */
+  seedUser(user: { id: string; email: string | null; nickname: string }): void {
+    const at = new Date(0).toISOString();
+    this.users.set(user.id, {
+      ...user,
+      role: 'user',
+      createdAt: at,
+      updatedAt: at,
+      deletedAt: null,
+      serverSeq: this.next(),
+      deviceId: null,
+    });
+  }
+
+  async push(request: SyncPushRequest): Promise<SyncPushResponse> {
+    this.guard();
+    this.pushCalls += 1;
+
+    const now = this.now;
+    const results: SyncResult[] = [];
+    const changes: SyncChanges = { users: [], tags: [], exercises: [], cycles: [], sets: [] };
+
+    for (const incoming of request.tags) {
+      const revision = clampRevision(revisionOf(incoming, request.deviceId), now);
+      const decision = resolveSyncConflict(existing(this.tags.get(incoming.id)), revision);
+
+      if (isWrite(decision)) {
+        this.tags.set(incoming.id, {
+          id: incoming.id,
+          name: incoming.name,
+          slug: slug(incoming.name),
+          color: tagColor(incoming.name),
+          ...revision,
+          serverSeq: this.next(),
+        });
+      }
+
+      results.push({ entity: 'tag', id: incoming.id, decision, reason: null });
+      changes.tags.push(strip(this.tags.get(incoming.id) as Stored<SyncedTag>));
+    }
+
+    for (const incoming of request.exercises) {
+      const revision = clampRevision(revisionOf(incoming, request.deviceId), now);
+      const decision = resolveSyncConflict(existing(this.exercises.get(incoming.id)), revision);
+
+      if (isWrite(decision)) {
+        this.exercises.set(incoming.id, {
+          id: incoming.id,
+          name: incoming.name,
+          slug: slug(incoming.name),
+          authorId: incoming.authorId,
+          loggingType: incoming.loggingType,
+          primaryTagId: incoming.primaryTagId,
+          additionalTagIds: incoming.additionalTagIds,
+          note: incoming.note,
+          ...revision,
+          serverSeq: this.next(),
+        });
+      }
+
+      results.push({ entity: 'exercise', id: incoming.id, decision, reason: null });
+      changes.exercises.push(strip(this.exercises.get(incoming.id) as Stored<SyncedExercise>));
+    }
+
+    for (const incoming of request.cycles) {
+      const revision = clampRevision(revisionOf(incoming, request.deviceId), now);
+      const decision = resolveSyncConflict(existing(this.cycles.get(incoming.id)), revision);
+
+      if (isWrite(decision)) {
+        this.cycles.set(incoming.id, {
+          id: incoming.id,
+          userId: this.options.userId,
+          name: incoming.name,
+          startsOn: incoming.startsOn,
+          endsOn: incoming.endsOn,
+          archivedAt: incoming.archivedAt,
+          goals: incoming.goals,
+          ...revision,
+          serverSeq: this.next(),
+        });
+      }
+
+      results.push({ entity: 'cycle', id: incoming.id, decision, reason: null });
+      changes.cycles.push(strip(this.cycles.get(incoming.id) as Stored<SyncedCycle>));
+    }
+
+    for (const incoming of request.sets) {
+      const revision = clampRevision(revisionOf(incoming, request.deviceId), now);
+      const decision = resolveSyncConflict(existing(this.sets.get(incoming.id)), revision);
+
+      if (isWrite(decision)) {
+        this.sets.set(incoming.id, {
+          id: incoming.id,
+          userId: this.options.userId,
+          exerciseId: incoming.exerciseId,
+          performedOn: incoming.performedOn,
+          position: incoming.position,
+          weightG: incoming.weightG,
+          reps: incoming.reps,
+          durationS: incoming.durationS,
+          distanceM: incoming.distanceM,
+          bodyweightG: incoming.bodyweightG,
+          note: incoming.note,
+          ...revision,
+          serverSeq: this.next(),
+        });
+      }
+
+      results.push({ entity: 'set', id: incoming.id, decision, reason: null });
+      changes.sets.push(strip(this.sets.get(incoming.id) as Stored<SyncedWorkoutSet>));
+    }
+
+    return {
+      serverTime: now.toISOString(),
+      cursor: this.sequence,
+      results,
+      changes,
+    };
+  }
+
+  async pull(since: number, limit = 500): Promise<SyncPullResponse> {
+    this.guard();
+    this.pullCalls += 1;
+
+    const candidates = [
+      ...[...this.users.values()].map((row) => ({ kind: 'users', row }) as const),
+      ...[...this.tags.values()].map((row) => ({ kind: 'tags', row }) as const),
+      ...[...this.exercises.values()].map((row) => ({ kind: 'exercises', row }) as const),
+      ...[...this.cycles.values()].map((row) => ({ kind: 'cycles', row }) as const),
+      ...[...this.sets.values()].map((row) => ({ kind: 'sets', row }) as const),
+    ]
+      .filter(({ row }) => row.serverSeq > since)
+      .sort((a, b) => a.row.serverSeq - b.row.serverSeq);
+
+    const batch = candidates.slice(0, limit);
+    const changes: SyncChanges = { users: [], tags: [], exercises: [], cycles: [], sets: [] };
+
+    for (const { kind, row } of batch) {
+      // Wariant sprowadzony do wspólnego typu — kształt pilnowany jest przez
+      // budowanie mapy wyżej, a nie przez to przypisanie.
+      (changes[kind] as unknown[]).push(strip(row));
+    }
+
+    return {
+      serverTime: this.now.toISOString(),
+      cursor: batch.at(-1)?.row.serverSeq ?? since,
+      hasMore: candidates.length > batch.length,
+      changes,
+    };
+  }
+
+  /** Wgląd w stan serwera — do sprawdzania, co faktycznie dojechało. */
+  storedSets(): SyncedWorkoutSet[] {
+    return [...this.sets.values()].map(strip);
+  }
+}
+
+function revisionOf(
+  row: { createdAt: string; updatedAt: string; deletedAt: string | null },
+  deviceId: string,
+): SyncRevision {
+  return { ...row, deviceId };
+}
+
+function existing(row: Row | undefined): SyncRevision | null {
+  if (row === undefined) return null;
+  const { createdAt, updatedAt, deletedAt, deviceId } = row;
+  return { createdAt, updatedAt, deletedAt, deviceId };
+}
+
+/** Serwer nie odsyła `device_id` — jest jego wewnętrzną sprawą przy remisach. */
+function strip<T>(row: Stored<T>): T {
+  const { deviceId: _deviceId, ...rest } = row;
+  return rest as T;
+}
