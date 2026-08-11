@@ -48,3 +48,24 @@ export const SYNC_COLUMNS = [
  * pobierał jako pierwszą.
  */
 export const SERVER_SEQ_SEQUENCE = 'server_seq';
+
+/**
+ * Rozszerzenia PostgreSQL, których wymaga schemat serwerowy.
+ *
+ * `pg_trgm` obsługuje warstwę leksykalną wykrywania duplikatów, `vector` —
+ * semantyczną. Lista jest wystawiona jako stała, bo poza migracją potrzebują jej
+ * także testy: PGlite ładuje rozszerzenia przy tworzeniu instancji, a nie
+ * poleceniem SQL, więc `CREATE EXTENSION` w migracji nie miałby czego włączyć.
+ */
+export const PG_EXTENSIONS = ['pg_trgm', 'vector'] as const;
+
+/**
+ * Wymiar wektora embeddingu, zafiksowany w schemacie.
+ *
+ * Indeks HNSW wymaga wymiaru znanego w definicji kolumny, więc zmiana modelu na
+ * taki o innym wymiarze jest migracją, a nie zmianą konfiguracji. Wartość 1024
+ * odpowiada wielojęzycznym modelom rozważanym w stacku (Qwen3 Embedding); model
+ * o innym wymiarze zostanie odrzucony przy zapisie, zamiast wpisać do wspólnej
+ * przestrzeni wektor, którego nie da się porównać z pozostałymi.
+ */
+export const EMBEDDING_DIMENSIONS = 1024;

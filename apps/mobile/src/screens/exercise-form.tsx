@@ -10,11 +10,20 @@
  * ## Ostrzeżenie o duplikacie
  *
  * Podobne ćwiczenia pokazują się na bieżąco, w trakcie pisania nazwy, i **nie
- * blokują zapisu** — tak wymaga specyfikacja. Liczy je `findSimilarExercises`
- * z rdzenia, z biblioteki leżącej w bazie lokalnej, więc ostrzeżenie działa
- * w trybie samolotowym. Dopasowanie po znaczeniu („martwy ciąg" ↔ „deadlift")
- * dokłada dopiero etap 12; ta warstwa zostaje wtedy tam, gdzie jest, jako
- * zachowanie awaryjne przy wyłączonej warstwie semantycznej.
+ * blokują zapisu** — tak wymaga specyfikacja. Warstwy są dwie i różnią się
+ * dostępnością, nie tylko trafnością:
+ *
+ * - **lokalna, zawsze** — `findSimilarExercises` z rdzenia po bibliotece
+ *   z bazy lokalnej. Działa w trybie samolotowym i łapie pisownię: literówki
+ *   i odmianę.
+ * - **serwerowa, gdy jest łączność** — `GET /exercises/similar`: embeddingi
+ *   i ocena modelu. Łapie to, czego pierwsza nie może, czyli że „martwy ciąg"
+ *   i „deadlift" to to samo ćwiczenie.
+ *
+ * Druga warstwa jest **dodatkiem**. Telefon poza VPN-em, wyłączona warstwa
+ * semantyczna i awaria dostawcy modeli dają ten sam skutek: zostaje ostrzeżenie
+ * lokalne, bez komunikatu o błędzie, bo z punktu widzenia użytkownika nic się nie
+ * stało. Scalenie obu warstw w jedną listę robi `mergeDuplicateHints`.
  *
  * Osobny przypadek to nazwa, której slug jest **identyczny** z istniejącym
  * ćwiczeniem tego samego autora. Wtedy zapis nie utworzy nic nowego, tylko
@@ -35,6 +44,9 @@ import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-na
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../db/client';
 import { createExercise, createTag, updateExercise } from '../db/library';
+import { describeHint, mergeDuplicateHints } from '../duplicate-hint';
+import { remoteReader } from '../remote/reader';
+import { useServerDuplicates } from '../remote/use-duplicates';
 import { additionalTagsOf, exerciseDetails, exerciseLibrary, tagLibrary } from '../db/queries';
 import { useLocalAuthor } from '../hooks';
 import { LOGGING_TYPE_LABELS } from '../measurements';
@@ -91,13 +103,15 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
     setLoaded(true);
   }, [mode.kind, loaded, existing, editedTags.data]);
 
+  const excludeId = mode.kind === 'edit' ? mode.id : null;
+
   const similar = useMemo(
-    () =>
-      findSimilarExercises(name, library.data ?? [], {
-        excludeId: mode.kind === 'edit' ? mode.id : null,
-      }),
-    [name, library.data, mode],
+    () => findSimilarExercises(name, library.data ?? [], { excludeId }),
+    [name, library.data, excludeId],
   );
+
+  const remote = useServerDuplicates(remoteReader, name, excludeId);
+  const hints = useMemo(() => mergeDuplicateHints(similar, remote), [similar, remote]);
 
   const identical = similar.find((match) => match.identical);
 
@@ -208,13 +222,17 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
               </Text>
             )}
 
-            {similar.length > 0 && identical === undefined && (
+            {hints.length > 0 && identical === undefined && (
               <View className="gap-1 rounded-2xl border border-border p-3">
                 <SectionTitle>Podobne już są</SectionTitle>
-                {similar.map((match) => (
-                  <Text key={match.exercise.id} className="text-sm text-muted">
-                    • {match.exercise.name}
-                  </Text>
+                {hints.map((hint) => (
+                  <View key={hint.exerciseId}>
+                    <Text className="text-sm text-muted">
+                      • {hint.name}
+                      {hint.authorNickname === null ? '' : ` (autor: ${hint.authorNickname})`}
+                    </Text>
+                    <Text className="ml-3 text-xs text-muted">{describeHint(hint)}</Text>
+                  </View>
                 ))}
                 <Text className="text-xs text-muted">
                   To tylko podpowiedź — możesz zapisać mimo wszystko.

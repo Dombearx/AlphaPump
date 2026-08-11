@@ -12,6 +12,7 @@
  */
 
 import {
+  DUPLICATE_CANDIDATE_LIMIT,
   createCycleInputSchema,
   createSetInputSchema,
   createTagInputSchema,
@@ -44,6 +45,18 @@ export const listExercisesQuerySchema = z.object({
   /** `true` — tylko ćwiczenia wbudowane, `false` — tylko dodane przez użytkowników. */
   builtIn: z.stringbool().optional(),
   search: z.string().trim().min(1).max(80).optional(),
+});
+
+export const similarExercisesQuerySchema = z.object({
+  /**
+   * Nazwa, o którą pytamy. Bez `displayNameSchema`, bo pytanie leci **w trakcie
+   * pisania** — nazwa jeszcze niekompletna nie może dawać błędu walidacji, tylko
+   * pustą listę kandydatów.
+   */
+  name: z.string().trim().min(1).max(80),
+  /** Pomijane ćwiczenie — przy edycji jest nim edytowany wiersz. */
+  excludeId: uuidSchema.optional(),
+  limit: z.coerce.number().int().min(1).max(DUPLICATE_CANDIDATE_LIMIT).optional(),
 });
 
 /* --------------------------------------------------------------------- seria */

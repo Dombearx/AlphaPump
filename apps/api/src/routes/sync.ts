@@ -19,6 +19,7 @@ import {
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { AppDependencies, AppEnvironment } from '../context.js';
+import { NO_LAYERS, refreshEmbeddings } from '../duplicates/index.js';
 import { requireAdmin } from '../middleware/authenticate.js';
 import { validateJson, validateQuery } from '../middleware/validate.js';
 import type { RouteSpec } from '../openapi.js';
@@ -108,6 +109,7 @@ export function createSyncRouter(dependencies: AppDependencies) {
   const router = new Hono<AppEnvironment>();
   const { db } = dependencies;
   const recomputations = dependencies.derived ?? [];
+  const layers = dependencies.duplicates ?? NO_LAYERS;
 
   router.post('/sync/push', validateJson(syncPushRequestSchema), async (context) => {
     const principal = context.get('principal');
@@ -115,6 +117,18 @@ export function createSyncRouter(dependencies: AppDependencies) {
 
     const outcome = await applyPush(db, principal, context.req.valid('json'), now);
     await recomputeDerived(db, outcome.scope, recomputations);
+
+    // Ćwiczenie utworzone offline dostaje wektor dopiero tutaj — telefon nie ma
+    // czym go policzyć i mieć nie będzie. Wyłączona warstwa semantyczna nie
+    // wchodzi tu w ogóle, a jej awaria nie może wywrócić pushu: outbox
+    // urządzenia stanąłby wtedy na wpisie, którego serwer już przyjął.
+    await refreshEmbeddings(
+      db,
+      layers,
+      outcome.changes.exercises
+        .filter((exercise) => exercise.deletedAt === null)
+        .map((exercise) => exercise.id),
+    );
 
     return context.json({
       serverTime: now.toISOString(),

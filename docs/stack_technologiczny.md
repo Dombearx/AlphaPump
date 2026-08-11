@@ -141,6 +141,13 @@ Vite + React + TanStack Router + TanStack Query + shadcn/ui, korzystający z teg
 samego API. Osobne SPA, nie Next.js — specyfikacja mówi „prosty panel", a SPA
 jest tańsze w utrzymaniu i hostowaniu niż pełny framework SSR.
 
+> **Panel nie używa `@alphapump/api-client`** (ustalone przy realizacji etapu 13).
+> Odpowiedzi czyta schematami Zod z `@alphapump/core` — tymi samymi, którymi API je
+> opisuje i waliduje — więc kontrakt jest już wspólny i sprawdzany po obu stronach.
+> Klient RPC dołożyłby do tego zależność panelu od typów serwera, nie dając nowej
+> gwarancji. Pakiet zostaje pusty; wróci, jeśli pojawi się konsument, dla którego
+> wnioskowanie typów wprost z Hono coś zmienia.
+
 ## Konwencje modelu danych
 
 Cztery decyzje, które trzeba przyjąć na starcie, bo późniejsza zmiana jest
@@ -303,11 +310,20 @@ plus filtr po głównym tagu. Musi działać offline i obsługuje przy okazji zw
 przeglądanie biblioteki. Łapie literówki i warianty zapisu.
 
 **Warstwa 2 — serwerowa, gdy online.** Wyszukiwanie hybrydowe: leksykalne
-(`pg_trgm` + polski `tsvector`) oraz semantyczne (`pgvector`, indeks HNSW,
-odległość kosinusowa). Embedding liczony **raz, przy tworzeniu ćwiczenia**, nie
-przy każdym zapytaniu. Obie listy scalane przez RRF do ok. 10 kandydatów. Ta
-warstwa łapie to, czego pierwsza nie może — że „martwy ciąg" i „deadlift" to to
-samo ćwiczenie.
+(`pg_trgm` + `tsvector`) oraz semantyczne (`pgvector`, indeks HNSW, odległość
+kosinusowa). Embedding liczony **raz, przy tworzeniu ćwiczenia**, nie przy każdym
+zapytaniu. Obie listy scalane przez RRF do ok. 10 kandydatów. Ta warstwa łapie to,
+czego pierwsza nie może — że „martwy ciąg" i „deadlift" to to samo ćwiczenie.
+
+> **Konfiguracja `tsvector` to `simple`, nie polska** (ustalone przy realizacji
+> etapu 12). PostgreSQL nie ma wbudowanego słownika polskiego, a dołożenie ispella
+> oznaczałoby pliki słowników na serwerze i różnicę między bazą produkcyjną
+> a testową. Wejściem indeksu jest **slug** — już bez ogonków i wielkich liter —
+> więc `simple` wystarcza do dopasowania po słowach niezależnie od ich kolejności,
+> a odmianę i literówki („przysiady" ↔ „przysiad") łapie obok indeks trigramowy.
+> Wymiar wektora jest zafiksowany w schemacie (`EMBEDDING_DIMENSIONS`), bo indeks
+> HNSW wymaga wymiaru znanego w definicji kolumny: zmiana modelu na taki o innym
+> wymiarze jest migracją, nie zmianą konfiguracji.
 
 **Warstwa 3 — LLM jako re-ranker.** Dostaje nową nazwę i kandydatów, zwraca
 structured output (schemat Zod przez AI SDK): które pozycje są faktycznie
@@ -393,6 +409,16 @@ Nie zrzucamy całej bazy. Kopia obejmuje wyłącznie dane nieodtwarzalne.
 
 **W kopii:** serie, ćwiczenia, tagi, cykle oraz minimalne dane użytkowników
 (`id`, e-mail, nick, rola).
+
+> **E-mail w archiwum jest nullowalny** (ustalone przy realizacji etapu 14). Ten
+> sam format obsługuje eksport z aplikacji, a baza lokalna zna adres wyłącznie
+> właściciela telefonu — adresy pozostałych osób nie są potrzebne do niczego, co
+> robi aplikacja, więc pull ich tam nie rozsyła. Konto bez adresu jest w archiwum
+> obecne po to, by `author_id` przy ćwiczeniu na coś wskazywał, ale nie da się go
+> dopasować ani założyć przy odtwarzaniu, bo dopasowanie idzie właśnie po adresie.
+> Wartość zastępcza byłaby gorsza niż `null`: import utworzyłby z niej drugie
+> konto tej samej osoby. Kopia systemowa z serwera ma adresy wszystkich kont, więc
+> pełne odtworzenie po awarii nie jest tym ograniczone.
 
 **Poza kopią:**
 

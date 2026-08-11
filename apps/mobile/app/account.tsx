@@ -7,7 +7,7 @@
  */
 
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
-import { Redirect, Stack } from 'expo-router';
+import { Redirect, Stack, useRouter } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { signOut, useSession } from '../src/auth/client';
@@ -21,6 +21,7 @@ export default function AccountRoute() {
   const { data: session, isPending } = useSession();
   const snapshot = useSyncSnapshot();
   const engine = useSyncEngine();
+  const router = useRouter();
 
   const account = useLiveQuery(localUser(db, session?.user.id ?? ''));
 
@@ -53,6 +54,20 @@ export default function AccountRoute() {
               variant="secondary"
               label="Synchronizuj teraz"
               onPress={() => void engine?.syncNow()}
+            />
+          </View>
+        </Card>
+
+        <Card className="gap-2">
+          <SectionTitle>Dane</SectionTitle>
+          <Text className="text-muted">
+            Eksport i import w JSON-ie. Działa bez internetu — dane są na tym urządzeniu.
+          </Text>
+          <View className="mt-1">
+            <Button
+              variant="secondary"
+              label="Eksport i import"
+              onPress={() => router.push('/transfer')}
             />
           </View>
         </Card>

@@ -22,13 +22,13 @@ Monorepo na pnpm workspaces i Turborepo.
 
 ```
 apps/
-  mobile/       Expo (Android + iOS)          — etapy 5 ✔, 6 ✔, 7 ✔, 8 ✔, 9 ✔, 10 ✔ i 11 ✔
-  api/          Hono (REST + sync + LLM)      — etapy 3 ✔, 4 ✔ i 11 ✔
-  admin/        Vite + React (panel)          — etap 13
+  mobile/       Expo (Android + iOS)          — etapy 5 ✔ … 12 ✔ i 14 ✔
+  api/          Hono (REST + sync + LLM)      — etapy 3 ✔, 4 ✔, 11 ✔, 12 ✔, 13 ✔ i 14 ✔
+  admin/        Vite + React (panel)          — etap 13 ✔
 packages/
-  core/         logika domenowa, bez I/O      — etapy 1 ✔, 4 ✔, 8 ✔, 9 ✔ i 11 ✔
-  db/           schematy Drizzle: PG + SQLite — etapy 2 ✔ i 11 ✔
-  api-client/   typowany klient (Hono RPC)    — pusty do etapu 13 (panel)
+  core/         logika domenowa, bez I/O      — etapy 1 ✔, 4 ✔, 8 ✔, 9 ✔, 11 ✔, 12 ✔, 13 ✔ i 14 ✔
+  db/           schematy Drizzle: PG + SQLite — etapy 2 ✔, 11 ✔ i 12 ✔
+  api-client/   typowany klient (Hono RPC)    — nieużywany: patrz „Panel administracyjny"
 ```
 
 `packages/core` jest sercem projektu: front Pareto, cykle, podpowiedzi,
@@ -88,9 +88,12 @@ Serwer sam uruchamia migracje przed przyjęciem pierwszego żądania.
 | `/openapi.json`   | dokumentacja generowana z tych samych schematów Zod          |
 | `/me`             | konto powiązane z sesją albo kluczem API                     |
 | `/tags`, `/exercises`, `/sets`, `/cycles` | CRUD danych                          |
+| `/exercises/similar?name=` | podobne ćwiczenia: leksykalnie, semantycznie i przez model |
 | `/exercises/:id/records` | rekordy globalne ćwiczenia                          |
 | `/rankings?metric=`      | ranking objętości, dystansu albo liczby rekordów    |
 | `/sync/push`, `/sync/pull` | wymiana danych z urządzeniem                      |
+| `/export`, `/import`     | eksport i import danych w JSON-ie                   |
+| `/admin/users`, `/admin/stats` | konta i dane systemowe (rola administratora)   |
 
 Uwierzytelnienie idzie dwiema drogami: nagłówkiem `Authorization: Bearer …`
 (sesja, tak korzysta aplikacja) albo `x-api-key` (token API, tak korzysta bot
@@ -115,6 +118,123 @@ Granica prywatności jest twarda: na zewnątrz wychodzi wyłącznie wartość, n
 data i notatka serii. Kształt `globalRecordSchema` w rdzeniu jest tej reguły
 zapisem — nie ma w nim identyfikatora serii ani konta, więc żaden endpoint nie
 odda przypadkiem punktu zaczepienia do cudzej historii.
+
+### Wykrywanie duplikatów ćwiczeń
+
+Trzy warstwy, różniące się **dostępnością**, nie tylko trafnością:
+
+| Warstwa | Gdzie                                    | Kiedy działa               |
+| ------- | ---------------------------------------- | -------------------------- |
+| 1       | telefon (`findSimilarExercises` w rdzeniu) | zawsze, także offline    |
+| 2       | serwer: `pg_trgm` + `tsvector` + `pgvector` | gdy jest łączność       |
+| 3       | serwer: re-ranker przez OpenRouter          | gdy warstwa jest włączona |
+
+Warstwy 2 i 3 stoją za `GET /exercises/similar?name=`. Leksykalna i semantyczna
+lista są scalane przez **RRF** (`packages/core/src/rrf.ts`) — po miejscach, nie po
+wynikach, bo `similarity()` z trigramów i odległość kosinusowa z pgvectora
+mieszkają w nieporównywalnych skalach. Embedding liczy się **raz, przy zapisie
+ćwiczenia** (`POST /exercises`, `PATCH /exercises/:id` i push), nie przy każdym
+zapytaniu; odpowiedzi modelu są cache'owane po parze slug + odcisk listy
+kandydatów, bo werdykt zależy od obojga.
+
+Cała warstwa jest wyłączalna jedną zmienną (`LLM_ENABLED=false`), a brak
+`OPENROUTER_API_KEY` daje ten sam skutek — serwer wstaje i mówi o tym w logu.
+Odpowiedź niesie wtedy `layer: "lexical"`, aplikacja pokazuje ostrzeżenie liczone
+lokalnie, a **tworzenie ćwiczeń nie zmienia się w żaden sposób**: `POST /exercises`
+nigdy nie pyta o duplikaty i nie ma jak zostać przez nie zablokowane. Re-ranker
+wyłącza się osobno (`RERANKER_ENABLED=false`): do znalezienia podobnych wystarczą
+embeddingi, model generatywny dokłada ocenę i uzasadnienie.
+
+Wywołania modeli wychodzą **wyłącznie z backendu** — klucz OpenRoutera nie może
+trafić do binarki aplikacji, bo ta jest w praktyce publiczna. Testy integracyjne
+podstawiają atrapy warstw (`apps/api/tests/duplicates.test.ts`), więc CI nie
+zależy ani od cudzego serwisu, ani od klucza w sekretach.
+
+### Eksport, import i kopie zapasowe
+
+Jeden format i jeden zestaw reguł (`packages/core/src/transfer.ts`), trzy miejsca
+użycia: `GET /export` i `POST /import`, ekran „Eksport i import" w aplikacji oraz
+skrypty kopii. To nie oszczędność linijek — to jedyny sposób, żeby ścieżka
+odtwarzania nie zardzewiała: drogę „eksport → plik → import" przechodzą zwykli
+użytkownicy przy normalnym korzystaniu z aplikacji.
+
+**W archiwum:** serie, ćwiczenia, tagi, cykle i minimalne dane kont (`id`, e-mail,
+nick, rola). **Poza archiwum:** hashe haseł i sesje (wrażliwe, a do odtworzenia
+zbędne), klucze API (użytkownik wygeneruje nowe), embeddingi (przeliczalne z nazw)
+oraz rekordy i rankingi (pochodne z serii). Tombstone'ów też nie ma — archiwum
+odtwarza **stan**, nie historię usunięć.
+
+Dwie reguły decydują o tym, że odtworzenie nie osieroca danych, i obie są w rdzeniu
+(`planArchiveIdentity`), bo wykonuje je i serwer, i telefon:
+
+- konta z archiwum są dopasowywane **po adresie e-mail** — po odtworzeniu na czystą
+  bazę ludzie logują się ponownie i dostają nowe identyfikatory,
+- gdy identyfikator autora się zmienił, przeliczane są identyfikatory jego ćwiczeń
+  (`uuidv5(autor + slug nazwy)`) i przepisywane odwołania w seriach oraz pozycjach
+  celów. Bez tego kroku odtworzone ćwiczenia byłyby poprawne w bazie i odrzucane
+  przy pierwszej synchronizacji.
+
+Konflikty rozstrzyga LWW po `updated_at`, tak jak przy synchronizacji, a każdy
+zapisany wiersz dostaje nowy `server_seq` — inaczej restore byłby niewidoczny dla
+urządzeń, których kursor stoi już powyżej.
+
+| Polecenie                                            | Co robi                                  |
+| ---------------------------------------------------- | ---------------------------------------- |
+| `pnpm --silent --filter @alphapump/api run export`     | archiwum systemowe na stdout             |
+| `pnpm --silent --filter @alphapump/api run import [plik]` | import z pliku albo ze stdin          |
+| `scripts/backup.sh`                                   | eksport → gzip → age → rclone + retencja |
+| `scripts/restore.sh <plik\|zdalny>`                    | age -d → gunzip → import                 |
+| `scripts/backup-drill.sh`                             | pełna próba odtworzenia z porównaniem    |
+
+`--silent` nie jest ozdobą: pnpm wypisuje nagłówek skryptu na **stdout**, czyli
+tym samym strumieniem, którym jedzie archiwum. `run` też nie — `pnpm import` jest
+wbudowanym poleceniem pnpm.
+
+Kopia idzie potokiem, bez pliku pośredniego, i jest szyfrowana **kluczem
+publicznym** `age` do dwóch odbiorców: głównego i CI. Na minipc trafia wyłącznie
+klucz publiczny, więc włamanie na serwer nie daje dostępu do kopii na Dysku.
+Klucz prywatny nie leży ani na minipc, ani na Dysku obok kopii — menedżer haseł
+i wydruk.
+
+Comiesięczna próba odtworzenia (`.github/workflows/backup-restore.yml`) przechodzi
+cały łańcuch na dwóch bazach i na końcu **porównuje dane z oryginałem** w postaci
+kanonicznej: nie sprawdzamy, czy import się wykonał, ale czy powiązania autorów
+ćwiczeń i właścicieli serii są po odtworzeniu takie same. Dane próby są fikcyjne
+i powstają na miejscu; prawdziwy eksport nigdy nie trafia do CI.
+
+### Panel administracyjny
+
+```
+cp apps/admin/.env.example apps/admin/.env    # wskaż adres API
+pnpm --filter @alphapump/admin dev
+```
+
+Vite + React + TanStack Router + TanStack Query, komponenty w konwencji shadcn/ui.
+Cztery ekrany: przegląd danych systemowych, konta, biblioteka i transfer danych.
+
+Panel loguje się **tym samym** better-authem co aplikacja: rola administratora jest
+polem konta, nie osobnym hasłem do narzędzia. Uprawnienia sprawdza przez `GET /me`
+przy każdym wejściu, a nie z sesji — rolę można odebrać w trakcie jej trwania.
+Sprawdzenie po stronie panelu nie jest zabezpieczeniem (pilnuje ich API przy
+każdym żądaniu), lecz komunikatem: „brak uprawnień" zamiast pięciu ekranów z 403.
+
+Ćwiczeniami i tagami panel zarządza **istniejącymi** endpointami CRUD — osobna
+ścieżka zapisu byłaby drugim miejscem, w którym trzeba pamiętać o tombstonie,
+`server_seq` i o regule „tag używany przez ćwiczenia nie znika". Własne endpointy
+`/admin/*` dostały tylko te trzy rzeczy, których nigdzie indziej nie ma: lista
+i edycja kont, liczby systemowe i porządkowanie cache'u re-rankera.
+
+Kont panel nie usuwa i nie będzie: konto jest autorem ćwiczeń i właścicielem serii,
+więc jego usunięcie albo osieroca cudze dane, albo wymaga kaskady niszczącej
+historię grupy. Właściwą operacją jest blokada — dane zostają, człowiek nie wchodzi.
+Nie da się też zablokować ani zdegradować **własnego** konta (panel jest jedynym
+narzędziem do nadawania roli) ani ruszyć konta systemowego, które jest autorem
+ćwiczeń wbudowanych.
+
+`@alphapump/api-client` pozostaje nieużywany. Panel czyta odpowiedzi schematami
+Zod z `@alphapump/core` — tymi samymi, którymi API je opisuje — więc kontrakt jest
+już wspólny, a klient RPC dołożyłby zależność panelu od typów serwera bez nowej
+gwarancji.
 
 ### Synchronizacja
 
@@ -203,6 +323,20 @@ zjadą na telefon. Odczyt idzie przez `src/remote/`, bez cache'u i bez outboxu,
 a brak łączności pokazujemy jako spokojne „offline" z przyciskiem ponowienia —
 tymi samymi klasami błędów co synchronizacja. Reszta aplikacji, łącznie
 z rekordami indywidualnymi, dalej działa w trybie samolotowym.
+
+#### Ostrzeżenie o duplikacie i transfer danych
+
+Formularz ćwiczenia scala ostrzeżenie z dwóch warstw (`src/duplicate-hint.ts`):
+lokalnej, liczonej z pisowni i działającej offline, oraz serwerowej, która dokłada
+dopasowanie po znaczeniu i uzasadnienie od modelu. Pytanie do serwera jest
+opóźnione po ostatnim naciśnięciu klawisza i **cicho pomijane** przy braku
+łączności — brak dodatku nie jest awarią, a ostrzeżenie i tak nigdy nie blokuje
+zapisu.
+
+Ekran „Eksport i import" (`src/screens/transfer.tsx`) działa bez sieci, bo telefon
+ma u siebie całą historię właściciela. Import wchodzi do bazy lokalnej od razu,
+a każdy zapisany wiersz ląduje w outboxie — bez tego odtworzone dane zniknęłyby
+przy pierwszym pullu, bo serwer nigdy by o nich nie usłyszał.
 
 #### Wymiana danych
 

@@ -18,7 +18,7 @@
  */
 
 import { GOAL_METRICS, LOGGING_TYPES, USER_ROLES } from '@alphapump/core';
-import type { GoalMetric, IsoDate, LoggingType, UserRole } from '@alphapump/core';
+import type { GoalMetric, IsoDate, LoggingType, RerankVerdict, UserRole } from '@alphapump/core';
 import { sql } from 'drizzle-orm';
 import {
   bigint,
@@ -27,14 +27,16 @@ import {
   date,
   index,
   integer,
+  jsonb,
   pgSequence,
   pgTable,
   primaryKey,
   text,
   timestamp,
   uniqueIndex,
+  vector,
 } from 'drizzle-orm/pg-core';
-import { SERVER_SEQ_SEQUENCE } from '../tables.js';
+import { EMBEDDING_DIMENSIONS, SERVER_SEQ_SEQUENCE } from '../tables.js';
 
 /* ------------------------------------------------------------------ wspólne */
 
@@ -154,6 +156,30 @@ export const exercises = pgTable(
     uniqueIndex('exercises_author_slug_unique').on(table.authorId, table.slug),
     index('exercises_primary_tag_idx').on(table.primaryTagId),
     index('exercises_server_seq_idx').on(table.serverSeq),
+    /**
+     * Warstwa leksykalna wykrywania duplikatów (etap 12). Indeks trigramowy po
+     * slugu, a nie po nazwie: slug jest już znormalizowany — bez ogonków, bez
+     * wielkich liter — więc „lawka" i „Ławka" trafiają w te same trigramy bez
+     * dokładania `unaccent` do zapytania.
+     */
+    index('exercises_slug_trgm_idx').using('gin', sql`${table.slug} gin_trgm_ops`),
+    /**
+     * Druga połowa warstwy leksykalnej: dopasowanie **po słowach**, którego
+     * trigramy nie dają — „sztanga lezac" ma trafić w „wyciskanie sztangi leżąc"
+     * niezależnie od kolejności członów.
+     *
+     * Konfiguracja to `simple`, a nie polska, i jest to decyzja, nie
+     * przeoczenie: PostgreSQL nie ma wbudowanego słownika polskiego, a dołożenie
+     * ispella oznaczałoby pliki słowników na serwerze i różnicę między bazą
+     * lokalną a produkcyjną. `simple` nie zna odmiany, ale wejściem jest slug —
+     * już bez ogonków i wielkich liter — a odmianę i literówki łapie obok indeks
+     * trigramowy. Formy takie jak „przysiad" i „przysiady" zbliża do siebie
+     * właśnie on.
+     */
+    index('exercises_slug_fts_idx').using(
+      'gin',
+      sql`to_tsvector('simple', replace(${table.slug}, '-', ' '))`,
+    ),
     check('exercises_logging_type_check', oneOf('logging_type', LOGGING_TYPES)),
   ],
 );
@@ -342,6 +368,94 @@ export const exerciseRecords = pgTable(
   ],
 );
 
+/* ------------------------------------- warstwa semantyczna (etap 12) --------- */
+
+/**
+ * Embedding nazwy ćwiczenia — warstwa 2 wykrywania duplikatów.
+ *
+ * Tabela istnieje wyłącznie po stronie serwera i **nie jest synchronizowana**:
+ * telefon liczy podobieństwo po pisowni (warstwa 1) i nie ma czym ani po co
+ * liczyć wektorów. Nie ma tu więc kolumn synchronizacyjnych i nie ma
+ * odpowiednika w schemacie SQLite — jest to różnica świadoma, nie przeoczenie.
+ *
+ * Trzy decyzje warte zapisania:
+ *
+ * 1. **Osobna tabela, nie kolumna w `exercises`.** Embedding jest danymi
+ *    pochodnymi, przeliczalnymi z nazwy — a `exercises` jedzie w każdym pullu.
+ *    Wektor o tysiącu wymiarów w wierszu synchronizowanym byłby ładowany za
+ *    każdym odczytem biblioteki i wysyłany na telefon, który go nie użyje.
+ * 2. **Wymiar jest stały (`EMBEDDING_DIMENSIONS`).** pgvector potrafi trzymać
+ *    wektory o dowolnym wymiarze, ale indeks HNSW wymaga wymiaru znanego
+ *    w schemacie. Zmiana modelu na taki o innym wymiarze jest więc migracją,
+ *    a nie zmianą konfiguracji — i dobrze, bo wektory ze dwóch różnych modeli
+ *    nie są porównywalne niezależnie od tego, czy mają ten sam wymiar.
+ * 3. **`model` w wierszu.** Bez tego po zmianie modelu nie dałoby się odróżnić
+ *    wektorów starych od nowych, a wyszukiwanie po wymieszanych przestrzeniach
+ *    daje wyniki, które wyglądają poprawnie i nie są.
+ *
+ * `ON DELETE CASCADE` jest tu istotny: twarde usunięcie ćwiczenia przez
+ * porządkowanie tombstone'ów nie może zostawić wektora wskazującego w próżnię.
+ */
+export const exerciseEmbeddings = pgTable(
+  'exercise_embeddings',
+  {
+    exerciseId: text('exercise_id')
+      .primaryKey()
+      .references(() => exercises.id, { onDelete: 'cascade' }),
+    /** Identyfikator modelu z OpenRouter — patrz komentarz tabeli. */
+    model: text('model').notNull(),
+    /** Tekst, z którego policzono wektor: nazwa ćwiczenia i jego tag główny. */
+    source: text('source').notNull(),
+    embedding: vector('embedding', { dimensions: EMBEDDING_DIMENSIONS }).notNull(),
+    computedAt: timestamp('computed_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    /**
+     * HNSW po odległości kosinusowej. Przy bibliotece rzędu setek wierszy
+     * skanowanie sekwencyjne byłoby równie szybkie — indeks stoi tu dlatego, że
+     * jego dołożenie później wymaga przestoju na przebudowę, a teraz jest darmowe.
+     */
+    index('exercise_embeddings_hnsw_idx').using('hnsw', table.embedding.op('vector_cosine_ops')),
+  ],
+);
+
+/**
+ * Cache odpowiedzi re-rankera — warstwa 3 wykrywania duplikatów.
+ *
+ * Model generatywny kosztuje więcej i odpowiada sekundy, a pytanie „czy «martwy
+ * ciąg» to duplikat czegoś w bibliotece" jest przy tworzeniu ćwiczenia zadawane
+ * wielokrotnie, w trakcie pisania nazwy. Odpowiedź zależy jednak od dwóch
+ * rzeczy, nie od jednej: od zapytania **i** od zestawu kandydatów. Dlatego
+ * kluczem jest para slug + odcisk zestawu kandydatów — sam slug dawałby po
+ * dodaniu nowego ćwiczenia werdykt nieaktualny, którego nic by nie unieważniło.
+ *
+ * Wpis jest usuwalny w każdej chwili bez konsekwencji: brak cache'u znaczy
+ * tylko, że model zostanie zapytany ponownie.
+ */
+export const duplicateCheckCache = pgTable(
+  'duplicate_check_cache',
+  {
+    /** Slug nazwy, o którą pytano — normalizacja ta sama, z której liczy się id. */
+    querySlug: text('query_slug').notNull(),
+    /** Odcisk zestawu kandydatów; zmiana zestawu unieważnia wpis. */
+    candidatesFingerprint: text('candidates_fingerprint').notNull(),
+    /** Model, który wydał werdykty. Zmiana modelu unieważnia wpis. */
+    model: text('model').notNull(),
+    verdicts: jsonb('verdicts').$type<RerankVerdict[]>().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      name: 'duplicate_check_cache_pk',
+      columns: [table.querySlug, table.candidatesFingerprint, table.model],
+    }),
+    /** Po tym indeksie idzie porządkowanie wpisów starszych niż okno retencji. */
+    index('duplicate_check_cache_created_idx').on(table.createdAt),
+  ],
+);
+
 export type UserRow = typeof users.$inferSelect;
 export type TagRow = typeof tags.$inferSelect;
 export type ExerciseRow = typeof exercises.$inferSelect;
@@ -350,3 +464,5 @@ export type WorkoutSetRow = typeof workoutSets.$inferSelect;
 export type CycleRow = typeof cycles.$inferSelect;
 export type CycleGoalRow = typeof cycleGoals.$inferSelect;
 export type ExerciseRecordRow = typeof exerciseRecords.$inferSelect;
+export type ExerciseEmbeddingRow = typeof exerciseEmbeddings.$inferSelect;
+export type DuplicateCheckCacheRow = typeof duplicateCheckCache.$inferSelect;

@@ -1,0 +1,116 @@
+name: Próba odtworzenia kopii
+
+# Kopia, której nigdy nie odtworzono, nie jest kopią.
+#
+# Zadanie przechodzi cały łańcuch kopii zapasowej — eksport, gzip, age,
+# odszyfrowanie, import do **czystej** bazy — i na końcu porównuje dane
+# z oryginałem. Sprawdzeniem nie jest „import się wykonał", ale „dane po
+# odtworzeniu zgadzają się, łącznie z powiązaniami autorów ćwiczeń i właścicieli
+# serii". To jest kryterium ukończenia etapu 14 i nie ma sensu opierać go na
+# niczyjej pamięci, dlatego jedzie z harmonogramu.
+#
+# Dane próby są **fikcyjne** i powstają w bazie na miejscu. Prawdziwy eksport
+# nigdy nie trafia do CI: zawiera adresy e-mail i pełną historię treningową całej
+# grupy. Bez sekretów zadanie generuje jednorazową parę kluczy `age`, więc
+# łańcuch jest sprawdzany w całości nawet na świeżym forku; gdy w repozytorium
+# jest klucz CI (`AGE_CI_IDENTITY`), używamy właśnie jego — klucz główny zostaje
+# poza zasięgiem automatyki.
+
+on:
+  schedule:
+    # Pierwszy dzień miesiąca, 4:00 UTC — cicha godzina, a wynik czeka na rano.
+    - cron: '0 4 1 * *'
+  workflow_dispatch:
+  # Zmiana w kodzie eksportu, importu albo w samych skryptach kopii jest jedynym
+  # zdarzeniem poza harmonogramem, które może tę ścieżkę zepsuć.
+  pull_request:
+    paths:
+      - 'apps/api/src/transfer/**'
+      - 'apps/api/src/cli/**'
+      - 'packages/core/src/transfer.ts'
+      - 'packages/db/**'
+      - 'scripts/backup*.sh'
+      - 'scripts/restore.sh'
+      - '.github/workflows/backup-restore.yml'
+
+concurrency:
+  group: backup-restore-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TURBO_TELEMETRY_DISABLED: 1
+  DO_NOT_TRACK: 1
+
+jobs:
+  drill:
+    name: Eksport, szyfrowanie, odtworzenie, porównanie
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      # Obraz z pgvectorem, bo migracje włączają rozszerzenia `vector` i `pg_trgm`
+      # (warstwa wykrywania duplikatów). Zwykły `postgres:17` odbiłby pierwszą
+      # migrację, która ich potrzebuje.
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: alphapump
+          POSTGRES_PASSWORD: alphapump
+          POSTGRES_DB: alphapump
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U alphapump"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Skrypty kopii wołają zbudowane wyjście (`dist/cli/*.js`), a nie źródła —
+      # tak samo jak cron na minipc, gdzie API stoi już zbudowane.
+      - name: Build
+        run: pnpm build
+
+      - name: Zainstaluj age
+        run: sudo apt-get update && sudo apt-get install --yes age
+
+      - name: Utwórz bazę docelową odtworzenia
+        env:
+          PGPASSWORD: alphapump
+        run: psql -h localhost -U alphapump -d alphapump -c 'CREATE DATABASE alphapump_restore;'
+
+      - name: Zapisz klucz CI, jeśli jest w sekretach
+        id: klucz
+        env:
+          AGE_CI_IDENTITY: ${{ secrets.AGE_CI_IDENTITY }}
+        run: |
+          if [ -n "${AGE_CI_IDENTITY:-}" ]; then
+            printf '%s\n' "$AGE_CI_IDENTITY" > "${RUNNER_TEMP}/age-ci.txt"
+            chmod 600 "${RUNNER_TEMP}/age-ci.txt"
+            echo "identity=${RUNNER_TEMP}/age-ci.txt" >> "$GITHUB_OUTPUT"
+          else
+            echo "Brak sekretu AGE_CI_IDENTITY — próba użyje klucza jednorazowego." >&2
+            echo "identity=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Próba odtworzenia
+        env:
+          DATABASE_URL: postgres://alphapump:alphapump@localhost:5432/alphapump
+          RESTORE_DATABASE_URL: postgres://alphapump:alphapump@localhost:5432/alphapump_restore
+          AGE_IDENTITY: ${{ steps.klucz.outputs.identity }}
+          # `loadConfig` waliduje całe środowisko, także sekret sesji — CLI
+          # eksportu i importu przechodzi przez tę samą konfigurację co serwer.
+          BETTER_AUTH_SECRET: sekret-tylko-na-czas-proby-odtworzenia-kopii
+        run: scripts/backup-drill.sh

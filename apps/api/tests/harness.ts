@@ -9,6 +9,8 @@
  */
 
 import { PGlite } from '@electric-sql/pglite';
+import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
+import { vector } from '@electric-sql/pglite-pgvector';
 import { pgMigrationsFolder } from '@alphapump/db/migrations';
 import { seedPostgres } from '@alphapump/db/pg';
 import { drizzle } from 'drizzle-orm/pglite';
@@ -18,6 +20,7 @@ import { createApp } from '../src/app.js';
 import { createAuth } from '../src/auth.js';
 import type { AppConfig } from '../src/config.js';
 import type { Database } from '../src/db.js';
+import type { DuplicateLayers } from '../src/duplicates/layers.js';
 import type { DerivedRecomputation } from '../src/sync/derived.js';
 import { users } from '../src/schema.js';
 
@@ -30,6 +33,10 @@ export const TEST_CONFIG: AppConfig = {
   baseUrl: 'http://localhost:3000',
   trustedOrigins: ['http://localhost:3000'],
   google: { clientId: 'google-client-id', clientSecret: 'google-client-secret' },
+  // Warstwa semantyczna jest w testach wyłączona domyślnie i włączana wyłącznie
+  // podstawionymi atrapami — CI nie może zależeć od cudzego serwisu ani od
+  // klucza w sekretach.
+  llm: null,
 };
 
 export interface TestUser {
@@ -43,6 +50,11 @@ export interface TestUser {
 export interface HarnessOptions {
   /** Przeliczenia danych pochodnych wołane po pushu — test podstawia własne. */
   derived?: readonly DerivedRecomputation[];
+  /**
+   * Warstwy wykrywania duplikatów. Pominięcie znaczy „warstwa semantyczna
+   * wyłączona" — czyli dokładnie stan, w którym musi działać tworzenie ćwiczeń.
+   */
+  duplicates?: DuplicateLayers;
 }
 
 export interface Harness {
@@ -64,13 +76,18 @@ export interface Harness {
 const BASE = 'http://localhost:3000';
 
 export async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
-  const client = new PGlite();
+  // Rozszerzenia muszą być wkompilowane przy tworzeniu instancji — `CREATE
+  // EXTENSION` w migracji jedynie je włącza (patrz `packages/db/tests/databases.ts`).
+  const client = new PGlite({ extensions: { vector, pg_trgm } });
   const db = drizzle(client) as unknown as Database;
   await migrate(drizzle(client), { migrationsFolder: pgMigrationsFolder });
   await seedPostgres(db);
 
   const auth = createAuth(db, TEST_CONFIG);
-  const app = createApp({ db, auth, derived: options.derived }, TEST_CONFIG);
+  const app = createApp(
+    { db, auth, derived: options.derived, duplicates: options.duplicates },
+    TEST_CONFIG,
+  );
 
   const request = async (path: string, init: RequestInit = {}) =>
     app.fetch(new Request(BASE + path, init));

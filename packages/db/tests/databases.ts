@@ -11,6 +11,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
+import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
+import { vector } from '@electric-sql/pglite-pgvector';
 import BetterSqlite3 from 'better-sqlite3';
 import { drizzle as drizzleSqlite } from 'drizzle-orm/better-sqlite3';
 import { migrate as migrateSqlite } from 'drizzle-orm/better-sqlite3/migrator';
@@ -24,9 +26,20 @@ export interface TestPostgres {
   close: () => Promise<void>;
 }
 
+/**
+ * Rozszerzenia ładowane do PGlite.
+ *
+ * PGlite nie ma menedżera pakietów — rozszerzenie musi być wkompilowane przy
+ * tworzeniu instancji, a `CREATE EXTENSION` w migracji jedynie je **włącza**.
+ * Pominięcie któregoś tutaj daje błąd w pierwszej migracji, która go używa, więc
+ * lista i lista `PG_EXTENSIONS` w schemacie muszą się pokrywać — pilnuje tego
+ * `tests/extensions.test.ts`.
+ */
+export const PGLITE_EXTENSIONS = { vector, pg_trgm } as const;
+
 /** Świeża baza Postgres w pamięci, z uruchomionym kompletem migracji. */
 export async function createTestPostgres(): Promise<TestPostgres> {
-  const client = new PGlite();
+  const client = new PGlite({ extensions: PGLITE_EXTENSIONS });
   const db = drizzlePg(client);
   await migratePg(db, { migrationsFolder: pgMigrationsFolder });
   return { db, client, close: () => client.close() };

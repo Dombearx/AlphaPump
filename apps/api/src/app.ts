@@ -20,7 +20,9 @@ import { ApiError, toErrorResponse } from './errors.js';
 import { DERIVED_RECOMPUTATIONS } from './derived/index.js';
 import { authenticate } from './middleware/authenticate.js';
 import { buildOpenApiDocument, type RouteSpec } from './openapi.js';
+import { createAdminRouter, adminRoutes } from './routes/admin.js';
 import { createCycleRouter, cycleRoutes } from './routes/cycles.js';
+import { createDuplicateRouter, duplicateRoutes } from './routes/duplicates.js';
 import { createExerciseRouter, exerciseRoutes } from './routes/exercises.js';
 import { createHealthRouter, healthRoutes } from './routes/health.js';
 import { createMeRouter, meRoutes } from './routes/me.js';
@@ -29,6 +31,7 @@ import { createRecordRouter, recordRoutes } from './routes/records.js';
 import { createSetRouter, setRoutes } from './routes/sets.js';
 import { createSyncRouter, syncRoutes } from './routes/sync.js';
 import { createTagRouter, tagRoutes } from './routes/tags.js';
+import { createTransferRouter, transferRoutes } from './routes/transfer.js';
 
 /** Wersja wystawiana w OpenAPI i w healthchecku. */
 export const API_VERSION = '0.1.0';
@@ -38,12 +41,18 @@ export const documentedRoutes: RouteSpec[] = [
   ...healthRoutes,
   ...meRoutes,
   ...tagRoutes,
+  // Trasa `/exercises/similar` jest przed `exerciseRoutes` świadomie: Hono
+  // dopasowuje wzorce w kolejności rejestracji, a `/exercises/:id` złapałoby
+  // „similar" jako identyfikator.
+  ...duplicateRoutes,
   ...exerciseRoutes,
   ...setRoutes,
   ...cycleRoutes,
   ...recordRoutes,
   ...rankingRoutes,
   ...syncRoutes,
+  ...transferRoutes,
+  ...adminRoutes,
 ];
 
 export function createApp(dependencies: AppDependencies, config: AppConfig) {
@@ -101,12 +110,15 @@ export function createApp(dependencies: AppDependencies, config: AppConfig) {
   secured.use('*', authenticate(resolved));
   secured.route('/', createMeRouter(resolved));
   secured.route('/', createTagRouter(resolved));
+  secured.route('/', createDuplicateRouter(resolved));
   secured.route('/', createExerciseRouter(resolved));
   secured.route('/', createSetRouter(resolved));
   secured.route('/', createCycleRouter(resolved));
   secured.route('/', createRecordRouter(resolved));
   secured.route('/', createRankingRouter(resolved));
   secured.route('/', createSyncRouter(resolved));
+  secured.route('/', createTransferRouter(resolved));
+  secured.route('/', createAdminRouter(resolved));
 
   app.route('/', secured);
 

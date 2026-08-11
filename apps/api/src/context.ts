@@ -5,6 +5,7 @@
 import type { UserRole } from '@alphapump/core';
 import type { Auth } from './auth.js';
 import type { Database } from './db.js';
+import type { DuplicateLayers } from './duplicates/layers.js';
 import type { DerivedRecomputation } from './sync/derived.js';
 
 /** Skąd wzięło się uwierzytelnienie — przydaje się w logach i w testach. */
@@ -36,4 +37,12 @@ export interface AppDependencies {
    * pustą.
    */
   derived?: readonly DerivedRecomputation[];
+  /**
+   * Warstwy semantyczna i LLM-owa wykrywania duplikatów (etap 12). Pominięcie
+   * pola znaczy **warstwy wyłączone** — odwrotnie niż przy `derived`, i jest to
+   * asymetria zamierzona: brak przeliczenia rekordów jest cichym błędem
+   * poprawności, a warstwa LLM włączona przez przeoczenie to wychodzące żądania
+   * i rachunek u dostawcy modeli. Produkcja składa je z konfiguracji w `index.ts`.
+   */
+  duplicates?: DuplicateLayers;
 }

@@ -11,12 +11,14 @@ import { createApp } from './app.js';
 import { createAuth } from './auth.js';
 import { loadConfig } from './config.js';
 import { createDatabase, runMigrations } from './db.js';
+import { createOpenRouterLayers } from './duplicates/index.js';
 
 export { createApp, type App } from './app.js';
 export { createAuth, type Auth } from './auth.js';
 export { loadConfig, type AppConfig } from './config.js';
 export { createDatabase, runMigrations, type Database } from './db.js';
 export { buildOpenApiDocument } from './openapi.js';
+export { exportArchive, importArchive } from './transfer/index.js';
 
 export async function main(): Promise<void> {
   const config = loadConfig();
@@ -25,7 +27,19 @@ export async function main(): Promise<void> {
   await runMigrations(connection);
 
   const auth = createAuth(connection.db, config);
-  const app = createApp({ db: connection.db, auth }, config);
+  // Warstwy wykrywania duplikatów powstają **tutaj**, z konfiguracji — nie
+  // domyślnie w `createApp`. Wyłącznik warstwy i brak klucza OpenRoutera dają
+  // ten sam wynik: `null` w konfiguracji i wykrywanie duplikatów sprowadzone do
+  // warstwy leksykalnej, bez żadnego wpływu na tworzenie ćwiczeń.
+  const duplicates = createOpenRouterLayers(config.llm);
+  const app = createApp({ db: connection.db, auth, duplicates }, config);
+
+  if (config.llm === null) {
+    console.warn(
+      'Warstwa semantyczna jest wyłączona (brak OPENROUTER_API_KEY albo LLM_ENABLED=false) — ' +
+        'ostrzeżenia o duplikatach liczone leksykalnie.',
+    );
+  }
 
   const server = serve({ fetch: app.fetch, hostname: config.host, port: config.port }, (info) => {
     console.warn(`AlphaPump API słucha na http://${config.host}:${info.port}`);
