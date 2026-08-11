@@ -128,12 +128,27 @@ describe('biblioteka', () => {
       );
     });
 
-    it('filtruje po tagu, uwzględniając tagi dodatkowe', async () => {
+    it('filtruje po tagu głównym', async () => {
       const response = await harness.json<Exercise[]>(`GET`, `/exercises?tagId=${PLECY}`, {
         headers: author.headers,
       });
       const names = response.body.map((exercise) => exercise.name);
       expect(names).toContain('Wiosłowanie sztangą');
+      expect(names).not.toContain('Bieg');
+    });
+
+    it('filtruje także po tagu dodatkowym', async () => {
+      // „Podciąganie podchwytem" ma tag główny „Plecy", a „Biceps" wyłącznie
+      // jako dodatkowy — więc trafia tu przez skorelowane podzapytanie po
+      // `exercise_tags`, a nie przez porównanie tagu głównego. Bez tej asercji
+      // ta gałąź warunku nie byłaby w ogóle wykonywana przez testy.
+      const response = await harness.json<Exercise[]>(`GET`, `/exercises?tagId=${BICEPS}`, {
+        headers: author.headers,
+      });
+
+      const names = response.body.map((exercise) => exercise.name);
+      expect(names).toContain('Podciąganie podchwytem');
+      expect(names).toContain('Uginanie ramion ze sztangą');
       expect(names).not.toContain('Bieg');
     });
 

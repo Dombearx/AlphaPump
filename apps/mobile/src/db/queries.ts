@@ -8,6 +8,15 @@
  *
  * Wszystko jedzie z bazy lokalnej. Nie ma tu warstwy stanu serwerowego, nie ma
  * cache'a do unieważniania i nie ma ekranu, który czeka na sieć.
+ *
+ * > **Bez skorelowanych podzapytań pisanych surowym `sql`.** Drizzle pomija
+ * > kwalifikatory tabel w szablonach `sql` należących do zapytania nad jedną
+ * > tabelą: `${tags.id}` i `${exercises.id}` renderują się wtedy oba jako
+ * > `"id"`, więc podzapytanie cicho porównuje kolumnę samą ze sobą i oddaje
+ * > zero zamiast wyniku. Warunki budowane funkcjami (`eq`, `exists`, `count`,
+ * > `max`) kwalifikują kolumny **zawsze**, niezależnie od liczby tabel —
+ * > i tylko one są tu używane do korelacji. Ta sama pułapka nie dotyczy
+ * > `apps/api`, gdzie zapytania są w całości budowane funkcjami.
  */
 
 import { SYSTEM_USER_ID, type IsoDate } from '@alphapump/core';
@@ -21,7 +30,21 @@ import {
   workoutSets,
   type SqliteDatabase,
 } from '@alphapump/db/sqlite';
-import { aliasedTable, and, asc, count, eq, gte, isNotNull, isNull, ne, sql } from 'drizzle-orm';
+import {
+  aliasedTable,
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  exists,
+  gte,
+  isNotNull,
+  isNull,
+  max,
+  ne,
+  or,
+} from 'drizzle-orm';
 import { union } from 'drizzle-orm/sqlite-core';
 
 /**
@@ -172,39 +195,49 @@ function librarySourceCondition(source: LibrarySource) {
 /**
  * Biblioteka do wyboru ćwiczenia, z licznikiem serii użytkownika.
  *
- * Licznik jest podzapytaniem, a nie złączeniem: złączenie z seriami rozmnożyłoby
- * wiersze ćwiczeń, a `GROUP BY` po całej bibliotece kosztowałby więcej niż
- * policzenie tego, o co pytamy. Ćwiczenia używane wcześniej idą na górę —
- * przy „możliwie najmniejszej liczbie kroków do zapisania serii" to zwykle one
- * są tym, czego użytkownik szuka.
+ * Ćwiczenia używane wcześniej idą na górę — przy „możliwie najmniejszej liczbie
+ * kroków do zapisania serii" to zwykle one są tym, czego użytkownik szuka.
+ *
+ * Licznik i data ostatniego wykonania powstają z jednego złączenia z podzbiorem
+ * żywych serii użytkownika, zagregowanego po ćwiczeniu. Złączenie z **całą**
+ * tabelą serii rozmnożyłoby wiersze biblioteki, ale złączenie z podzapytaniem
+ * i `GROUP BY` daje jeden wiersz na ćwiczenie i jedno przejście po seriach
+ * zamiast dwóch podzapytań na wiersz.
  *
  * Filtr po tagu obejmuje tag główny **i** dodatkowe: w bibliotece tag jest
  * etykietą do przeglądania, a nie kryterium zaliczania serii do cyklu — tam
  * liczy się wyłącznie tag główny.
  */
 export function exerciseLibrary(db: SqliteDatabase, userId: string, filter: LibraryFilter = {}) {
-  const usage = sql<number>`(
-    select count(*) from ${workoutSets}
-    where ${workoutSets.exerciseId} = ${exercises.id}
-      and ${workoutSets.userId} = ${userId}
-      and ${workoutSets.deletedAt} is null
-  )`;
-
-  const lastPerformedOn = sql<IsoDate | null>`(
-    select max(${workoutSets.performedOn}) from ${workoutSets}
-    where ${workoutSets.exerciseId} = ${exercises.id}
-      and ${workoutSets.userId} = ${userId}
-      and ${workoutSets.deletedAt} is null
-  )`;
+  const mySets = db
+    .select({
+      id: workoutSets.id,
+      exerciseId: workoutSets.exerciseId,
+      performedOn: workoutSets.performedOn,
+    })
+    .from(workoutSets)
+    .where(and(eq(workoutSets.userId, userId), isNull(workoutSets.deletedAt)))
+    .as('my_sets');
 
   const tagged =
     filter.tagId == null
       ? undefined
-      : sql`(${exercises.primaryTagId} = ${filter.tagId} or exists (
-          select 1 from ${exerciseTags}
-          where ${exerciseTags.exerciseId} = ${exercises.id}
-            and ${exerciseTags.tagId} = ${filter.tagId}
-        ))`;
+      : or(
+          eq(exercises.primaryTagId, filter.tagId),
+          exists(
+            db
+              .select({ one: exerciseTags.tagId })
+              .from(exerciseTags)
+              .where(
+                and(
+                  eq(exerciseTags.exerciseId, exercises.id),
+                  eq(exerciseTags.tagId, filter.tagId),
+                ),
+              ),
+          ),
+        );
+
+  const setCount = count(mySets.id);
 
   return db
     .select({
@@ -215,13 +248,15 @@ export function exerciseLibrary(db: SqliteDatabase, userId: string, filter: Libr
       tagId: exercises.primaryTagId,
       tagName: tags.name,
       tagColor: tags.color,
-      setCount: usage.as('set_count'),
-      lastPerformedOn: lastPerformedOn.as('last_performed_on'),
+      setCount,
+      lastPerformedOn: max(mySets.performedOn),
     })
     .from(exercises)
     .innerJoin(tags, eq(tags.id, exercises.primaryTagId))
+    .leftJoin(mySets, eq(mySets.exerciseId, exercises.id))
     .where(and(isNull(exercises.deletedAt), librarySourceCondition(filter.source ?? 'all'), tagged))
-    .orderBy(sql`set_count desc`, asc(exercises.name));
+    .groupBy(exercises.id, tags.id)
+    .orderBy(desc(setCount), asc(exercises.name));
 }
 
 export type LibraryRow = Awaited<ReturnType<typeof exerciseLibrary>>[number];
