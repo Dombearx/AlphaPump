@@ -1,0 +1,50 @@
+/**
+ * Motyw panelu — ten sam ciemny kierunek co aplikacja mobilna.
+ *
+ * Kolory są zmiennymi, a nie klasami wpisanymi w komponenty, bo panel i aplikacja
+ * mają wyglądać jak jeden produkt. Tokeny nazywane rolą („powierzchnia", „obrys",
+ * „przygaszony"), a nie kolorem, żeby zmiana palety była zmianą w jednym miejscu.
+ *
+ * Panel jest tylko ciemny. Nie z lenistwa: specyfikacja wymaga dark theme
+ * w aplikacji, a druga paleta w narzędziu dla jednej osoby to podwojony koszt
+ * utrzymania spójności bez żadnej korzyści.
+ */
+
+@import 'tailwindcss';
+
+@theme {
+  --color-base: #0b0b0f;
+  --color-surface: #14141b;
+  --color-elevated: #1c1c26;
+  --color-border: #2a2a36;
+  --color-text: #f4f4f5;
+  --color-muted: #9b9baa;
+  --color-accent: #f97316;
+  --color-danger: #f05252;
+  --color-success: #34d399;
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-base);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Pola formularzy w ciemnym motywie: przeglądarka domyślnie rysuje je jasno. */
+input,
+select,
+textarea,
+button {
+  font: inherit;
+  color: inherit;
+}

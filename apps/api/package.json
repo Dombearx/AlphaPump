@@ -10,10 +10,15 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js",
     "dev": "node --watch --experimental-strip-types src/index.ts",
+    "export": "node dist/cli/export.js",
+    "import": "node dist/cli/import.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "clean": "rimraf dist .turbo"
+    "clean": "rimraf dist .turbo",
+    "export:dev": "node --experimental-strip-types src/cli/export.ts",
+    "import:dev": "node --experimental-strip-types src/cli/import.ts",
+    "drill": "node dist/cli/drill.js"
   },
   "dependencies": {
     "@alphapump/core": "workspace:*",
@@ -22,6 +27,8 @@
     "@better-auth/expo": "^1.6.26",
     "@hono/node-server": "^2.1.0",
     "@hono/zod-validator": "^0.9.0",
+    "@openrouter/ai-sdk-provider": "^3.0.0",
+    "ai": "^7.0.60",
     "better-auth": "^1.6.26",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.13.1",
@@ -31,6 +38,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.4",
+    "@electric-sql/pglite-pgvector": "^0.0.5",
     "@types/node": "^22.19.2",
     "@types/pg": "^8.15.6",
     "rimraf": "^6.0.1",

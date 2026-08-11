@@ -29,11 +29,57 @@ const environmentSchema = z.object({
   TRUSTED_ORIGINS: z.string().default(''),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
+
+  /* ------------------------------------------- warstwa semantyczna (etap 12) */
+
+  /**
+   * Wyłącznik **całej** warstwy semantycznej i LLM-owej. `false` cofa wykrywanie
+   * duplikatów do zachowania z etapu 8: ostrzeżenie liczone z samej pisowni.
+   * Tworzenie ćwiczeń działa dalej bez zmian — to jest kryterium ukończenia
+   * etapu 12 i dlatego wyłącznik jest jedną zmienną, a nie ćwiczeniem
+   * z komentowania kodu.
+   */
+  LLM_ENABLED: z.stringbool().default(true),
+  /** Bez klucza warstwa jest po prostu wyłączona — serwer wstaje normalnie. */
+  OPENROUTER_API_KEY: z.string().optional(),
+  /**
+   * Model embeddingów. Musi zwracać wektor o wymiarze `EMBEDDING_DIMENSIONS` —
+   * odpowiedź o innym wymiarze jest odrzucana, bo indeks HNSW ma wymiar wpisany
+   * w schemat.
+   */
+  EMBEDDING_MODEL: nonEmpty.default('qwen/qwen3-embedding-0.6b'),
+  /** Model re-rankera (warstwa 3). Generatywny, więc droższy i wolniejszy. */
+  RERANKER_MODEL: nonEmpty.default('google/gemini-2.5-flash'),
+  /**
+   * Osobny wyłącznik warstwy 3. Do znalezienia podobnych wystarczą embeddingi;
+   * model generatywny dokłada wyłącznie uzasadnienie i ocenę, więc jego
+   * wyłączenie zostawia funkcję działającą, tylko bez komentarza.
+   */
+  RERANKER_ENABLED: z.stringbool().default(true),
+  /**
+   * Limit czasu na wywołanie modelu. Krótki świadomie: wykrywanie duplikatów
+   * jest **podpowiedzią** przy tworzeniu ćwiczenia, więc lepiej jej nie pokazać
+   * niż kazać użytkownikowi czekać.
+   */
+  LLM_TIMEOUT_MS: z.coerce.number().int().min(500).max(60_000).default(8000),
 });
 
 export interface GoogleCredentials {
   clientId: string;
   clientSecret: string;
+}
+
+/**
+ * Konfiguracja warstwy semantycznej. `null` w `AppConfig.llm` znaczy „warstwa
+ * wyłączona" — i jest to stan w pełni obsługiwany, nie awaria konfiguracji.
+ */
+export interface LlmConfig {
+  apiKey: string;
+  embeddingModel: string;
+  rerankerModel: string;
+  /** `false` — działają warstwy 1 i 2, bez oceny i uzasadnienia od modelu. */
+  rerankerEnabled: boolean;
+  timeoutMs: number;
 }
 
 export interface AppConfig {
@@ -49,6 +95,12 @@ export interface AppConfig {
    * brak jednej metody nie może zablokować startu serwera.
    */
   google: GoogleCredentials | null;
+  /**
+   * `null`, gdy warstwa semantyczna jest wyłączona albo nie ma klucza
+   * OpenRoutera. Wykrywanie duplikatów wraca wtedy do warstwy leksykalnej, a
+   * tworzenie ćwiczeń działa bez zmian.
+   */
+  llm: LlmConfig | null;
 }
 
 export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -73,6 +125,21 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
         }
       : null;
 
+  // Brak klucza nie jest błędem konfiguracji, tylko wyłączoną warstwą. Serwer
+  // bez OpenRoutera ma działać w pełni — z ostrzeżeniem o duplikatach liczonym
+  // leksykalnie.
+  const apiKey = environmentVariables.OPENROUTER_API_KEY?.trim() ?? '';
+  const llm =
+    environmentVariables.LLM_ENABLED && apiKey.length > 0
+      ? {
+          apiKey,
+          embeddingModel: environmentVariables.EMBEDDING_MODEL,
+          rerankerModel: environmentVariables.RERANKER_MODEL,
+          rerankerEnabled: environmentVariables.RERANKER_ENABLED,
+          timeoutMs: environmentVariables.LLM_TIMEOUT_MS,
+        }
+      : null;
+
   return {
     nodeEnv: environmentVariables.NODE_ENV,
     host: environmentVariables.HOST,
@@ -82,5 +149,6 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
     baseUrl: environmentVariables.BETTER_AUTH_URL,
     trustedOrigins: [environmentVariables.BETTER_AUTH_URL, ...trustedOrigins],
     google,
+    llm,
   };
 }

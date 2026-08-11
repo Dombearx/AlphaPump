@@ -13,6 +13,13 @@
  * Typ logowania jest ustalany raz. Nie da się go zmienić edycją, bo historyczne
  * serie przestałyby pasować do własnego ćwiczenia — kto chce inny typ, tworzy
  * nowe ćwiczenie.
+ *
+ * Zapis dokłada jeszcze jedną rzecz, niewidoczną w odpowiedzi: **przeliczenie
+ * embeddingu** nazwy (etap 12). Dzieje się to po zapisie i nie ma prawa go
+ * wywrócić — ćwiczenie bez wektora jest normalnym stanem, znajdzie się warstwą
+ * leksykalną i wektor dostanie przy następnej edycji albo przy zadaniu
+ * porządkowym. Odwrotna kolejność, czyli zapis dopiero po odpowiedzi dostawcy
+ * modeli, łamałaby regułę „utworzenie ćwiczenia nigdy nie jest blokowane".
  */
 
 import { exerciseId, exerciseSchema, slug } from '@alphapump/core';
@@ -22,6 +29,7 @@ import { z } from 'zod';
 import { SYSTEM_USER } from '@alphapump/db';
 import type { AppDependencies, AppEnvironment, Principal } from '../context.js';
 import { toExerciseDto } from '../dto.js';
+import { NO_LAYERS, refreshEmbedding } from '../duplicates/index.js';
 import { conflict, forbidden, notFound } from '../errors.js';
 import { validateJson, validateParam, validateQuery } from '../middleware/validate.js';
 import type { RouteSpec } from '../openapi.js';
@@ -104,6 +112,7 @@ function assertMayModify(exercise: { authorId: string }, principal: Principal): 
 export function createExerciseRouter(dependencies: AppDependencies) {
   const router = new Hono<AppEnvironment>();
   const { db } = dependencies;
+  const layers = dependencies.duplicates ?? NO_LAYERS;
 
   const additionalTagsOf = async (ids: readonly string[]): Promise<Map<string, string[]>> => {
     if (ids.length === 0) return new Map();
@@ -214,6 +223,7 @@ export function createExerciseRouter(dependencies: AppDependencies) {
       .returning();
 
     await replaceAdditionalTags(id, input.additionalTagIds);
+    await refreshEmbedding(db, layers.embedder, id);
     return context.json(toExerciseDto(row!, input.additionalTagIds), 201);
   });
 
@@ -266,6 +276,10 @@ export function createExerciseRouter(dependencies: AppDependencies) {
         .returning();
 
       if (input.additionalTagIds) await replaceAdditionalTags(id, additionalTagIds);
+      // Nazwa albo tag główny mogły się zmienić, a wektor liczy się z obojga.
+      // `refreshEmbedding` sam rozpozna, że tekst źródłowy jest ten sam, i nie
+      // pojedzie po niego do dostawcy modeli.
+      await refreshEmbedding(db, layers.embedder, id);
       return context.json(toExerciseDto(row!, additionalTagIds));
     },
   );

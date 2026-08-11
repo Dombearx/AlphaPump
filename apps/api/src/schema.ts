@@ -10,6 +10,8 @@ export {
   apiKeys,
   cycleGoals,
   cycles,
+  duplicateCheckCache,
+  exerciseEmbeddings,
   exerciseRecords,
   exerciseTags,
   exercises,
@@ -25,6 +27,8 @@ import {
   apiKeys,
   cycleGoals,
   cycles,
+  duplicateCheckCache,
+  exerciseEmbeddings,
   exerciseRecords,
   exerciseTags,
   exercises,
@@ -48,6 +52,8 @@ export const schema = {
   cycles,
   cycleGoals,
   exerciseRecords,
+  exerciseEmbeddings,
+  duplicateCheckCache,
 } as const;
 
 export type Schema = typeof schema;

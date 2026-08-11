@@ -2,17 +2,38 @@
   "name": "@alphapump/admin",
   "version": "0.0.0",
   "private": true,
-  "description": "Panel administracyjny (Vite + React) — etap 13.",
+  "description": "Panel administracyjny AlphaPump (Vite + React + TanStack Router).",
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "clean": "rimraf dist .turbo"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/react": "~19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.5",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "rimraf": "^6.0.1",
+    "tailwind-merge": "^3.6.0",
+    "tailwindcss": "^4.3.3",
     "typescript": "catalog:",
+    "vite": "^8.2.1",
     "vitest": "catalog:"
+  },
+  "dependencies": {
+    "@alphapump/core": "workspace:*",
+    "@tanstack/react-query": "^5.101.4",
+    "@tanstack/react-router": "^1.170.25",
+    "better-auth": "^1.6.26",
+    "react": "19.2.3",
+    "react-dom": "^19.2.8",
+    "zod": "^4.4.3"
   }
 }

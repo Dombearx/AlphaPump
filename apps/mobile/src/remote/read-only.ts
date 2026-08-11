@@ -25,8 +25,10 @@
  */
 
 import {
+  duplicateCheckResponseSchema,
   globalRecordsResponseSchema,
   rankingResponseSchema,
+  type DuplicateCheckResponse,
   type GlobalRecord,
   type RankingEntry,
   type RankingMetric,
@@ -47,6 +49,16 @@ export interface RemoteReaderOptions {
 export interface RemoteReader {
   globalRecords(exerciseId: string): Promise<GlobalRecord[]>;
   ranking(metric: RankingMetric): Promise<RankingEntry[]>;
+  /**
+   * Dokładniejsze wykrywanie duplikatów ćwiczeń (etap 12).
+   *
+   * Trzeci odczyt sieciowy w aplikacji i jedyny, którego brak **nic nie psuje**:
+   * ostrzeżenie o podobnych ćwiczeniach liczy się lokalnie z pisowni i działa
+   * offline. Serwer dokłada do niego dopasowanie po znaczeniu („martwy ciąg"
+   * i „deadlift") oraz uzasadnienie od modelu — czyli trafność, nie funkcję.
+   * Dlatego wołający traktuje brak odpowiedzi jak brak wyniku, a nie jak awarię.
+   */
+  similarExercises(name: string, excludeId?: string | null): Promise<DuplicateCheckResponse>;
 }
 
 export function createRemoteReader(options: RemoteReaderOptions): RemoteReader {
@@ -96,6 +108,18 @@ export function createRemoteReader(options: RemoteReaderOptions): RemoteReader {
       const parsed = rankingResponseSchema.safeParse(body);
       if (!parsed.success) throw new SyncServerError('Odpowiedź rankingu ma nieznany kształt');
       return parsed.data.entries;
+    },
+
+    async similarExercises(name, excludeId = null) {
+      const query = new URLSearchParams({ name });
+      if (excludeId !== null) query.set('excludeId', excludeId);
+
+      const body = await read(`/exercises/similar?${query.toString()}`);
+      const parsed = duplicateCheckResponseSchema.safeParse(body);
+      if (!parsed.success) {
+        throw new SyncServerError('Odpowiedź o podobnych ćwiczeniach ma nieznany kształt');
+      }
+      return parsed.data;
     },
   };
 }

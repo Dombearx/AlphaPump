@@ -44,6 +44,12 @@ export interface LocalAuthor {
   userId: string;
   deviceId: string;
   role: UserRole;
+  /**
+   * Adres konta. Potrzebny w jednym miejscu — przy imporcie archiwum: to po nim
+   * rozpoznaje się, że plik powstał na tym samym koncie, choćby jego
+   * identyfikator zmienił się po ponownym zalogowaniu.
+   */
+  email: string;
 }
 
 export function useLocalAuthor(): LocalAuthor | null {
@@ -53,5 +59,12 @@ export function useLocalAuthor(): LocalAuthor | null {
   const account = useLiveQuery(localUser(db, userId));
 
   if (userId.length === 0 || deviceId === null) return null;
-  return { userId, deviceId, role: account.data[0]?.role ?? 'user' };
+  return {
+    userId,
+    deviceId,
+    role: account.data[0]?.role ?? 'user',
+    // Adres bierzemy z sesji: baza lokalna trzyma go tylko dla właściciela
+    // telefonu i nie ma go w zapytaniu o rolę.
+    email: session?.user.email ?? '',
+  };
 }
