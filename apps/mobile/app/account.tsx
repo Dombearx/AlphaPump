@@ -72,6 +72,21 @@ export default function AccountRoute() {
           </View>
         </Card>
 
+        <Card className="gap-2">
+          <SectionTitle>Tokeny API</SectionTitle>
+          <Text className="text-muted">
+            Dla narzędzi poza aplikacją — na przykład bota zapisującego serie. Możesz mieć ich
+            wiele.
+          </Text>
+          <View className="mt-1">
+            <Button
+              variant="secondary"
+              label="Zarządzaj tokenami"
+              onPress={() => router.push('/api-keys')}
+            />
+          </View>
+        </Card>
+
         <Button variant="danger" label="Wyloguj" onPress={() => void signOut()} />
       </ScrollView>
     </SafeAreaView>

@@ -9,15 +9,12 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js",
-    "dev": "node --watch --experimental-strip-types src/index.ts",
     "export": "node dist/cli/export.js",
     "import": "node dist/cli/import.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "clean": "rimraf dist .turbo",
-    "export:dev": "node --experimental-strip-types src/cli/export.ts",
-    "import:dev": "node --experimental-strip-types src/cli/import.ts",
     "drill": "node dist/cli/drill.js"
   },
   "dependencies": {

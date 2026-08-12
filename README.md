@@ -53,7 +53,9 @@ pnpm install
 | `pnpm lint:fix`  | to samo, z automatyczną poprawą                      |
 
 Te same cztery kroki wykonuje CI (`.github/workflows/ci.yml`) na każdym pull
-requeście, w tej samej kolejności i tymi samymi poleceniami.
+requeście, tymi samymi poleceniami. Kolejność tam jest odwrotna do tabeli —
+`lint`, `typecheck`, `build`, `test` — bo najtańsze sprawdzenie ma odbić
+zepsuty PR jako pierwsze, zanim runner zdąży cokolwiek zbudować.
 
 ### Konfiguracja: pliki `.env` i klucze API
 
@@ -172,10 +174,13 @@ pnpm --filter @alphapump/api build
 node --env-file=apps/api/.env apps/api/dist/index.js
 ```
 
-Pętla deweloperska to na razie przebudowa i restart. Skrypt `dev`
-(`node --watch --experimental-strip-types src/index.ts`) na Node 22 nie wstaje:
-importy w źródłach mają rozszerzenia `.js`, a stripowanie typów nie odwzorowuje
-ich na pliki `.ts` — kończy się `ERR_MODULE_NOT_FOUND` na pierwszym imporcie.
+Pętla deweloperska to przebudowa i restart, a skryptu `dev` **nie ma świadomie**.
+Wariant `node --watch --experimental-strip-types src/index.ts` na Node 22 nie
+wstaje: importy w źródłach mają rozszerzenia `.js`, a stripowanie typów nie
+odwzorowuje ich na pliki `.ts` — kończy się `ERR_MODULE_NOT_FOUND` na pierwszym
+imporcie. Dotyczyło to tak samo CLI eksportu i importu, więc ich warianty `:dev`
+też zniknęły; `pnpm --filter @alphapump/api build` trwa sekundy i nie kłamie
+o tym, co pojedzie na serwer.
 
 **5. Dane startowe.** Start serwera wykonuje migracje, ale **nie** seed — świeża
 baza nie ma ani konta systemowego, ani ćwiczeń wbudowanych. Do testów manualnych
@@ -343,6 +348,30 @@ pliki `.env` i klucze API").
 Uwierzytelnienie idzie dwiema drogami: nagłówkiem `Authorization: Bearer …`
 (sesja, tak korzysta aplikacja) albo `x-api-key` (token API, tak korzysta bot
 Discord). Serie są prywatne — także administrator nie widzi cudzej historii.
+
+#### Tokeny API
+
+Każdy użytkownik może mieć ich wiele. Wydaje je plugin `apiKey` better-autha,
+a w aplikacji obsługuje ekran **Konto → Tokeny API**: nazwa, lista wydanych
+tokenów z datą ostatniego użycia i unieważnianie. Pełny token pokazuje się
+**tylko raz**, w odpowiedzi na utworzenie — potem serwer zna już wyłącznie jego
+skrót i kilka pierwszych znaków, więc zgubiony token się unieważnia i wydaje
+nowy, a nie odzyskuje.
+
+Ten sam mechanizm bez aplikacji, na przykład przy stawianiu bota:
+
+```
+curl -s localhost:3000/api/auth/api-key/create \
+  -H 'Content-Type: application/json' -H "Authorization: Bearer <token-sesji>" \
+  -d '{"name":"bot Discord"}'
+
+curl -s localhost:3000/sets -H "x-api-key: <token>"
+```
+
+Ekran tokenów jest — obok rekordów globalnych i rankingów — jednym z nielicznych
+miejsc czekających na sieć, i z tego samego powodu: token weryfikuje serwer,
+więc tylko on wie, czy jeszcze żyje. Lista trzymana lokalnie kłamałaby po
+unieważnieniu z innego urządzenia.
 
 ### Rekordy globalne i rankingi
 
@@ -560,14 +589,24 @@ minimalistycznych wykresach". Siatka kalendarza i punkty wykresu powstają
 w czystych modułach (`src/calendar.ts`, `src/chart-data.ts`), więc jedno i drugie
 ma testy bez renderowania ekranu.
 
-#### Rekordy globalne i rankingi na telefonie
+#### Ekrany, które czekają na sieć
 
-To jedyne dwa miejsca w aplikacji, które czekają na sieć — i jedyne, które mogą:
-liczą się z serii wszystkich użytkowników, a cudze serie są prywatne i nigdy nie
-zjadą na telefon. Odczyt idzie przez `src/remote/`, bez cache'u i bez outboxu,
-a brak łączności pokazujemy jako spokojne „offline" z przyciskiem ponowienia —
-tymi samymi klasami błędów co synchronizacja. Reszta aplikacji, łącznie
-z rekordami indywidualnymi, dalej działa w trybie samolotowym.
+Są trzy i każdy z tego samego powodu: pokazują **stan serwera**, którego nie da
+się policzyć ani przechować lokalnie.
+
+| Ekran                       | Dlaczego nie działa offline                                    |
+| --------------------------- | -------------------------------------------------------------- |
+| Rekordy globalne, rankingi  | liczą się z serii wszystkich, a cudze serie nigdy nie zjadą na telefon |
+| Tokeny API                  | token weryfikuje serwer i tylko on wie, czy jeszcze żyje         |
+
+Rekordy i rankingi czyta `src/remote/` — warstwa **wyłącznie do odczytu**, bez
+cache'u i bez outboxu. Tokeny mają własną ścieżkę (`src/screens/api-keys.tsx`),
+bo są jedynym zapisem sieciowym poza synchronizacją, a ich lista trzymana
+lokalnie kłamałaby po unieważnieniu tokenu z innego urządzenia.
+
+Wszystkie trzy pokazują brak łączności jako spokojne „offline" z przyciskiem
+ponowienia — tymi samymi klasami błędów co synchronizacja. Reszta aplikacji,
+łącznie z rekordami indywidualnymi, dalej działa w trybie samolotowym.
 
 #### Ostrzeżenie o duplikacie i transfer danych
 
@@ -609,9 +648,10 @@ dwukrotnie, do godzinnego sufitu.
 
 Telefon rozmawia z API zwykłym `fetch`em (`src/sync/transport.ts`), a odpowiedzi
 sprawdza schematami Zod z `@alphapump/core` — tymi samymi, którymi serwer
-waliduje własne wyjście. Klient RPC z `@alphapump/api-client` czeka na panel
-administracyjny: wciągnięcie typów serwera do aplikacji dołożyłoby zależność
-między telefonem a backendem, a kontrakt i tak jest już opisany schematami.
+waliduje własne wyjście. Z `@alphapump/api-client` nie korzysta i nie skorzysta:
+kontrakt jest już opisany schematami, a klient RPC dołożyłby zależność telefonu
+od typów serwera, nie dając nowej gwarancji — dokładnie ten sam wniosek, do
+którego doszedł panel administracyjny (patrz „Panel administracyjny").
 
 Osobny workflow (`.github/workflows/ios-simulator.yml`) kompiluje aplikację na
 symulator iOS. Buildy na symulator jako jedyne nie wymagają płatnego konta Apple
