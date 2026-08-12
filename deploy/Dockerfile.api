@@ -39,8 +39,13 @@ COPY packages/db/package.json packages/db/
 
 # --------------------------------------------------------------- budowanie ---
 FROM manifests AS build
+# `--ignore-scripts` również tutaj, nie tylko w warstwie końcowej. Wirtualny
+# magazyn pnpm dostaje `better-sqlite3` (patrz komentarz przy warstwie
+# uruchomieniowej), a jego skrypt instalacyjny kompiluje moduł natywny — czego
+# `node:alpine` nie umie i nie ma umieć. Do kompilacji TypeScriptu żaden skrypt
+# instalacyjny nie jest potrzebny.
 RUN --mount=type=cache,id=alphapump-pnpm,target=/pnpm/store \
-    pnpm install --frozen-lockfile --filter "@alphapump/api..."
+    pnpm install --frozen-lockfile --filter "@alphapump/api..." --ignore-scripts
 
 COPY tsconfig.base.json ./
 COPY packages/core packages/core

@@ -34,8 +34,13 @@ COPY packages/db/package.json packages/db/
 
 # --------------------------------------------------------------- budowanie ---
 FROM manifests AS build
+# `--ignore-scripts`: wirtualny magazyn pnpm dostaje `better-sqlite3` (zależność
+# deweloperską spoza tego filtra, wciąganą przez rozwiązywanie zależności
+# równorzędnych `better-auth`), a jego skrypt instalacyjny kompiluje moduł
+# natywny — czego `node:alpine` nie umie. Vite go nie potrzebuje: rolldown
+# przychodzi z gotowym plikiem binarnym w zależności opcjonalnej.
 RUN --mount=type=cache,id=alphapump-pnpm,target=/pnpm/store \
-    pnpm install --frozen-lockfile --filter "@alphapump/admin..."
+    pnpm install --frozen-lockfile --filter "@alphapump/admin..." --ignore-scripts
 
 COPY tsconfig.base.json ./
 COPY packages/core packages/core

@@ -103,7 +103,11 @@ services:
       # zmiana w `Caddyfile` nie jest do tego potrzebna.
       - ${APK_DIR:-./apk}:/srv/pobierz:ro
     healthcheck:
-      test: ['CMD', 'wget', '--spider', '--quiet', 'http://127.0.0.1/health']
+      # `wget -q -O -` zamiast `--spider`: obraz Caddy'ego stoi na Alpine,
+      # a wget z busyboksa ma krótkie flagi zawsze, długie zależnie od budowy.
+      # Żądanie idzie przez Caddy'ego do `/health`, więc „zdrowy" znaczy tu
+      # także „proxy do API działa", a nie tylko „proces słucha na porcie".
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1/health']
       interval: 10s
       timeout: 5s
       retries: 6
