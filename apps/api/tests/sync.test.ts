@@ -535,6 +535,54 @@ describe('synchronizacja', () => {
       expect(response.body.results[0]?.decision).toBe('rejected');
     });
 
+    it('przyjmuje zmianę nazwy tagu, choć jego id wynika z nazwy poprzedniej', async () => {
+      // Identyfikator tagu wylicza się z nazwy **przy tworzeniu** i po zmianie
+      // nazwy przestaje jej odpowiadać — celowo, bo inaczej poprawienie literówki
+      // osierociłoby wszystkie ćwiczenia z tym tagiem. Gdyby sprawdzenie „id
+      // wynika z nazwy" obejmowało też edycję, raz przemianowany tag nie dałby
+      // się już nigdy zsynchronizować.
+      await harness.promoteToAdmin(user);
+
+      const response = await phone.push({
+        tags: [
+          {
+            id: tagId('Biceps'),
+            name: 'Bicepsy',
+            createdAt: T.early,
+            updatedAt: T.late,
+            deletedAt: null,
+          },
+        ],
+      });
+
+      expect(response.body.results[0]?.decision).toBe('update');
+      expect(response.body.changes.tags[0]?.name).toBe('Bicepsy');
+    });
+
+    it('nie pozwala usunąć tagu używanego przez ćwiczenia', async () => {
+      // Ta sama reguła co przy `DELETE /tags/:id`. Push nie może być wejściem,
+      // przez które ćwiczenia tracą tag główny — nawet dla administratora.
+      await harness.promoteToAdmin(user);
+
+      const response = await phone.push({
+        tags: [
+          {
+            id: tagId('Biceps'),
+            name: 'Biceps',
+            createdAt: T.early,
+            updatedAt: T.late,
+            deletedAt: T.late,
+          },
+        ],
+      });
+
+      expect(response.body.results[0]?.decision).toBe('rejected');
+      expect(response.body.results[0]?.reason).toContain('używany');
+      // Odpowiedź niesie stan serwerowy, więc telefon nie zostaje z tombstonem,
+      // który przegrał.
+      expect(response.body.changes.tags[0]?.deletedAt).toBeNull();
+    });
+
     it('odmawia zmiany typu logowania ćwiczenia', async () => {
       const name = 'Wymach odważnikiem';
       const id = exerciseId(user.id, name);

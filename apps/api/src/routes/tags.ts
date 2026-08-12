@@ -21,8 +21,9 @@ import { validateJson, validateParam } from '../middleware/validate.js';
 import { requireAdmin } from '../middleware/authenticate.js';
 import type { RouteSpec } from '../openapi.js';
 import { createTagBodySchema, idParamSchema, updateTagBodySchema } from '../schemas.js';
-import { exerciseTags, exercises, tags } from '../schema.js';
+import { tags } from '../schema.js';
 import { stampDelete, stampWrite } from '../sync-columns.js';
+import { TAG_IN_USE_MESSAGE, isTagInUse } from '../tag-usage.js';
 import { tagSchema } from '@alphapump/core';
 
 const tagListSchema = z.array(tagSchema);
@@ -151,24 +152,9 @@ export function createTagRouter(dependencies: AppDependencies) {
     const [existing] = await db.select().from(tags).where(eq(tags.id, id)).limit(1);
     if (!existing || existing.deletedAt !== null) throw notFound('Tag nie istnieje');
 
-    const [usedAsPrimary] = await db
-      .select({ id: exercises.id })
-      .from(exercises)
-      .where(and(eq(exercises.primaryTagId, id), isNull(exercises.deletedAt)))
-      .limit(1);
-    const [usedAsAdditional] = await db
-      .select({ exerciseId: exerciseTags.exerciseId })
-      .from(exerciseTags)
-      .innerJoin(
-        exercises,
-        and(eq(exercises.id, exerciseTags.exerciseId), isNull(exercises.deletedAt)),
-      )
-      .where(eq(exerciseTags.tagId, id))
-      .limit(1);
-
-    if (usedAsPrimary || usedAsAdditional) {
-      throw conflict('Tag jest używany przez ćwiczenia i nie może zostać usunięty');
-    }
+    // Ta sama reguła obowiązuje tombstone przyjeżdżający pushem — dlatego
+    // predykat mieszka osobno, a nie w ciele tego handlera.
+    if (await isTagInUse(db, id)) throw conflict(TAG_IN_USE_MESSAGE);
 
     await db.update(tags).set(stampDelete()).where(eq(tags.id, id));
     return context.body(null, 204);

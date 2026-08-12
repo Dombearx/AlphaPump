@@ -51,18 +51,35 @@ ok. 40 linii — ale to te 40 linii, które muszą być bezbłędne.
 
 ## Aplikacja mobilna
 
-Expo SDK 57 (React Native 0.85, React 19.2).
+Expo SDK 57 (React Native 0.86, React 19.2).
 
-| Warstwa      | Wybór                              | Uzasadnienie                                            |
-| ------------ | ---------------------------------- | ------------------------------------------------------- |
-| Nawigacja    | Expo Router                        | file-based, deep linking bez konfiguracji               |
-| Baza lokalna | expo-sqlite + Drizzle              | `useLiveQuery` — zapis do bazy sam przerysowuje UI      |
-| Styling      | NativeWind + react-native-reusables | dark theme i spójne komponenty z pudełka                |
-| Listy        | FlashList                          | historia serii bywa długa                               |
-| Wykresy      | victory-native XL (Skia)           | minimalistyczne i płynne, dokładnie w stylu ze spec     |
-| Animacje     | Reanimated + Gesture Handler       | zmiana kolejności serii w obrębie dnia                  |
-| Auth         | better-auth + `@better-auth/expo`  | wspólny mechanizm z backendem                           |
-| Buildy       | EAS Build + EAS Update             | poprawki OTA bez przechodzenia przez sklep              |
+| Warstwa      | Wybór                             | Uzasadnienie                                             |
+| ------------ | --------------------------------- | -------------------------------------------------------- |
+| Nawigacja    | Expo Router                       | file-based, deep linking bez konfiguracji                |
+| Baza lokalna | expo-sqlite + Drizzle             | `useLiveQuery` — zapis do bazy sam przerysowuje UI       |
+| Styling      | NativeWind + własne prymitywy     | dark theme; wspólne komponenty w `src/ui/primitives.tsx`  |
+| Listy        | `ScrollView`                      | dzień to kilkanaście serii, biblioteka kilkaset ćwiczeń   |
+| Wykresy      | własny wykres słupkowy na `View`  | „proste, minimalistyczne wykresy" bez modułu natywnego    |
+| Gesty        | Gesture Handler                   | wymagany przez Expo Router                                |
+| Auth         | better-auth + `@better-auth/expo` | wspólny mechanizm z backendem                             |
+| Buildy       | `expo prebuild` + projekt natywny | wydanie z projektu natywnego; EAS niekonfigurowane        |
+
+> **Trzy wybory z tej tabeli zmieniły się przy realizacji** i tabela pokazuje
+> stan faktyczny, nie pierwotny zamiar. Planowane były react-native-reusables,
+> FlashList i victory-native XL; nie wszedł żaden z nich. Powód jest wspólny:
+> **każdy dokładał moduł natywny albo warstwę komponentów do utrzymania na obu
+> platformach, nie odpowiadając na potrzebę, która faktycznie istnieje w tym
+> produkcie.** Ekran dnia ma kilkanaście wierszy, więc wirtualizacja FlashListy
+> nie ma czego przyspieszyć; specyfikacja mówi o „prostych, minimalistycznych
+> wykresach", a słupek o wysokości proporcjonalnej do wartości rysuje się zwykłym
+> `View`; własne prymitywy okazały się krótsze niż dopasowywanie cudzego zestawu
+> do jednego, ciemnego motywu. Wraca to na stół, gdy pojawi się ekran, którego
+> tak się nie da zrobić.
+>
+> **Konfiguracji EAS repozytorium nie zawiera.** `expo prebuild` generuje projekt
+> natywny i to z niego idzie wydanie na Androida. EAS Build i EAS Update wchodzą
+> razem z etapem 15, bo dopiero tam pojawia się dystrybucja; do tego czasu byłyby
+> konfiguracją bez odbiorcy.
 
 ### Dlaczego `useLiveQuery` ma znaczenie
 
@@ -77,7 +94,10 @@ Dwie pułapki do zapamiętania:
 - znany bug: `useLiveQuery` nie odświeża komponentu, gdy zapytanie zwraca zero
   wierszy ([drizzle-orm#2620](https://github.com/drizzle-team/drizzle-orm/issues/2620)).
 
-Stan czysto UI-owy (filtry, otwarte modale) trzyma Zustand. Dane siedzą w SQLite.
+Dane siedzą w SQLite, a stan czysto UI-owy — wybrany filtr, otwarty formularz —
+okazał się zawsze lokalny dla jednego ekranu, więc trzyma go `useState`.
+Biblioteki do stanu globalnego (rozważany był Zustand) w projekcie nie ma:
+przy źródle prawdy w bazie nie zostało nic, co musiałoby żyć ponad ekranem.
 
 ## iOS — odłożone, ale nie zamknięte
 
@@ -96,8 +116,10 @@ Utrzymanie otwartych drzwi kosztuje trzy rzeczy:
   zbudowanie w chmurze EAS — nie, a to kompilacja wyłapuje regresje.
 - **Sprawdzanie wsparcia iOS przy doborze bibliotek.** Tania dyscyplina, droga
   do nadrobienia wstecz.
-- **Konfiguracja ATS w `app.json` od razu**, obok androidowej. Jeden blok, który
-  inaczej zostanie zapomniany na rok.
+- **Konfiguracja ATS od razu**, obok androidowej. Oba wyjątki wyliczają się
+  z jednego adresu API w `apps/mobile/config/network.js`, więc nie ma jak ustawić
+  jednego i przeoczyć drugiego — a osobno zapomniany blok iOS-owy leżałby
+  niezauważony do pierwszego buildu na tę platformę.
 
 Gdy przyjdzie czas: konto Apple Developer (99 USD rocznie), poświadczenia
 podpisywania w EAS, dystrybucja przez TestFlight. Bez przepisywania kodu.
@@ -356,7 +378,14 @@ API nie jest wystawione na publiczny internet.
 
 Docker Compose: PostgreSQL 17 (z `pgvector` i `pg_trgm`), API oraz panel admina
 za Caddy pełniącym rolę zwykłego reverse proxy, bez TLS. CI na GitHub Actions.
-Testy: Vitest dla `core` i API, Maestro dla E2E mobilnego.
+Testy: Vitest we wszystkich pakietach — `core` i `db` jednostkowo, API
+integracyjnie na PGlite w procesie, a w aplikacji mobilnej i w panelu na czystych
+modułach (siatka kalendarza, punkty wykresu, silnik synchronizacji, wyliczanie
+wyjątków ATS). E2E na urządzeniu — rozważane było Maestro — w repozytorium **nie
+ma**: wymaga uruchomionego emulatora i zbudowanej aplikacji, więc na runnerze
+kosztuje kilkanaście minut na przebieg, a przepływy, które miałoby pilnować,
+stoją na modułach pokrytych już jednostkowo. Wchodzi razem z etapem 15, gdy
+aplikację będzie się faktycznie wydawać.
 
 ### TLS — świadomie pominięty w MVP
 
@@ -557,9 +586,13 @@ jest tu wymaganiem twardym.
 
 ## Otwarte kwestie
 
-- Wybór konkretnego modelu embeddingów w OpenRouter (kandydaci: Qwen3 Embedding,
-  Cohere Embed v4 — oba wielojęzyczne, co ma znaczenie przy polskich nazwach
-  ćwiczeń). Warto zmierzyć na kilkudziesięciu realnych parach nazw, zanim
-  zapadnie decyzja.
+- **Model embeddingów jest wybrany domyślnie, ale niezmierzony.** Domyślną
+  wartością jest `qwen/qwen3-embedding-0.6b` (wielojęzyczny, 1024 wymiary —
+  tyle ma kolumna), a `EMBEDDING_MODEL` pozwala go podmienić bez zmiany kodu.
+  Pomiaru na kilkudziesięciu realnych parach nazw nie wykonano; kandydatem do
+  porównania pozostaje Cohere Embed v4. Zmiana na model o **innym wymiarze**
+  jest migracją, nie zmianą konfiguracji — indeks HNSW ma wymiar wpisany
+  w definicję kolumny.
 - Termin wejścia iOS i moment zakupu konta Apple Developer — patrz sekcja
   „iOS — odłożone, ale nie zamknięte".
+- Testy E2E aplikacji na urządzeniu — patrz „Infrastruktura".

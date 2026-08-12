@@ -47,6 +47,7 @@ import type { Principal } from '../context.js';
 import type { Database } from '../db.js';
 import { cycleGoals, cycles, exerciseTags, exercises, tags, workoutSets } from '../schema.js';
 import { nextServerSeq } from '../sync-columns.js';
+import { TAG_IN_USE_MESSAGE, isTagInUse } from '../tag-usage.js';
 import { emptyScope, noteAffectedSet, type AffectedScope } from './derived.js';
 import {
   revisionOf,
@@ -136,6 +137,15 @@ export async function applyPush(
     const name = incoming.name;
     const newSlug = slug(name);
 
+    // „Usunięcie tagu używanego przez ćwiczenia jest zabronione" obowiązuje tak
+    // samo tutaj, jak przy `DELETE /tags/:id`. Bez tego push byłby wejściem,
+    // przez które reguła nie obowiązuje, a ćwiczenia zostałyby z tagiem, którego
+    // dla użytkownika już nie ma.
+    if (decision === 'delete' && (await isTagInUse(db, incoming.id))) {
+      emit('rejected', TAG_IN_USE_MESSAGE);
+      continue;
+    }
+
     if (decision !== 'delete') {
       // Tag jest bytem globalnym i jego identyfikator wynika ze sluga nazwy.
       // Wiersz z tym samym slugiem, ale innym id, oznacza klienta, który zbudował
@@ -150,7 +160,12 @@ export async function applyPush(
         changes.tags.push(toSyncedTagDto(collision));
         continue;
       }
-      if (incoming.id !== deterministicTagId(name)) {
+      // Identyfikator wynika z nazwy **przy tworzeniu** i tylko wtedy jest
+      // sprawdzany — dokładnie jak przy ćwiczeniach. Zmiana nazwy tagu zostawia
+      // id nietknięte (inaczej poprawienie literówki osierociłoby ćwiczenia),
+      // więc żądanie tej zgodności od edycji odrzucałoby każdy późniejszy zapis
+      // raz przemianowanego tagu.
+      if (decision === 'insert' && incoming.id !== deterministicTagId(name)) {
         record('tag', incoming.id, 'rejected', 'Identyfikator tagu nie wynika z jego nazwy');
         continue;
       }
