@@ -29,6 +29,8 @@ packages/
   core/         logika domenowa, bez I/O      — etapy 1 ✔, 4 ✔, 8 ✔, 9 ✔, 11 ✔, 12 ✔, 13 ✔ i 14 ✔
   db/           schematy Drizzle: PG + SQLite — etapy 2 ✔, 11 ✔ i 12 ✔
   api-client/   typowany klient (Hono RPC)    — nieużywany: patrz „Panel administracyjny"
+deploy/         obrazy, Compose, Caddy        — etap 15 ✔
+scripts/        kopie zapasowe i próba odtworzenia — etap 14 ✔
 ```
 
 `packages/core` jest sercem projektu: front Pareto, cykle, podpowiedzi,
@@ -56,6 +58,16 @@ Te same cztery kroki wykonuje CI (`.github/workflows/ci.yml`) na każdym pull
 requeście, tymi samymi poleceniami. Kolejność tam jest odwrotna do tabeli —
 `lint`, `typecheck`, `build`, `test` — bo najtańsze sprawdzenie ma odbić
 zepsuty PR jako pierwsze, zanim runner zdąży cokolwiek zbudować.
+
+Obok niego chodzą cztery zadania, każde pilnujące czegoś, czego `pnpm test`
+złapać nie może:
+
+| Zadanie | Kiedy | Czego pilnuje |
+| ------- | ----- | ------------- |
+| `ios-simulator.yml` | PR dotykający aplikacji | że projekt na iOS wciąż się buduje, mimo że wydanie idzie na Androida |
+| `backup-restore.yml` | co miesiąc i przy zmianie kodu kopii | że kopia daje się odtworzyć, a dane po odtworzeniu zgadzają się z oryginałem |
+| `deploy-stack.yml` | PR dotykający wdrożenia, backendu lub panelu | że stos z `deploy/` wstaje na czystej bazie i odpowiada przez Caddy'ego |
+| `android-release.yml` | ręcznie i przy tagu `v*` | wydanie pliku `.apk` dla grupy |
 
 ### Konfiguracja: pliki `.env` i klucze API
 
@@ -131,12 +143,21 @@ Skrypty z `scripts/` nie czytają `.env`; zmienne biorą ze środowiska.
 
 | Zmienna | Gdzie | Skąd wziąć |
 | ------- | ----- | ---------- |
-| `DATABASE_URL`, `BETTER_AUTH_SECRET` | wszystkie skrypty | jak w konfiguracji API — skrypty wołają jego CLI |
+| `DATABASE_URL`, `BETTER_AUTH_SECRET` | skrypty wołające CLI z repozytorium | jak w konfiguracji API |
 | `AGE_RECIPIENTS` | `backup.sh` | klucze **publiczne** `age` po przecinku (`age-keygen`): główny i CI |
 | `RCLONE_REMOTE` | `backup.sh` | zdalny katalog po `rclone config`, np. `gdrive:alphapump-backups` |
 | `RETENTION_DAYS`, `BACKUP_PREFIX` | `backup.sh` | domyślnie `90` i `alphapump` |
+| `ALPHAPUMP_EXPORT_CMD` | `backup.sh` | polecenie wypisujące archiwum na stdout — wzór w `deploy/backup.env.example` |
 | `AGE_IDENTITY` | `restore.sh` | plik z kluczem **prywatnym** — z menedżera haseł, nigdy z minipc |
+| `ALPHAPUMP_IMPORT_CMD` | `restore.sh` | polecenie czytające archiwum ze stdin |
 | `RESTORE_DATABASE_URL` | `backup-drill.sh` | czysta baza docelowa próby |
+
+Dwie ostatnie zmienne istnieją dlatego, że **na minipc gospodarz nie ma dostępu
+do bazy**: Postgres nie wystawia portu, jest widoczny wyłącznie w sieci Compose.
+Eksport i import idą więc wewnątrz kontenera API (`docker compose exec`),
+a szyfrowanie i wysyłka zostają na gospodarzu, bo to tam leżą klucz `age`
+i konfiguracja rclone. Gdy zmiennych nie ma, skrypty wołają CLI z repozytorium
+tak jak dotąd — i wtedy potrzebują `DATABASE_URL`.
 
 Po stronie repozytorium jest jeden sekret: `AGE_CI_IDENTITY` (comiesięczna próba
 odtworzenia). Bez niego próba nadal przechodzi — na kluczu jednorazowym.
@@ -234,72 +255,238 @@ psql "postgres://alphapump:alphapump@localhost:5432/alphapump" \
 w procesie, a warstwy modelowe są w testach podstawione atrapami. `pnpm test`
 działa na czystej maszynie i dokładnie to robi CI.
 
-### Uruchomienie produkcyjne
+### Wdrożenie
 
-Docelowa infrastruktura — minipc w sieci NetBird, Docker Compose z PostgreSQL 17
-(pgvector, `pg_trgm`), API i panelem za Caddym, bez TLS — jest opisana
-w [`docs/stack_technologiczny.md`](docs/stack_technologiczny.md). Plików Compose'a
-ani Caddyfile'a w repozytorium jeszcze nie ma; poniżej jest to, co wynika z kodu.
+Docelowa infrastruktura to minipc w sieci NetBird: Docker Compose z PostgreSQL 17
+(pgvector, `pg_trgm`), API oraz panelem za Caddym, bez TLS. *Dlaczego* akurat tak
+— a zwłaszcza dlaczego bez certyfikatu — mówi
+[`docs/stack_technologiczny.md`](docs/stack_technologiczny.md). Tutaj jest samo
+*jak*.
 
-**1. Build.** Ten sam, który przechodzi CI:
+Wszystko, co potrzebne, leży w `deploy/`:
 
-```
-pnpm install --frozen-lockfile
-pnpm build
-```
+| Plik | Rola |
+| ---- | ---- |
+| `docker-compose.yml` | trzy usługi: `db`, `api`, `web` |
+| `Dockerfile.api` | obraz API — instalacja produkcyjna plus zbudowane `dist/` |
+| `Dockerfile.web` | Caddy z wpieczonym panelem |
+| `Caddyfile` | rozdział ruchu między API a panel |
+| `.env.example` | wzór konfiguracji stosu |
+| `backup.env.example`, `crontab.example` | wzory dla crona kopii zapasowych |
+| `smoke.sh` | sprawdzenie działającego stosu z zewnątrz |
 
-**2. API.**
+Kontenery są trzy, nie cztery: panel to zbiór plików statycznych, a nie proces,
+więc jest wpieczony w obraz Caddy'ego. Osobny kontener musiałby albo uruchomić
+drugi serwer HTTP, albo podać pliki wolumenem — i wtedy aktualizacja panelu
+zależałaby od kolejności startu.
 
-```
-NODE_ENV=production node apps/api/dist/index.js
-```
+#### Zanim zaczniesz
 
-Zmienne wchodzą ze **środowiska procesu** — `env_file:` w Compose albo
-`EnvironmentFile=` w systemd. Flaga `--env-file` jest wygodą dewelopera; sekret
-produkcyjny nie jest plikiem leżącym obok kodu.
+Na minipc: Docker z wtyczką Compose, `git`, a do kopii zapasowych `age`
+i `rclone`. W VPN: NetBird uruchomiony i minipc widoczny z telefonów. Adres
+minipc w sieci NetBird (`ip -4 addr show wt0` albo panel NetBirda) jest tą samą
+wartością, która wejdzie do `BETTER_AUTH_URL` i do `EXPO_PUBLIC_API_URL` przy
+budowaniu aplikacji — pomyłka tutaj kończy się aplikacją, która wygląda
+poprawnie i nie łączy się z niczym.
 
-Migracje wykonują się przed przyjęciem pierwszego żądania, więc wdrożenie to
-podmiana obrazu i restart. Seed przy starcie nie wchodzi: czysta baza dostaje
-konto systemowe i ćwiczenia wbudowane pierwszym importem — `dist/cli/import.js`
-albo `scripts/restore.sh`, oba uruchamiają migracje i seed przed wczytaniem
-archiwum.
+Dostęp do internetu jest minipc potrzebny (obrazy Dockera, klucze publiczne
+Google przy weryfikacji `idToken`, OpenRouter, Dysk Google), ale API na zewnątrz
+nie wychodzi: nie ma przekierowania portu na routerze i nie ma go czym dodać.
 
-**3. Panel.** Statyczne pliki z `apps/admin/dist`, serwowane przez Caddy'ego pod
-tym samym pochodzeniem co API (`VITE_API_BASE` puste — dzięki temu ciasteczko
-sesji nie jest ciasteczkiem między witrynami).
-
-```
-pnpm --filter @alphapump/admin build
-```
-
-**4. Aplikacja mobilna.** `EXPO_PUBLIC_API_URL` musi wskazywać adres API w VPN
-**przed** budowaniem: zmienne `EXPO_PUBLIC_*` są wkompilowane w bundle, a z tego
-adresu wyliczają się wyjątki ATS i cleartext w projektach natywnych.
+#### Pierwsze uruchomienie
 
 ```
-pnpm --filter @alphapump/mobile prebuild
-pnpm --filter @alphapump/mobile android     # wydanie: wariant release z projektu natywnego
+git clone <adres-repozytorium> /opt/alphapump
+cd /opt/alphapump/deploy
+cp .env.example .env
 ```
+
+Uzupełnij `.env` — minimum to `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET`
+(`openssl rand -base64 48`) i `BETTER_AUTH_URL` równy adresowi minipc w VPN.
+Rozważ ustawienie `BIND_ADDRESS` na adres interfejsu NetBird: domyślne `0.0.0.0`
+odpowiada decyzji z dokumentu stacku (sieć lokalna minipc jest traktowana jako
+zaufana), ale wpisanie adresu VPN zawęża dostęp do samego VPN-u.
+
+```
+docker compose up --detach --build --wait
+../deploy/smoke.sh http://localhost
+```
+
+`--wait` czeka na healthchecki, a nie na start kontenerów: „gotowe" znaczy tu
+„API odpowiada i widzi bazę", czyli po wykonaniu migracji. Migracje uruchamia sam
+serwer, przed przyjęciem pierwszego żądania — nie ma osobnego kroku migracyjnego
+do zapomnienia.
+
+Świeża baza jest **pusta**: nie ma w niej konta systemowego ani ćwiczeń
+wbudowanych. Wnosi je pierwszy import, bo to ta sama ścieżka, którą idzie
+odtworzenie po awarii:
+
+```
+docker compose exec -T api node /app/apps/api/dist/cli/import.js < archiwum.json
+```
+
+Pierwszemu koncu trzeba jeszcze nadać rolę administratora — panel bez niej nie
+wpuści:
+
+```
+docker compose exec db psql -U alphapump -d alphapump \
+  -c "UPDATE users SET role = 'admin' WHERE email = 'ja@example.com';"
+```
+
+**Lista kontrolna przed wypuszczeniem grupie:**
+
+- `BETTER_AUTH_SECRET` losowy, nie z `.env.example` (jego zmiana wylogowuje
+  wszystkich, więc niech od razu będzie docelowy),
+- `BETTER_AUTH_URL` równy rzeczywistemu adresowi w VPN — wchodzi do OpenAPI
+  i do adresów zwrotnych logowania,
+- `TRUSTED_ORIGINS` zawiera `alphapump://`; panel jest pod tym samym
+  pochodzeniem co API, więc wpisu nie potrzebuje,
+- `OPENROUTER_API_KEY` ustawiony albo **świadomie** pusty — log przy starcie
+  mówi wprost, że warstwa semantyczna jest wyłączona,
+- `deploy/smoke.sh` przechodzi w całości,
+- cron kopii zapasowych działa, a odtworzenie zostało wykonane na sucho.
+
+#### Aktualizacja
+
+```
+cd /opt/alphapump
+git pull
+docker compose -f deploy/docker-compose.yml up --detach --build --wait
+deploy/smoke.sh http://localhost
+```
+
+Migracje wykonuje wstający kontener API, więc aktualizacja to podmiana obrazu
+i restart. Kolejność w Compose jest wymuszona warunkami zdrowia: `web` czeka na
+zdrowe `api`, a `api` na zdrową bazę — panel nie wystartuje przed backendem,
+którego jeszcze nie ma.
+
+Wycofanie zmiany to `git checkout <poprzedni-tag>` i to samo polecenie. **Migracje
+bazy nie cofają się same** — wycofanie wersji, która dołożyła kolumnę, jest
+bezpieczne (starszy kod jej nie używa), ale wycofanie za taką, która coś usunęła,
+wymaga odtworzenia z kopii. Przed aktualizacją zmieniającą schemat warto
+uruchomić `scripts/backup.sh` ręcznie.
+
+Warto też robić wydania z tagiem (`git tag -a v0.2.0`): tag jest jedyną rzeczą,
+która później pozwala powiedzieć, *co* dokładnie stoi na minipc.
+
+#### Kopie zapasowe
+
+Zestaw jest z etapu 14 — eksport JSON → gzip → `age` → `rclone` na Dysk Google —
+a wdrożenie dokłada mu tylko jedną rzecz: eksport idzie **wewnątrz kontenera**,
+bo baza nie wystawia portu na gospodarza.
+
+```
+sudo install -D -m 600 deploy/backup.env.example /etc/alphapump/backup.env
+sudo nano /etc/alphapump/backup.env      # klucze age, remote rclone
+crontab -e                               # wpisy z deploy/crontab.example
+```
+
+Na minipc trafia **wyłącznie klucz publiczny** `age`. Klucz prywatny mieszka
+w menedżerze haseł i na wydruku — nigdy na maszynie, której kopie dotyczą, i nigdy
+na Dysku obok nich.
+
+Pierwszą kopię zrób ręcznie i sprawdź, że doszła:
+
+```
+set -a; . /etc/alphapump/backup.env; set +a
+scripts/backup.sh
+rclone ls "$RCLONE_REMOTE"
+```
+
+#### Odtworzenie po awarii
+
+Odtworzenie to **ta sama ścieżka**, którą chodzi import danych w aplikacji —
+dlatego nie zardzewieje między awariami.
+
+```
+# 1. Czysty stos. `down --volumes` kasuje bazę: to jest właśnie ten moment.
+cd /opt/alphapump
+docker compose -f deploy/docker-compose.yml down --volumes
+docker compose -f deploy/docker-compose.yml up --detach --wait
+
+# 2. Klucz prywatny — przyniesiony, nie znaleziony na maszynie.
+export AGE_IDENTITY=/media/pendrive/klucz-alphapump.txt
+
+# 3. Import wewnątrz kontenera; odszyfrowanie zostaje na gospodarzu.
+export ALPHAPUMP_IMPORT_CMD="docker compose -f /opt/alphapump/deploy/docker-compose.yml exec -T api node /app/apps/api/dist/cli/import.js"
+scripts/restore.sh gdrive:alphapump-backups/alphapump-2026-08-10.json.gz.age
+
+# 4. Sprawdzenie.
+deploy/smoke.sh http://localhost
+```
+
+Import sam uruchamia migracje i seed przed wczytaniem archiwum, więc celuje
+w bazę pustą i nie wymaga niczego przygotowanego wcześniej.
+
+Kopia, której nigdy nie odtworzono, nie jest kopią: `backup-restore.yml` przechodzi
+cały ten łańcuch raz w miesiącu na danych fikcyjnych i porównuje wynik
+z oryginałem. Na sucho, na prawdziwej kopii, przechodzi się przez niego przy
+uruchamianiu minipc — do bazy **testowej**, nie do produkcyjnej.
+
+#### Aplikacja na Androida
+
+Adres API jest **wkompilowany w wydanie**: zmienne `EXPO_PUBLIC_*` wchodzą do
+bundla, a z adresu wyliczają się jeszcze wyjątek ATS (iOS) i
+`network_security_config` (Android). Zmiana adresu to więc nowe wydanie, a nie
+przestawienie czegoś w aplikacji.
+
+Wydanie z CI (`.github/workflows/android-release.yml`) — ręcznie z polem
+`api_url` albo tagiem `v*`, wtedy adres bierze się ze zmiennej repozytorium
+`EXPO_PUBLIC_API_URL`. Zadanie oddaje plik `.apk` razem z sumą kontrolną.
+Lokalnie to samo robi:
+
+```
+EXPO_PUBLIC_API_URL=http://100.64.0.1 pnpm --filter @alphapump/mobile run prebuild
+cd apps/mobile/android && ./gradlew assembleRelease
+```
+
+Rozdanie grupie idzie przez minipc, a nie przez GitHuba — nikt nie musi mieć
+konta ani dostępu do repozytorium:
+
+```
+scp alphapump-12.apk minipc:/opt/alphapump/deploy/apk/alphapump.apk
+```
+
+i telefony pobierają go pod `http://<adres-w-vpn>/pobierz/alphapump.apk`. Caddy
+serwuje ten katalog zwykłym `file_server`, więc nie ma tu żadnej dodatkowej
+usługi do utrzymania. Instalacja wymaga zgody na „nieznane źródła" — normalna
+przy dystrybucji poza sklepem.
+
+Dwie rzeczy, które łatwo przeoczyć, a boli obie dopiero później:
+
+- **`versionCode` musi rosnąć** między wydaniami, bo Android odmawia instalacji
+  pakietu o niższym numerze. W CI podstawia się numer przebiegu; przy budowaniu
+  lokalnym ustaw `ANDROID_VERSION_CODE` sam.
+- **Klucz podpisujący jest na zawsze.** Bez sekretu `ANDROID_KEYSTORE_BASE64`
+  gradle podpisuje wydanie kluczem deweloperskim z szablonu. To działa, ale późniejsze
+  przejście na własny klucz wymaga odinstalowania aplikacji na *każdym* telefonie
+  — system nie pozwala podmienić pakietu podpisanego innym kluczem. Własny klucz
+  (`keytool -genkeypair`, potem `base64` do sekretów repozytorium) warto wstawić
+  przed pierwszym rozdaniem, a nie po nim.
 
 Konfiguracji EAS repozytorium nie zawiera — wydanie idzie z projektu natywnego
-wygenerowanego przez `prebuild`.
+generowanego przez `prebuild`. iOS wchodzi w etapie 16, razem z kontem Apple
+Developer.
 
-**5. Kopie zapasowe.** Cron na minipc uruchamia `scripts/backup.sh` ze zmiennymi
-z tabeli wyżej; odtworzenie to `scripts/restore.sh <plik|zdalny>`, a próba
-odtworzenia `scripts/backup-drill.sh`. Na minipc trafia wyłącznie klucz publiczny
-`age`.
+#### Sprawdzanie stanu
 
-**Przed wypuszczeniem — lista kontrolna:**
+```
+docker compose -f deploy/docker-compose.yml ps        # stan i zdrowie usług
+docker compose -f deploy/docker-compose.yml logs -f api
+deploy/smoke.sh http://localhost
+curl -s http://localhost/health | jq
+```
 
-- `BETTER_AUTH_SECRET` losowy i nie z `.env.example`,
-- `BETTER_AUTH_URL` równy rzeczywistemu adresowi API (wchodzi do OpenAPI i do
-  adresów zwrotnych OAuth),
-- `TRUSTED_ORIGINS` zawiera `alphapump://` i adres panelu,
-- `OPENROUTER_API_KEY` ustawiony albo świadomie pusty — log przy starcie mówi
-  wprost, że warstwa semantyczna jest wyłączona,
-- `GET /health` zwraca 200 (503 znaczy: proces żyje, baza nie),
-- pierwsza kopia zapasowa wykonana, a jej odtworzenie sprawdzone na bazie
-  testowej.
+`/health` odpytuje bazę, więc 503 znaczy „proces żyje, baza nie" — dokładnie ta
+awaria, której nie widać z zewnątrz. `deploy/smoke.sh` idzie krok dalej
+i sprawdza też rozdział ruchu w Caddym: czy trasa API rzeczywiście trafia do API,
+a nie do panelu, który na nieznaną ścieżkę oddaje `index.html` ze statusem 200.
+
+Ten sam stos, z tych samych plików, stawia w CI `deploy-stack.yml` przy każdej
+zmianie dotykającej wdrożenia, backendu albo panelu — razem z przepływem
+założenia konta, który jako jedyny dowodzi, że migracje się wykonały, a sesja
+przechodzi przez proxy. Wdrożenie psuje się bez tknięcia kodu aplikacji, więc nie
+ma sensu odkrywać tego na minipc.
 
 ### Baza danych
 

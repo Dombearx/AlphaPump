@@ -1,0 +1,107 @@
+name: Stos wdrożeniowy
+
+# Wdrożenie da się zepsuć bez tknięcia jednej linijki kodu aplikacji: literówką
+# w `Caddyfile`, brakiem migracji w obrazie, zmienną, której Compose nie podaje
+# dalej. Żaden test jednostkowy tego nie złapie, a jedyną alternatywą byłoby
+# odkrywanie takich rzeczy na minipc.
+#
+# Zadanie stawia więc **ten sam stos, który pojedzie na minipc** — te same
+# Dockerfile'e, ten sam Compose, ten sam Caddyfile — na czystej bazie, i sprawdza
+# go z zewnątrz: najpierw `deploy/smoke.sh` (rozdział ruchu, panel, healthcheck),
+# potem przepływ założenia konta, który jako jedyny dowodzi, że migracje
+# faktycznie się wykonały, a sesja przechodzi przez proxy.
+
+on:
+  pull_request:
+    paths:
+      - 'deploy/**'
+      - '.dockerignore'
+      - '.github/workflows/deploy-stack.yml'
+      - 'apps/api/**'
+      - 'apps/admin/**'
+      - 'packages/**'
+      - 'pnpm-lock.yaml'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-stack-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  stack:
+    name: Budowa obrazów i sprawdzenie stosu
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      # Port zamiast 80: runner i tak jest rootem, ale 8080 nie wchodzi w drogę
+      # niczemu, co GitHub uruchamia na maszynie obok.
+      HTTP_PORT: 8080
+      BASE_URL: http://localhost:8080
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Przygotuj konfigurację stosu
+        run: |
+          set -euo pipefail
+          # Wartości są jednorazowe i istnieją tylko na czas tego przebiegu.
+          # `deploy/.env` jest w `.gitignore`, więc nie ma jak wyjechać z repozytorium.
+          cat > deploy/.env <<EOF
+          POSTGRES_USER=alphapump
+          POSTGRES_DB=alphapump
+          POSTGRES_PASSWORD=$(openssl rand -hex 24)
+          BETTER_AUTH_SECRET=$(openssl rand -base64 48)
+          BETTER_AUTH_URL=${BASE_URL}
+          TRUSTED_ORIGINS=alphapump://
+          # Bez klucza OpenRoutera warstwa semantyczna jest wyłączona, a to jest
+          # stan w pełni obsługiwany — sprawdzamy więc także jego.
+          OPENROUTER_API_KEY=
+          BIND_ADDRESS=127.0.0.1
+          HTTP_PORT=${HTTP_PORT}
+          EOF
+
+      - name: Zbuduj obrazy
+        run: docker compose -f deploy/docker-compose.yml build
+
+      # `--wait` czeka na healthchecki, a nie na sam start kontenerów: „gotowe"
+      # znaczy tu „API odpowiada i widzi bazę", czyli po wykonaniu migracji.
+      - name: Uruchom stos
+        run: docker compose -f deploy/docker-compose.yml up --detach --wait --wait-timeout 300
+
+      - name: Sprawdzenie z zewnątrz
+        run: deploy/smoke.sh "${BASE_URL}"
+
+      # Dopiero ten krok dowodzi, że migracje się wykonały i że sesja przechodzi
+      # przez proxy: konto powstaje w bazie, a token z nagłówka `set-auth-token`
+      # otwiera trasę chronioną, która wcześniej oddawała 401.
+      - name: Przepływ końcowy — założenie konta i trasa chroniona
+        run: |
+          set -euo pipefail
+
+          headers="$(mktemp)"
+          status="$(curl --silent --show-error --max-time 30 \
+            --dump-header "$headers" --output /dev/null --write-out '%{http_code}' \
+            --header 'Content-Type: application/json' \
+            --data '{"name":"Próba CI","email":"ci@example.test","password":"haslo-probne-123"}' \
+            "${BASE_URL}/api/auth/sign-up/email")"
+          [ "$status" = "200" ] || { echo "Rejestracja zwróciła ${status}" >&2; cat "$headers" >&2; exit 1; }
+
+          token="$(grep -i '^set-auth-token:' "$headers" | tr -d '\r' | cut -d' ' -f2-)"
+          [ -n "$token" ] || { echo "Brak nagłówka set-auth-token" >&2; exit 1; }
+
+          me="$(curl --silent --show-error --max-time 30 \
+            --header "Authorization: Bearer ${token}" "${BASE_URL}/me")"
+          echo "$me"
+          echo "$me" | grep -q '"email":"ci@example.test"' \
+            || { echo "GET /me nie zwróciło założonego konta" >&2; exit 1; }
+
+      - name: Logi po niepowodzeniu
+        if: failure()
+        run: docker compose -f deploy/docker-compose.yml logs --no-color --tail 200
+
+      - name: Sprzątanie
+        if: always()
+        run: docker compose -f deploy/docker-compose.yml down --volumes --remove-orphans

@@ -1,0 +1,98 @@
+# syntax=docker/dockerfile:1
+#
+# Obraz API.
+#
+# Trzy etapy, każdy z jednego powodu:
+#
+# 1. `manifests` — same pliki `package.json` i lockfile. Instalacja zależności
+#    nie zależy od kodu, więc zmiana w `src/` nie unieważnia warstwy z pobranymi
+#    paczkami. Manifesty kopiujemy **wszystkie**, także aplikacji mobilnej
+#    i panelu: `--frozen-lockfile` porównuje lockfile z całym workspace i bez
+#    kompletu manifestów uznaje go za nieaktualny.
+# 2. `build` — instalacja z zależnościami deweloperskimi i kompilacja.
+# 3. warstwa końcowa — świeża instalacja **wyłącznie produkcyjna**, do której
+#    dokładamy zbudowane `dist/`. Nie kopiujemy `node_modules` z etapu budowania,
+#    bo siedzą tam TypeScript, PGlite i cały zestaw testowy — kilkaset megabajtów,
+#    które na minipc nie mają czego robić.
+#
+# `--filter "@alphapump/api..."` (trzy kropki na końcu) wybiera API **wraz z jego
+# zależnościami z workspace**, czyli `core` i `db`. Panel i aplikacja mobilna nie
+# są instalowane ani budowane — obraz API nie ma powodu ciągnąć Reacta Native.
+
+FROM node:22-alpine AS base
+ENV PNPM_HOME=/pnpm
+ENV PATH=$PNPM_HOME:$PATH
+# Cichsza i powtarzalna instalacja; `CI=1` wyłącza też interaktywne pytania pnpm.
+ENV CI=1
+RUN corepack enable
+WORKDIR /app
+
+# --------------------------------------------------------------- manifesty ---
+FROM base AS manifests
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY apps/api/package.json apps/api/
+COPY apps/admin/package.json apps/admin/
+COPY apps/mobile/package.json apps/mobile/
+COPY packages/api-client/package.json packages/api-client/
+COPY packages/core/package.json packages/core/
+COPY packages/db/package.json packages/db/
+
+# --------------------------------------------------------------- budowanie ---
+FROM manifests AS build
+# `--ignore-scripts` również tutaj, nie tylko w warstwie końcowej. Wirtualny
+# magazyn pnpm dostaje `better-sqlite3` (patrz komentarz przy warstwie
+# uruchomieniowej), a jego skrypt instalacyjny kompiluje moduł natywny — czego
+# `node:alpine` nie umie i nie ma umieć. Do kompilacji TypeScriptu żaden skrypt
+# instalacyjny nie jest potrzebny.
+RUN --mount=type=cache,id=alphapump-pnpm,target=/pnpm/store \
+    pnpm install --frozen-lockfile --filter "@alphapump/api..." --ignore-scripts
+
+COPY tsconfig.base.json ./
+COPY packages/core packages/core
+COPY packages/db packages/db
+COPY apps/api apps/api
+
+# pnpm uruchamia `build` w kolejności topologicznej, więc `core` i `db` powstają
+# przed API — a API kompiluje się względem ich `dist/`, nie źródeł.
+RUN pnpm --filter "@alphapump/api..." run build
+
+# -------------------------------------------------------------- uruchomienie -
+FROM manifests AS runtime
+
+# `--ignore-scripts` jest tu świadome: żadna produkcyjna zależność API nie ma
+# kroku kompilacji (lista `onlyBuiltDependencies` w `package.json` to
+# `better-sqlite3` i `esbuild` — oba wyłącznie deweloperskie). Dzięki temu obraz
+# końcowy nie potrzebuje pythona ani kompilatora.
+#
+# Warstwa waży mimo to około 700 MB i **nie jest to przeoczenie**. `better-auth`
+# ma kilkanaście opcjonalnych zależności równorzędnych (sterowniki baz, `expo`,
+# `react-native`), a `dedupe-peer-dependents` z `.npmrc` sprawia, że całe
+# repozytorium dzieli **jeden** jego wariant — ten z sumą wszystkich peerów
+# znalezionych w workspace. Wariant jedzie więc razem z nimi, choć API woła
+# wyłącznie sterownik Postgresa. Ręczne wycinanie tych paczek z wirtualnego
+# magazynu psułoby leniwe ładowanie adapterów w sposób, który widać dopiero na
+# produkcji, a obraz i tak buduje się na miejscu i nigdzie nie jedzie przez sieć.
+RUN --mount=type=cache,id=alphapump-pnpm,target=/pnpm/store \
+    pnpm install --frozen-lockfile --filter "@alphapump/api..." --prod --ignore-scripts
+
+# Instalacja wyżej podlinkowała `@alphapump/core` i `@alphapump/db` do katalogów
+# w workspace; teraz dokładamy do nich zbudowane wyjście.
+COPY --from=build /app/packages/core/dist packages/core/dist
+COPY --from=build /app/packages/db/dist packages/db/dist
+COPY --from=build /app/apps/api/dist apps/api/dist
+
+# Migracje to zwykłe pliki SQL wczytywane w czasie działania (`pgMigrationsFolder`
+# wskazuje `packages/db/migrations/pg` względem `dist/migrations.js`). Bez nich
+# serwer wstaje i wywala się na pierwszej migracji.
+COPY packages/db/migrations packages/db/migrations
+
+ENV NODE_ENV=production
+ENV HOST=0.0.0.0
+ENV PORT=3000
+EXPOSE 3000
+
+# Obraz `node` ma gotowego użytkownika bez uprawnień. API niczego nie zapisuje na
+# dysku, więc własność `/app` może zostać przy roocie.
+USER node
+
+CMD ["node", "/app/apps/api/dist/index.js"]

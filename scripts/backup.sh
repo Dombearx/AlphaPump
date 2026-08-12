@@ -12,12 +12,19 @@
 # serwera oznaczałoby przejęcie wszystkich kopii.
 #
 # Wymagane w środowisku:
-#   DATABASE_URL         adres bazy (czyta go `pnpm --silent --filter @alphapump/api run export`)
 #   AGE_RECIPIENTS       klucze publiczne odbiorców, po przecinku (`age1...`)
 #   RCLONE_REMOTE        zdalny katalog rclone, np. `gdrive:alphapump-backups`
+#   DATABASE_URL         adres bazy — tylko przy domyślnym poleceniu eksportu
 # Opcjonalne:
+#   ALPHAPUMP_EXPORT_CMD polecenie wypisujące archiwum na stdout (patrz niżej)
 #   RETENTION_DAYS       ile dni trzymamy kopie (domyślnie 90)
 #   BACKUP_PREFIX        przedrostek nazwy pliku (domyślnie `alphapump`)
+#
+# `ALPHAPUMP_EXPORT_CMD` istnieje dlatego, że na minipc **nie ma dostępu do bazy
+# z gospodarza**: Postgres nie wystawia portu, jest widoczny wyłącznie w sieci
+# Compose. Eksport musi więc pójść wewnątrz kontenera API, a szyfrowanie i wysyłka
+# zostają na gospodarzu — bo to tam leżą klucz publiczny `age` i konfiguracja
+# rclone. Wartość dla wdrożenia dockerowego jest w `deploy/backup.env.example`.
 #
 # Uwaga na dwie flagi w wywołaniach pnpm. `run` jest konieczne, bo `pnpm import`
 # to **wbudowane** polecenie pnpm (konwersja plików lock). `--silent` jest
@@ -31,9 +38,21 @@
 
 set -euo pipefail
 
-: "${DATABASE_URL:?Ustaw DATABASE_URL}"
 : "${AGE_RECIPIENTS:?Ustaw AGE_RECIPIENTS — klucze publiczne age po przecinku}"
 : "${RCLONE_REMOTE:?Ustaw RCLONE_REMOTE, np. gdrive:alphapump-backups}"
+
+# Polecenie eksportu jako **tablica**, a nie napis do `eval`: podstawiona wartość
+# jest dzielona po białych znakach i tyle. Do zapisu w rodzaju
+# `docker compose -f … exec -T api node …` to wystarcza, a `eval` na zmiennej
+# środowiskowej byłby zaproszeniem, którego nikt tu nie potrzebuje.
+read -r -a export_command <<< "${ALPHAPUMP_EXPORT_CMD:-pnpm --silent --filter @alphapump/api run export}"
+
+# Adresu bazy pilnujemy tylko wtedy, gdy eksport uruchamiamy z tego repozytorium.
+# Przy poleceniu podstawionym baza jest sprawą tego polecenia — na minipc siedzi
+# w kontenerze i gospodarz nie ma jak jej dosięgnąć.
+if [ -z "${ALPHAPUMP_EXPORT_CMD:-}" ]; then
+  : "${DATABASE_URL:?Ustaw DATABASE_URL}"
+fi
 
 RETENTION_DAYS="${RETENTION_DAYS:-90}"
 BACKUP_PREFIX="${BACKUP_PREFIX:-alphapump}"
@@ -60,7 +79,7 @@ echo "Tworzę kopię ${archive}…" >&2
 
 # `pipefail` jest tu istotny: bez niego awaria eksportu zostałaby przesłonięta
 # sukcesem `age` i na Dysk poleciałby zaszyfrowany pusty plik.
-pnpm --silent --filter @alphapump/api run export \
+"${export_command[@]}" \
   | gzip \
   | age "${age_args[@]}" \
   > "${workdir}/${archive}"

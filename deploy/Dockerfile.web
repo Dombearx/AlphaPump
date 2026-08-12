@@ -1,0 +1,57 @@
+# syntax=docker/dockerfile:1
+#
+# Obraz warstwy wejściowej: panel administracyjny **razem** z Caddym.
+#
+# Panel jest zbiorem plików statycznych, a nie procesem. Osobny kontener na
+# panel musiałby więc albo serwować je własnym serwerem (drugi serwer HTTP obok
+# Caddy'ego), albo podawać je Caddy'emu wolumenem współdzielonym — co przy
+# aktualizacji wymaga kolejności startu i kontenera pomocniczego kopiującego
+# pliki. Wpieczenie `dist/` w obraz Caddy'ego usuwa oba problemy: aktualizacja
+# panelu to podmiana jednego obrazu, a Caddy nadal jest tym samym zwykłym
+# reverse proxy, jakiego wymaga dokument stacku.
+#
+# `VITE_API_BASE` zostaje **puste**. Panel i API wychodzą spod tego samego
+# pochodzenia (Caddy rozdziela je ścieżką), więc ciasteczko sesji nie jest
+# ciasteczkiem między witrynami i nie potrzebuje flag, których po HTTP nie da się
+# ustawić.
+
+FROM node:22-alpine AS base
+ENV PNPM_HOME=/pnpm
+ENV PATH=$PNPM_HOME:$PATH
+ENV CI=1
+RUN corepack enable
+WORKDIR /app
+
+# --------------------------------------------------------------- manifesty ---
+FROM base AS manifests
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY apps/api/package.json apps/api/
+COPY apps/admin/package.json apps/admin/
+COPY apps/mobile/package.json apps/mobile/
+COPY packages/api-client/package.json packages/api-client/
+COPY packages/core/package.json packages/core/
+COPY packages/db/package.json packages/db/
+
+# --------------------------------------------------------------- budowanie ---
+FROM manifests AS build
+# `--ignore-scripts`: wirtualny magazyn pnpm dostaje `better-sqlite3` (zależność
+# deweloperską spoza tego filtra, wciąganą przez rozwiązywanie zależności
+# równorzędnych `better-auth`), a jego skrypt instalacyjny kompiluje moduł
+# natywny — czego `node:alpine` nie umie. Vite go nie potrzebuje: rolldown
+# przychodzi z gotowym plikiem binarnym w zależności opcjonalnej.
+RUN --mount=type=cache,id=alphapump-pnpm,target=/pnpm/store \
+    pnpm install --frozen-lockfile --filter "@alphapump/admin..." --ignore-scripts
+
+COPY tsconfig.base.json ./
+COPY packages/core packages/core
+COPY apps/admin apps/admin
+
+RUN pnpm --filter "@alphapump/admin..." run build
+
+# -------------------------------------------------------------- uruchomienie -
+FROM caddy:2-alpine
+
+COPY deploy/Caddyfile /etc/caddy/Caddyfile
+COPY --from=build /app/apps/admin/dist /srv
+
+EXPOSE 80

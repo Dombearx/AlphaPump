@@ -1,0 +1,32 @@
+# Kontekstem obu obrazów jest katalog główny repozytorium — bez tego pliku demon
+# dostałby razem z nim `node_modules` całego monorepo (z Reactem Native
+# i skompilowanym `better-sqlite3`) oraz historię gita. Kontekst jedzie do demona
+# przed pierwszą instrukcją, więc byłby to koszt płacony przy każdym budowaniu.
+#
+# Wykluczamy też `dist/` — obrazy budują je u siebie, a wciągnięcie lokalnego
+# wyniku kompilacji dałoby obraz zależny od stanu maszyny, z której go zbudowano.
+
+node_modules
+**/node_modules
+
+dist
+**/dist
+**/.turbo
+**/*.tsbuildinfo
+coverage
+**/coverage
+
+.git
+.github
+
+# Projekty natywne generuje `expo prebuild`; do obrazów serwerowych nie wchodzą.
+apps/mobile/android
+apps/mobile/ios
+**/.expo
+
+.env
+.env.*
+!**/.env.example
+
+*.log
+.DS_Store

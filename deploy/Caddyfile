@@ -1,0 +1,62 @@
+# Caddy: jedno pochodzenie dla API i panelu.
+#
+# Podział jest **ścieżką, nie hostem**, i to jest decyzja, nie wygoda. Panel
+# uwierzytelnia się ciasteczkiem sesji; osobny host dla panelu zrobiłby z niego
+# ciasteczko między witrynami, a takie po HTTP wymaga flag, których po HTTP
+# ustawić się nie da. Przy jednym pochodzeniu problem nie powstaje.
+#
+# Konsekwencja: **lista ścieżek niżej jest kontraktem**. Ścieżka, której tu nie
+# ma, nie trafia do API — trafia do panelu, który odda na nią `index.html`
+# ze statusem 200. Klient dostałby wtedy HTML zamiast JSON-a i błąd wyglądałby na
+# awarię parsera, a nie na literówkę w konfiguracji. Pilnuje tego test
+# `apps/api/tests/deploy.test.ts`: sprawdza, że każda trasa opisana w OpenAPI
+# pasuje do którejś ścieżki poniżej i że żadna trasa panelu do nich nie pasuje.
+#
+# TLS jest wyłączony świadomie — ruch jedzie wewnątrz WireGuarda (NetBird),
+# a HTTPS byłby szyfrowaniem wewnątrz szyfrowania. Uzasadnienie w całości:
+# `docs/stack_technologiczny.md`, sekcja „TLS — świadomie pominięty w MVP".
+{
+	# Panel administracyjny Caddy'ego nie jest nikomu potrzebny, a nasłuchuje
+	# na 2019 bez uwierzytelnienia.
+	admin off
+	# Bez tego Caddy zobaczyłby nazwę hosta i spróbowałby wystawić certyfikat
+	# — do adresu w VPN, do którego Let's Encrypt nie ma jak się dobić.
+	auto_https off
+}
+
+:80 {
+	encode gzip
+
+	# Ścieżki API. `path` przyjmuje wiele wzorców i łączy je alternatywą;
+	# gwiazdka pasuje do dowolnego dalszego ciągu, brak gwiazdki znaczy
+	# dopasowanie dokładne. Pary w rodzaju `/tags /tags/*` są celowe: samo
+	# `/tags*` łapałoby też `/tagsomething`, czyli zabierało panelowi ścieżki,
+	# których API nie obsługuje.
+	#
+	# Lista jest w **jednej linii** świadomie. Złamana odwrotnym ukośnikiem jest
+	# czytelniejsza, ale `caddy fmt` przestawia wtedy wcięcia po swojemu
+	# i serwer dokłada przy każdym starcie ostrzeżenie o niesformatowanej
+	# konfiguracji — czyli szum w logu dokładnie wtedy, gdy się do niego zagląda.
+	@api path /health /openapi.json /me /rankings /export /import /api/auth/* /tags /tags/* /exercises /exercises/* /sets /sets/* /cycles /cycles/* /sync/* /admin/*
+
+	handle @api {
+		reverse_proxy api:3000 {
+			# Import archiwum i push synchronizacji potrafią jechać długo przy
+			# pierwszym wgraniu historii. Domyślne limity Caddy'ego są hojne,
+			# ale nagłówek odpowiedzi ustawiamy jawnie, żeby wydłużenie było
+			# zmianą jednej liczby, a nie odkryciem, gdzie ten limit siedzi.
+			transport http {
+				response_header_timeout 120s
+			}
+		}
+	}
+
+	# Wszystko pozostałe to panel: pliki statyczne, a dla ścieżek routera
+	# (`/users`, `/library`, `/data`) `index.html`, bo SPA obsługuje je po
+	# stronie przeglądarki.
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

@@ -23,3 +23,7 @@ pnpm-debug.log*
 # bo źródłem prawdy jest app.config.js i wtyczki, a nie wygenerowany projekt.
 apps/mobile/android/
 apps/mobile/ios/
+
+# Wydany plik aplikacji leży poza repozytorium — patrz deploy/apk/.gitkeep.
+deploy/apk/*
+!deploy/apk/.gitkeep

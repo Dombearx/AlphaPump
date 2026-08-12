@@ -377,15 +377,39 @@ Własny minipc w sieci NetBird. Telefony podpięte do tej samej sieci widzą ser
 API nie jest wystawione na publiczny internet.
 
 Docker Compose: PostgreSQL 17 (z `pgvector` i `pg_trgm`), API oraz panel admina
-za Caddy pełniącym rolę zwykłego reverse proxy, bez TLS. CI na GitHub Actions.
+za Caddy pełniącym rolę zwykłego reverse proxy, bez TLS. Pliki są w `deploy/`,
+a procedury uruchomienia, aktualizacji i odtworzenia w README. CI na GitHub
+Actions.
+
+Panel jest **wpieczony w obraz Caddy'ego**, a nie osobnym kontenerem (ustalone
+przy realizacji etapu 15). Panel to zbiór plików statycznych, nie proces: osobny
+kontener musiałby więc albo uruchomić drugi serwer HTTP obok Caddy'ego, albo
+podać mu pliki wolumenem współdzielonym — a wtedy aktualizacja panelu zależy od
+kolejności startu i od kontenera pomocniczego, który te pliki kopiuje.
+
+Rozdział ruchu idzie **ścieżką, nie hostem**, żeby panel i API miały jedno
+pochodzenie: ciasteczko sesji na osobnym hoście byłoby ciasteczkiem między
+witrynami, a takie po HTTP wymaga flag, których po HTTP ustawić się nie da.
+Kosztem jest lista ścieżek w `Caddyfile`, o której łatwo zapomnieć przy nowym
+endpoincie — ścieżka spoza listy dostaje `index.html` panelu ze statusem 200,
+czyli awarię wyglądającą jak błąd parsera u klienta. Pilnuje tego
+`apps/api/tests/deploy.test.ts`, sprawdzając obie strony rozdziału.
+
 Testy: Vitest we wszystkich pakietach — `core` i `db` jednostkowo, API
 integracyjnie na PGlite w procesie, a w aplikacji mobilnej i w panelu na czystych
 modułach (siatka kalendarza, punkty wykresu, silnik synchronizacji, wyliczanie
-wyjątków ATS). E2E na urządzeniu — rozważane było Maestro — w repozytorium **nie
-ma**: wymaga uruchomionego emulatora i zbudowanej aplikacji, więc na runnerze
-kosztuje kilkanaście minut na przebieg, a przepływy, które miałoby pilnować,
-stoją na modułach pokrytych już jednostkowo. Wchodzi razem z etapem 15, gdy
-aplikację będzie się faktycznie wydawać.
+wyjątków ATS). Osobno stoi `deploy-stack.yml`: stawia w CI ten sam stos, który
+jedzie na minipc, i sprawdza go z zewnątrz — bo wdrożenie da się zepsuć bez
+tknięcia jednej linijki kodu aplikacji.
+
+E2E na urządzeniu — rozważane było Maestro — w repozytorium **nadal nie ma**.
+Przy realizacji etapu 15 wróciło to na stół i zapadła decyzja, żeby jeszcze
+zaczekać: aplikacja nie ma ani jednego `testID`, więc flow opierałby się na
+widocznych napisach, a napis jest tym, co zmienia się najczęściej. Sensowne
+Maestro zaczyna się więc od oznaczenia elementów w kilkunastu ekranach, a nie od
+napisania flow — i to jest ta praca, którą trzeba wykonać najpierw. Do tego czasu
+wydania pilnują: `ios-simulator.yml` (projekt się buduje), `android-release.yml`
+(wydanie powstaje) i `deploy-stack.yml` (serwer odpowiada).
 
 ### TLS — świadomie pominięty w MVP
 
@@ -595,4 +619,11 @@ jest tu wymaganiem twardym.
   w definicję kolumny.
 - Termin wejścia iOS i moment zakupu konta Apple Developer — patrz sekcja
   „iOS — odłożone, ale nie zamknięte".
-- Testy E2E aplikacji na urządzeniu — patrz „Infrastruktura".
+- Testy E2E aplikacji na urządzeniu — patrz „Infrastruktura". Warunkiem wejścia
+  jest oznaczenie elementów interfejsu (`testID`), nie sam wybór narzędzia.
+- **Klucz podpisujący aplikację na Androida.** Bez sekretu
+  `ANDROID_KEYSTORE_BASE64` wydanie jest podpisywane kluczem deweloperskim
+  z szablonu React Native — publicznie znanym. Działa to do rozdania w grupie,
+  ale przejście na własny klucz wymaga potem odinstalowania aplikacji na każdym
+  telefonie, bo system nie pozwala podmienić pakietu podpisanego innym kluczem.
+  Decyzja jest więc jednorazowa i zapada przed pierwszym rozdaniem, nie po nim.
