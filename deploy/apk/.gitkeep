@@ -1,0 +1,9 @@
+Katalog na plik .apk wydany dla grupy.
+
+Caddy serwuje jego zawartość pod /pobierz/, więc położony tu
+`alphapump.apk` jest do pobrania z telefonu pod adresem:
+
+    http://<adres-minipc-w-vpn>/pobierz/alphapump.apk
+
+Sam plik nie wchodzi do repozytorium — jest wynikiem budowania,
+a nie źródłem. Skąd go wziąć, opisuje README w sekcji „Wdrożenie".

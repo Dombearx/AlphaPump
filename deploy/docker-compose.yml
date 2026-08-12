@@ -1,0 +1,112 @@
+# Stos AlphaPump na minipc.
+#
+# Trzy kontenery: baza, API i warstwa wejściowa (Caddy z wpieczonym panelem).
+# Uruchomienie i aktualizacja są opisane w README, w sekcji „Wdrożenie".
+#
+# Zmienne wchodzą z pliku `deploy/.env` (wzór: `.env.example`). Compose czyta go
+# sam, bo leży obok tego pliku. Zapis `${X:?…}` znaczy „bez tej zmiennej nie
+# startujemy" — brakujący sekret ma zatrzymać wdrożenie tutaj, a nie objawić się
+# jako dziwne zachowanie sesji.
+
+name: alphapump
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-alphapump}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?ustaw POSTGRES_PASSWORD w deploy/.env}
+      POSTGRES_DB: ${POSTGRES_DB:-alphapump}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Brak `ports:` jest celowy. Baza jest osiągalna wyłącznie w sieci Compose;
+    # wystawienie 5432 na minipc oznaczałoby port z pełną historią treningową
+    # grupy, otwarty na LAN, bez żadnego powodu.
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'pg_isready -U "${POSTGRES_USER:-alphapump}" -d "${POSTGRES_DB:-alphapump}"']
+      interval: 5s
+      timeout: 5s
+      retries: 24
+
+  api:
+    build:
+      # Kontekst to katalog główny repozytorium: obraz buduje się z tych samych
+      # źródeł, które przechodzą CI.
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    image: alphapump/api:local
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000
+      DATABASE_URL: postgres://${POSTGRES_USER:-alphapump}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-alphapump}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?ustaw BETTER_AUTH_SECRET w deploy/.env}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:?ustaw BETTER_AUTH_URL — adres, pod którym stos widać w VPN}
+      TRUSTED_ORIGINS: ${TRUSTED_ORIGINS:-alphapump://}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      # Wartości domyślne są tu powtórzone za `apps/api/src/config.ts`, bo Compose
+      # nie umie „nie ustawić" zmiennej: pusty napis przeszedłby do kontenera
+      # i odbiłby się o walidację, która wymaga wartości niepustej.
+      LLM_ENABLED: ${LLM_ENABLED:-true}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-qwen/qwen3-embedding-0.6b}
+      RERANKER_MODEL: ${RERANKER_MODEL:-google/gemini-2.5-flash}
+      RERANKER_ENABLED: ${RERANKER_ENABLED:-true}
+      LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-8000}
+    # Brak `ports:` również tutaj: do API wchodzi się przez Caddy'ego, żeby panel
+    # i API miały jedno pochodzenie. Kopie zapasowe wołają CLI przez
+    # `docker compose exec`, więc też nie potrzebują portu.
+    healthcheck:
+      # Obraz jest oparty na `node:alpine` i nie ma `curl`-a ani `wget`-a
+      # z HTTP-em — a Node ma `fetch` w standardzie. `/health` odpytuje bazę,
+      # więc „zdrowy" znaczy tu naprawdę „gotowy przyjmować żądania".
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      # Pierwszy start uruchamia migracje, więc bywa wyraźnie dłuższy od kolejnych.
+      start_period: 60s
+      retries: 6
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+    image: alphapump/web:local
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    # Adres nasłuchu jest wyciągnięty do zmiennej, bo to jedyne miejsce, w którym
+    # stos dotyka sieci gospodarza. `0.0.0.0` odpowiada decyzji z dokumentu stacku
+    # (sieć lokalna minipc jest traktowana jako zaufana); wpisanie tu adresu
+    # z interfejsu NetBird zawęża dostęp do samego VPN-u.
+    ports:
+      - '${BIND_ADDRESS:-0.0.0.0}:${HTTP_PORT:-80}:80'
+    volumes:
+      # Dystrybucja aplikacji na Androida. Plik `.apk` położony w tym katalogu
+      # jest do pobrania pod `/pobierz/<nazwa>` — czyli tam, gdzie telefony i tak
+      # sięgają po API, bez zakładania nikomu konta w GitHubie i bez wystawiania
+      # czegokolwiek poza VPN. Caddy serwuje go zwykłym `file_server`, więc żadna
+      # zmiana w `Caddyfile` nie jest do tego potrzebna.
+      - ${APK_DIR:-./apk}:/srv/pobierz:ro
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '--quiet', 'http://127.0.0.1/health']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+volumes:
+  pgdata:

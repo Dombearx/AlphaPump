@@ -45,6 +45,17 @@ const config = {
 
   android: {
     package: 'app.alphapump.mobile',
+    /**
+     * Numer wydania widziany przez system. Android odmawia instalacji pakietu
+     * o **niższym** numerze niż zainstalowany, więc każde kolejne wydanie musi
+     * mieć wyższy — inaczej aktualizacja przez pobranie pliku z minipc kończy
+     * się komunikatem o niezgodności, a nie podmianą aplikacji.
+     *
+     * Wartość wchodzi ze środowiska, bo jej źródłem jest wydanie, a nie kod:
+     * `.github/workflows/android-release.yml` podstawia numer przebiegu.
+     * Domyślna jedynka wystarcza przy budowaniu na własnej maszynie.
+     */
+    versionCode: Number(process.env.ANDROID_VERSION_CODE ?? 1),
     adaptiveIcon: { backgroundColor: '#0b0b0f' },
   },
 

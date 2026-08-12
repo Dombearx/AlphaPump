@@ -1,0 +1,164 @@
+name: Wydanie na Androida
+
+# Buduje plik `.apk` gotowy do rozdania grupie.
+#
+# Adres API jest **wkompilowany w wydanie**, a nie ustawiany po instalacji:
+# zmienne `EXPO_PUBLIC_*` wchodzą do bundla, a z adresu wyliczają się jeszcze
+# wyjątek ATS (iOS) i `networkSecurityConfig` (Android). Dlatego jest wejściem
+# zadania, a nie wartością domyślną — pomyłka tutaj daje aplikację, która wygląda
+# poprawnie i nie łączy się z niczym.
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_url:
+        description: 'Adres API w VPN, np. http://100.64.0.1'
+        required: true
+        type: string
+  push:
+    tags: ['v*']
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+
+# Wydanie z tagu dokleja plik do wydania w GitHubie; poza tagiem zadanie niczego
+# w repozytorium nie zmienia.
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    name: Budowa pliku APK
+    runs-on: ubuntu-latest
+    # Gradle z projektem React Native jedzie długo przy zimnym cache'u.
+    timeout-minutes: 90
+
+    env:
+      # Przy wydaniu z tagu adres bierze się ze zmiennej repozytorium
+      # (Settings → Variables), bo tag nie ma jak go przekazać.
+      EXPO_PUBLIC_API_URL: ${{ inputs.api_url || vars.EXPO_PUBLIC_API_URL }}
+      EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ vars.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID }}
+      # Numer wydania widziany przez system Android. Musi rosnąć między
+      # wydaniami, inaczej telefon odmówi aktualizacji.
+      ANDROID_VERSION_CODE: ${{ github.run_number }}
+      TURBO_TELEMETRY_DISABLED: 1
+      DO_NOT_TRACK: 1
+
+    steps:
+      - name: Sprawdź adres API
+        run: |
+          [ -n "${EXPO_PUBLIC_API_URL}" ] || {
+            echo "Brak adresu API. Uruchom zadanie ręcznie z polem api_url albo ustaw zmienną repozytorium EXPO_PUBLIC_API_URL." >&2
+            exit 1
+          }
+          echo "Buduję wydanie wskazujące na ${EXPO_PUBLIC_API_URL}"
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Metro rozwiązuje `@alphapump/core` i `@alphapump/db` do ich `dist/`,
+      # więc pakiety muszą być zbudowane, zanim gradle zacznie pakować bundle.
+      - name: Zbuduj pakiety współdzielone
+        run: pnpm --filter "@alphapump/db..." run build
+
+      # Projekt natywny nie jest w repozytorium — źródłem prawdy jest
+      # `app.config.js` i wtyczki. `prebuild` odtwarza go od zera przy każdym
+      # wydaniu, razem z wyjątkiem cleartext wyliczonym z adresu API.
+      - name: Wygeneruj projekt natywny
+        run: pnpm --filter @alphapump/mobile run prebuild
+
+      - name: Zbuduj wydanie
+        working-directory: apps/mobile/android
+        run: ./gradlew assembleRelease --no-daemon
+
+      # Podpis. Bez sekretu w repozytorium gradle podpisuje wydanie kluczem
+      # deweloperskim z szablonu — do rozdania w grupie to wystarcza, ale klucz
+      # jest publicznie znany, a późniejsza zmiana na własny wymusza odinstalowanie
+      # aplikacji na każdym telefonie. Dlatego własny klucz warto wstawić od razu.
+      - name: Podpisz własnym kluczem
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          keystore="${RUNNER_TEMP}/release.keystore"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+
+          # Podpisujemy `apksigner`-em **po** gradle'u, zamiast wstrzykiwać
+          # konfigurację podpisu do wygenerowanego `build.gradle`. Plik ten
+          # powstaje na nowo przy każdym `prebuild`, więc każda jego modyfikacja
+          # w CI byłaby łataniem wyniku generatora. `apksigner` zastępuje podpis
+          # istniejący, co jest dokładnie tym, czego tu potrzeba.
+          build_tools="$(ls -d "${ANDROID_HOME}/build-tools"/* | sort -V | tail -1)"
+          "${build_tools}/apksigner" sign \
+            --ks "$keystore" \
+            --ks-pass "pass:${ANDROID_KEYSTORE_PASSWORD}" \
+            --ks-key-alias "$ANDROID_KEY_ALIAS" \
+            --key-pass "pass:${ANDROID_KEY_PASSWORD}" \
+            apps/mobile/android/app/build/outputs/apk/release/app-release.apk
+          "${build_tools}/apksigner" verify --print-certs \
+            apps/mobile/android/app/build/outputs/apk/release/app-release.apk
+
+      - name: Nazwij plik wydania
+        id: plik
+        run: |
+          set -euo pipefail
+          mkdir -p wydanie
+          nazwa="alphapump-${ANDROID_VERSION_CODE}.apk"
+          cp apps/mobile/android/app/build/outputs/apk/release/app-release.apk "wydanie/${nazwa}"
+          # Suma kontrolna jedzie razem z plikiem: telefony pobierają go po HTTP
+          # wewnątrz VPN i to jedyny sposób sprawdzenia, że doszedł w całości.
+          (cd wydanie && sha256sum "${nazwa}" > "${nazwa}.sha256")
+          echo "nazwa=${nazwa}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.plik.outputs.nazwa }}
+          path: wydanie/
+          retention-days: 30
+
+      # Wydanie z tagu dostaje plik doklejony do wydania w GitHubie — żeby dało
+      # się do niego wrócić po wygaśnięciu artefaktu.
+      - name: Dołącz do wydania
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          gh release view "$tag" >/dev/null 2>&1 \
+            || gh release create "$tag" --title "$tag" --notes "Wydanie aplikacji na Androida."
+          gh release upload "$tag" wydanie/* --clobber
+
+      - name: Podsumowanie
+        run: |
+          {
+            echo "### Wydanie ${{ steps.plik.outputs.nazwa }}"
+            echo
+            echo "- adres API: \`${EXPO_PUBLIC_API_URL}\`"
+            echo "- versionCode: \`${ANDROID_VERSION_CODE}\`"
+            echo "- podpis: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && 'własny klucz' || 'klucz deweloperski z szablonu' }}"
+            echo
+            echo "Rozdanie grupie: pobierz artefakt, przenieś plik do \`deploy/apk/\` na minipc"
+            echo "i podaj adres \`${EXPO_PUBLIC_API_URL}/pobierz/${{ steps.plik.outputs.nazwa }}\`."
+          } >> "$GITHUB_STEP_SUMMARY"

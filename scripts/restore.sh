@@ -11,8 +11,15 @@
 #   scripts/restore.sh gdrive:alphapump-backups/alphapump-....age # wprost z Dysku
 #
 # Wymagane w środowisku:
-#   DATABASE_URL      baza docelowa
 #   AGE_IDENTITY      ścieżka do pliku z kluczem prywatnym age
+#   DATABASE_URL      baza docelowa — tylko przy domyślnym poleceniu importu
+# Opcjonalne:
+#   ALPHAPUMP_IMPORT_CMD  polecenie czytające archiwum ze stdin (patrz niżej)
+#
+# `ALPHAPUMP_IMPORT_CMD` odpowiada `ALPHAPUMP_EXPORT_CMD` z `backup.sh` i istnieje
+# z tego samego powodu: na minipc baza jest widoczna wyłącznie w sieci Compose,
+# więc import musi pójść wewnątrz kontenera API, a odszyfrowanie zostaje na
+# gospodarzu, bo to tam przynosi się klucz prywatny.
 #
 # Klucz prywatny **nigdy** nie leży na minipc ani na Dysku obok kopii. Do
 # odtworzenia przynosi się go z menedżera haseł albo z wydruku — dokładnie
@@ -24,9 +31,15 @@ set -euo pipefail
 source="${1:-}"
 [ -n "$source" ] || { echo "Podaj plik kopii (lokalny albo zdalny rclone)" >&2; exit 1; }
 
-: "${DATABASE_URL:?Ustaw DATABASE_URL — bazę docelową}"
 : "${AGE_IDENTITY:?Ustaw AGE_IDENTITY — ścieżkę do klucza prywatnego age}"
 [ -f "$AGE_IDENTITY" ] || { echo "Nie ma pliku klucza: $AGE_IDENTITY" >&2; exit 1; }
+
+# Tablica, nie napis do `eval` — tak samo jak w `backup.sh`.
+read -r -a import_command <<< "${ALPHAPUMP_IMPORT_CMD:-pnpm --silent --filter @alphapump/api run import}"
+
+if [ -z "${ALPHAPUMP_IMPORT_CMD:-}" ]; then
+  : "${DATABASE_URL:?Ustaw DATABASE_URL — bazę docelową}"
+fi
 
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repository_root"
@@ -48,6 +61,6 @@ echo "Odszyfrowuję i importuję ${local_file}…" >&2
 # Potokiem, bez pliku pośredniego: odszyfrowana kopia nie musi nigdzie leżeć.
 age -d -i "$AGE_IDENTITY" "$local_file" \
   | gunzip \
-  | pnpm --silent --filter @alphapump/api run import
+  | "${import_command[@]}"
 
 echo "Odtworzono z ${local_file}" >&2
