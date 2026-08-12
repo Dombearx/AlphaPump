@@ -55,6 +55,247 @@ pnpm install
 Te same cztery kroki wykonuje CI (`.github/workflows/ci.yml`) na każdym pull
 requeście, w tej samej kolejności i tymi samymi poleceniami.
 
+### Konfiguracja: pliki `.env` i klucze API
+
+Trzy aplikacje, trzy pliki `.env`, każdy obok swojej aplikacji. Wzorce leżą
+w repozytorium (`apps/*/.env.example`) i to one są kompletną listą zmiennych —
+poniższe tabele mówią, **skąd wziąć wartości** i co się stanie, gdy ich nie ma.
+
+Zasada jest jedna: brakuje czegoś, bez czego serwer nie ma jak działać — proces
+kończy się przy starcie. Brakuje klucza do funkcji dodatkowej — funkcja jest
+wyłączona, a serwer wstaje i mówi o tym w logu.
+
+#### `apps/api/.env` — backend
+
+| Zmienna | Wymagana | Skąd wziąć |
+| ------- | -------- | ---------- |
+| `DATABASE_URL` | **tak** | adres PostgreSQL 17 **z pgvectorem** (patrz niżej) |
+| `BETTER_AUTH_SECRET` | **tak** | własny sekret, min. 32 znaki: `openssl rand -base64 48` |
+| `BETTER_AUTH_URL` | nie (`http://localhost:3000`) | publiczny adres API — wchodzi do adresów zwrotnych OAuth i do OpenAPI |
+| `TRUSTED_ORIGINS` | nie | lista po przecinku: schemat aplikacji (`alphapump://`) i adres panelu |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | nie | Google Cloud Console → *APIs & Services* → *Credentials* → OAuth client ID typu **Web application** |
+| `OPENROUTER_API_KEY` | nie | [openrouter.ai](https://openrouter.ai) → *Keys* |
+| `LLM_ENABLED`, `RERANKER_ENABLED` | nie (`true`) | wyłączniki warstw wykrywania duplikatów |
+| `EMBEDDING_MODEL`, `RERANKER_MODEL`, `LLM_TIMEOUT_MS` | nie | wartości domyślne z `.env.example` |
+| `HOST`, `PORT` | nie (`0.0.0.0:3000`) | nasłuch |
+
+Wymagane są dokładnie dwie zmienne. `loadConfig` wypisuje **komplet** braków
+naraz i przerywa start — literówka w adresie bazy ma wywalić proces od razu,
+a nie przy pierwszym logowaniu.
+
+Brak kompletu obu wartości Google wyłącza logowanie Google; e-mail z hasłem
+działa dalej. Brak `OPENROUTER_API_KEY` (albo `LLM_ENABLED=false`) sprowadza
+wykrywanie duplikatów do warstwy leksykalnej — tworzenie ćwiczeń nie zmienia się
+w żaden sposób. Żadne z tych dwóch nie jest błędem konfiguracji.
+
+> **Node nie czyta `.env` sam.** `node dist/index.js` zobaczy tylko zmienne ze
+> środowiska procesu, więc do uruchomienia z pliku trzeba flagi:
+> `node --env-file=apps/api/.env dist/index.js` — albo wczytania zmiennych do
+> powłoki (`set -a; . apps/api/.env; set +a`). Dotyczy to również CLI eksportu
+> i importu: czytają tę samą konfigurację, więc cron potrzebuje także
+> `BETTER_AUTH_SECRET`, choć kopia zapasowa nie ma z sesjami nic wspólnego.
+> Panel (Vite) i aplikacja mobilna (Expo) ładują swoje pliki `.env` same.
+
+#### `apps/admin/.env` — panel administracyjny
+
+| Zmienna | Wymagana | Skąd wziąć |
+| ------- | -------- | ---------- |
+| `VITE_API_URL` | nie (`http://localhost:3000`) | cel proxy Vite (`/api-proxy`) w trybie deweloperskim |
+| `VITE_API_BASE` | nie (puste) | adres, pod który panel woła API w przeglądarce; puste = proxy w dev, to samo pochodzenie w buildzie |
+
+Zmienne `VITE_*` są **wkompilowane w build**, więc zmiana adresu API na
+produkcji wymaga ponownego `vite build`, a nie restartu.
+
+#### `apps/mobile/.env` — aplikacja mobilna
+
+| Zmienna | Wymagana | Skąd wziąć |
+| ------- | -------- | ---------- |
+| `EXPO_PUBLIC_API_URL` | nie (`http://localhost:3000`) | adres API **widoczny z telefonu**: IP w LAN lub w NetBirdzie; emulator Androida widzi hosta pod `10.0.2.2` |
+| `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` | nie | ten sam projekt Google Cloud, client ID typu **Web** — także na Androidzie, bo to on jest odbiorcą `idToken`, który weryfikuje serwer |
+| `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` | nie | client ID typu **iOS** |
+
+Natywne logowanie na Androidzie wymaga dodatkowo klienta OAuth typu **Android**
+w tym samym projekcie Google Cloud (pakiet `app.alphapump.mobile` i odcisk SHA-1
+klucza podpisującego). Do `.env` on nie wchodzi, ale bez niego Sign-In kończy się
+błędem po stronie Google.
+
+Adres API jest wkompilowany w bundle i **z niego wyliczają się** wyjątki od
+szyfrowania ruchu (ATS na iOS, `network_security_config` na Androidzie), więc po
+jego zmianie trzeba przejść przez `prebuild`, a nie tylko przeładować aplikację.
+
+#### Kopie zapasowe — zmienne dla crona i CI
+
+Skrypty z `scripts/` nie czytają `.env`; zmienne biorą ze środowiska.
+
+| Zmienna | Gdzie | Skąd wziąć |
+| ------- | ----- | ---------- |
+| `DATABASE_URL`, `BETTER_AUTH_SECRET` | wszystkie skrypty | jak w konfiguracji API — skrypty wołają jego CLI |
+| `AGE_RECIPIENTS` | `backup.sh` | klucze **publiczne** `age` po przecinku (`age-keygen`): główny i CI |
+| `RCLONE_REMOTE` | `backup.sh` | zdalny katalog po `rclone config`, np. `gdrive:alphapump-backups` |
+| `RETENTION_DAYS`, `BACKUP_PREFIX` | `backup.sh` | domyślnie `90` i `alphapump` |
+| `AGE_IDENTITY` | `restore.sh` | plik z kluczem **prywatnym** — z menedżera haseł, nigdy z minipc |
+| `RESTORE_DATABASE_URL` | `backup-drill.sh` | czysta baza docelowa próby |
+
+Po stronie repozytorium jest jeden sekret: `AGE_CI_IDENTITY` (comiesięczna próba
+odtworzenia). Bez niego próba nadal przechodzi — na kluczu jednorazowym.
+
+### Uruchomienie lokalne (testy manualne)
+
+**1. Zależności.** Node 22+ (`.nvmrc`), pnpm 10+ (`corepack enable`).
+
+```
+pnpm install
+```
+
+**2. Baza.** Obraz musi mieć pgvectora — migracja `0005` włącza rozszerzenia
+`pg_trgm` i `vector`, więc na zwykłym `postgres:17` start odbije się o pierwszą
+migrację, która ich potrzebuje.
+
+```
+docker run -d --name alphapump-pg -p 5432:5432 \
+  -e POSTGRES_USER=alphapump -e POSTGRES_PASSWORD=alphapump -e POSTGRES_DB=alphapump \
+  pgvector/pgvector:pg17
+```
+
+**3. Konfiguracja API.**
+
+```
+cp apps/api/.env.example apps/api/.env
+openssl rand -base64 48        # wynik do BETTER_AUTH_SECRET
+```
+
+**4. API.** Uruchamiamy zbudowane wyjście — dokładnie to, które pojedzie na
+serwer. Migracje wykonują się przy starcie, osobnego kroku nie ma.
+
+```
+pnpm --filter @alphapump/api build
+node --env-file=apps/api/.env apps/api/dist/index.js
+```
+
+Pętla deweloperska to na razie przebudowa i restart. Skrypt `dev`
+(`node --watch --experimental-strip-types src/index.ts`) na Node 22 nie wstaje:
+importy w źródłach mają rozszerzenia `.js`, a stripowanie typów nie odwzorowuje
+ich na pliki `.ts` — kończy się `ERR_MODULE_NOT_FOUND` na pierwszym imporcie.
+
+**5. Dane startowe.** Start serwera wykonuje migracje, ale **nie** seed — świeża
+baza nie ma ani konta systemowego, ani ćwiczeń wbudowanych. Do testów manualnych
+najkrócej jest wypełnić ją danymi próby (idempotentnie: konto systemowe,
+ćwiczenia wbudowane, dwie osoby, serie w dwóch dniach i cykl z celem):
+
+```
+pnpm --filter @alphapump/api build
+node --env-file=apps/api/.env apps/api/dist/cli/drill.js sample
+```
+
+**6. Panel.** Żądania idą przez proxy Vite, więc przeglądarka widzi jedno
+pochodzenie i nie wchodzi w CORS.
+
+```
+cp apps/admin/.env.example apps/admin/.env
+pnpm --filter @alphapump/admin dev        # http://localhost:5173
+```
+
+**7. Aplikacja mobilna.** Na fizycznym telefonie `localhost` wskazuje sam
+telefon — w `EXPO_PUBLIC_API_URL` musi być adres, pod którym telefon widzi
+maszynę dewelopera.
+
+```
+cp apps/mobile/.env.example apps/mobile/.env
+pnpm --filter @alphapump/mobile start
+```
+
+**8. Sprawdzenie z konsoli.** Sesja wraca nagłówkiem `set-auth-token`, nie
+ciasteczkiem — tą samą drogą, którą chodzi aplikacja.
+
+```
+curl -s localhost:3000/health
+
+curl -sD- -o/dev/null -X POST localhost:3000/api/auth/sign-up/email \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"ja@example.com","password":"haslo-testowe-123","name":"Ja"}'
+
+curl -s localhost:3000/me -H "Authorization: Bearer <token>"
+```
+
+**9. Pierwszy administrator.** Rolę nadaje panel, ale pierwszemu administratorowi
+nie ma jej kto nadać — więc SQL-em, raz:
+
+```
+psql "postgres://alphapump:alphapump@localhost:5432/alphapump" \
+  -c "UPDATE users SET role = 'admin' WHERE email = 'ja@example.com';"
+```
+
+**10. Testy.** Ani bazy, ani kluczy nie wymagają: API jedzie na PGlite
+w procesie, a warstwy modelowe są w testach podstawione atrapami. `pnpm test`
+działa na czystej maszynie i dokładnie to robi CI.
+
+### Uruchomienie produkcyjne
+
+Docelowa infrastruktura — minipc w sieci NetBird, Docker Compose z PostgreSQL 17
+(pgvector, `pg_trgm`), API i panelem za Caddym, bez TLS — jest opisana
+w [`docs/stack_technologiczny.md`](docs/stack_technologiczny.md). Plików Compose'a
+ani Caddyfile'a w repozytorium jeszcze nie ma; poniżej jest to, co wynika z kodu.
+
+**1. Build.** Ten sam, który przechodzi CI:
+
+```
+pnpm install --frozen-lockfile
+pnpm build
+```
+
+**2. API.**
+
+```
+NODE_ENV=production node apps/api/dist/index.js
+```
+
+Zmienne wchodzą ze **środowiska procesu** — `env_file:` w Compose albo
+`EnvironmentFile=` w systemd. Flaga `--env-file` jest wygodą dewelopera; sekret
+produkcyjny nie jest plikiem leżącym obok kodu.
+
+Migracje wykonują się przed przyjęciem pierwszego żądania, więc wdrożenie to
+podmiana obrazu i restart. Seed przy starcie nie wchodzi: czysta baza dostaje
+konto systemowe i ćwiczenia wbudowane pierwszym importem — `dist/cli/import.js`
+albo `scripts/restore.sh`, oba uruchamiają migracje i seed przed wczytaniem
+archiwum.
+
+**3. Panel.** Statyczne pliki z `apps/admin/dist`, serwowane przez Caddy'ego pod
+tym samym pochodzeniem co API (`VITE_API_BASE` puste — dzięki temu ciasteczko
+sesji nie jest ciasteczkiem między witrynami).
+
+```
+pnpm --filter @alphapump/admin build
+```
+
+**4. Aplikacja mobilna.** `EXPO_PUBLIC_API_URL` musi wskazywać adres API w VPN
+**przed** budowaniem: zmienne `EXPO_PUBLIC_*` są wkompilowane w bundle, a z tego
+adresu wyliczają się wyjątki ATS i cleartext w projektach natywnych.
+
+```
+pnpm --filter @alphapump/mobile prebuild
+pnpm --filter @alphapump/mobile android     # wydanie: wariant release z projektu natywnego
+```
+
+Konfiguracji EAS repozytorium nie zawiera — wydanie idzie z projektu natywnego
+wygenerowanego przez `prebuild`.
+
+**5. Kopie zapasowe.** Cron na minipc uruchamia `scripts/backup.sh` ze zmiennymi
+z tabeli wyżej; odtworzenie to `scripts/restore.sh <plik|zdalny>`, a próba
+odtworzenia `scripts/backup-drill.sh`. Na minipc trafia wyłącznie klucz publiczny
+`age`.
+
+**Przed wypuszczeniem — lista kontrolna:**
+
+- `BETTER_AUTH_SECRET` losowy i nie z `.env.example`,
+- `BETTER_AUTH_URL` równy rzeczywistemu adresowi API (wchodzi do OpenAPI i do
+  adresów zwrotnych OAuth),
+- `TRUSTED_ORIGINS` zawiera `alphapump://` i adres panelu,
+- `OPENROUTER_API_KEY` ustawiony albo świadomie pusty — log przy starcie mówi
+  wprost, że warstwa semantyczna jest wyłączona,
+- `GET /health` zwraca 200 (503 znaczy: proces żyje, baza nie),
+- pierwsza kopia zapasowa wykonana, a jej odtworzenie sprawdzone na bazie
+  testowej.
+
 ### Baza danych
 
 `packages/db` opisuje jeden schemat w dwóch dialektach: PostgreSQL po stronie
@@ -76,10 +317,14 @@ znaczyłby, że pierwsza synchronizacja zrobi z jednego ćwiczenia dwa.
 
 ```
 cp apps/api/.env.example apps/api/.env    # uzupełnij BETTER_AUTH_SECRET
-pnpm --filter @alphapump/api build && pnpm --filter @alphapump/api start
+pnpm --filter @alphapump/api build
+node --env-file=apps/api/.env apps/api/dist/index.js
 ```
 
-Serwer sam uruchamia migracje przed przyjęciem pierwszego żądania.
+Serwer sam uruchamia migracje przed przyjęciem pierwszego żądania. Flaga
+`--env-file` jest konieczna, bo Node nie ładuje `.env` sam — na produkcji
+zmienne wchodzą ze środowiska procesu i flagi nie ma (patrz „Konfiguracja:
+pliki `.env` i klucze API").
 
 | Ścieżka           | Co daje                                                     |
 | ----------------- | ----------------------------------------------------------- |
