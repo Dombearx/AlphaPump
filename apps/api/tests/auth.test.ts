@@ -107,6 +107,49 @@ describe('autoryzacja', () => {
     }
   });
 
+  it('wystawia tokeny na ścieżkach, których używa ekran w aplikacji', async () => {
+    // Ekran „Konto → Tokeny API" woła te trzy ścieżki wprost, bez wtyczki
+    // klienckiej (patrz `apps/mobile/src/screens/api-keys.tsx`). Gdyby któraś
+    // zmieniła kształt przy aktualizacji better-autha, nie zauważyłby tego ani
+    // typecheck, ani żaden inny test — a ekran przestałby działać po cichu.
+    const user = await harness.signUp('zarzadzanie-tokenami@example.com');
+    const headers = { 'Content-Type': 'application/json', ...user.headers };
+
+    const created = await harness.json<{ id: string; key: string; name: string; start: string }>(
+      'POST',
+      '/api/auth/api-key/create',
+      { headers, body: { name: 'bot Discord' } },
+    );
+    expect(created.status).toBe(200);
+    expect(created.body.name).toBe('bot Discord');
+    // Lista pokazuje wyłącznie początek tokenu, więc `start` musi przyjechać.
+    expect(created.body.start).toBeTruthy();
+
+    // Lista przyjeżdża w kopercie `{ apiKeys, total }`, a nie jako tablica —
+    // aplikacja rozpakowuje ją w `readApiKeyList`.
+    const listed = await harness.json<{ apiKeys: { id: string; start: string }[] }>(
+      'GET',
+      '/api/auth/api-key/list',
+      { headers },
+    );
+    expect(listed.status).toBe(200);
+    expect(listed.body.apiKeys.map((key) => key.id)).toContain(created.body.id);
+    // Sekret jest nie do odzyskania — lista nie może go nieść.
+    expect(JSON.stringify(listed.body)).not.toContain(created.body.key);
+
+    const removed = await harness.json('POST', '/api/auth/api-key/delete', {
+      headers,
+      body: { keyId: created.body.id },
+    });
+    expect(removed.status).toBe(200);
+
+    // Unieważniony token przestaje wpuszczać do danych.
+    const rejected = await harness.json('GET', '/me', {
+      headers: { 'x-api-key': created.body.key },
+    });
+    expect(rejected.status).toBe(401);
+  });
+
   it('odrzuca zmyślony token API', async () => {
     const response = await harness.json<{ error: { code: string } }>('GET', '/me', {
       headers: { 'x-api-key': 'zmyslony-klucz' },

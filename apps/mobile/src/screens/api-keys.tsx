@@ -33,7 +33,7 @@ import {
   describeApiKey,
   maskApiKey,
   normalizeApiKeyName,
-  toApiKeySummaries,
+  readApiKeyList,
   type ApiKeySummary,
 } from '../api-keys';
 import { authClient, useSession } from '../auth/client';
@@ -101,10 +101,8 @@ async function authFetch<T>(
   return unwrap(authClient.$fetch(path, init) as Promise<AuthResult<T>>);
 }
 
-const listKeys = async (): Promise<ApiKeySummary[]> => {
-  const rows = await authFetch<unknown[]>(API_KEY_PATHS.list);
-  return toApiKeySummaries(rows);
-};
+const listKeys = async (): Promise<ApiKeySummary[]> =>
+  readApiKeyList(await authFetch<unknown>(API_KEY_PATHS.list));
 
 export function ApiKeysScreen() {
   const { data: session, isPending } = useSession();

@@ -91,6 +91,20 @@ export function toApiKeySummaries(rows: readonly unknown[]): ApiKeySummary[] {
   );
 }
 
+/**
+ * Lista tokenów wyjęta z odpowiedzi `GET /api/auth/api-key/list`.
+ *
+ * Odpowiedź jest **kopertą** — `{ apiKeys, total }` — a nie gołą tablicą.
+ * Ta jedna linijka jest tu, a nie w ekranie, właśnie dlatego: kształt należy do
+ * biblioteki, więc ma być opisany w jednym miejscu i objęty testem, który
+ * zauważy jego zmianę. Nierozpoznana odpowiedź daje pustą listę zamiast wyjątku:
+ * ekran ma wtedy powiedzieć „nie masz tokenów", a nie zamienić się w błąd.
+ */
+export function readApiKeyList(payload: unknown): ApiKeySummary[] {
+  const parsed = z.object({ apiKeys: z.array(z.unknown()) }).safeParse(payload);
+  return parsed.success ? toApiKeySummaries(parsed.data.apiKeys) : [];
+}
+
 /** Nazwa po sprzątnięciu: bez brzegowych spacji, bez ciągów spacji, przycięta. */
 export function normalizeApiKeyName(input: string): string {
   return input.trim().replace(/\s+/g, ' ').slice(0, API_KEY_NAME_MAX_LENGTH);

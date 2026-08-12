@@ -15,6 +15,7 @@ import {
   describeApiKey,
   maskApiKey,
   normalizeApiKeyName,
+  readApiKeyList,
   toApiKeySummaries,
   type ApiKeySummary,
 } from '../src/api-keys';
@@ -74,6 +75,22 @@ describe('zawężanie odpowiedzi', () => {
     ]);
 
     expect(keys.map((key) => key.id)).toEqual(['c', 'a', 'b']);
+  });
+});
+
+describe('odczyt listy z odpowiedzi serwera', () => {
+  it('wyjmuje tokeny z koperty, którą oddaje better-auth', () => {
+    // `GET /api/auth/api-key/list` zwraca `{ apiKeys, total }`, a nie tablicę.
+    const keys = readApiKeyList({ apiKeys: [row(), row({ id: 'key-2' })], total: 2 });
+
+    expect(keys.map((key) => key.id)).toEqual(['key-1', 'key-2']);
+  });
+
+  it('z nierozpoznanej odpowiedzi robi pustą listę, a nie błąd', () => {
+    // Ekran ma wtedy powiedzieć „nie masz tokenów", a nie zamienić się w awarię.
+    expect(readApiKeyList([row()])).toEqual([]);
+    expect(readApiKeyList(null)).toEqual([]);
+    expect(readApiKeyList({ total: 0 })).toEqual([]);
   });
 });
 
