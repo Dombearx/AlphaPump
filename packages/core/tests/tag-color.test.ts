@@ -1,16 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { hashString, tagColor, tagColorForSlug, TAG_COLORS } from '../src/tag-color.js';
+import { hashString, tagColor, tagColorForSlug } from '../src/tag-color.js';
 import { slug } from '../src/slug.js';
-
-describe('paleta', () => {
-  it('ma dwadzieścia różnych kolorów w formacie #rrggbb', () => {
-    expect(TAG_COLORS).toHaveLength(20);
-    expect(new Set(TAG_COLORS).size).toBe(TAG_COLORS.length);
-    for (const color of TAG_COLORS) {
-      expect(color).toMatch(/^#[0-9a-f]{6}$/);
-    }
-  });
-});
 
 describe('hashString', () => {
   it('jest deterministyczny i mieści się w 32 bitach bez znaku', () => {
@@ -34,17 +24,17 @@ describe('tagColor', () => {
     expect(tagColorForSlug(slug('Biceps'))).toBe(kolor);
   });
 
-  it('zawsze zwraca kolor z palety', () => {
+  it('zawsze zwraca kolor w formacie #rrggbb', () => {
     const nazwy = ['biceps', 'grzbiet', 'nogi', 'barki', 'brzuch', 'cardio', 'klatka', ''];
     for (const nazwa of nazwy) {
-      expect(TAG_COLORS).toContain(tagColor(nazwa));
+      expect(tagColor(nazwa)).toMatch(/^#[0-9a-f]{6}$/);
     }
   });
 
-  it('rozkłada kilkadziesiąt tagów po dużej części palety', () => {
+  it('rozkłada kilkadziesiąt tagów po odcieniach — kolizje rzadsze niż przy małej, ustalonej palecie', () => {
     const tagi = Array.from({ length: 40 }, (_, index) => `tag-${index}`);
     const uzyte = new Set(tagi.map((tag) => tagColorForSlug(tag)));
-    expect(uzyte.size).toBeGreaterThanOrEqual(12);
+    expect(uzyte.size).toBeGreaterThanOrEqual(30);
   });
 
   it('nie zmienia koloru między wywołaniami — serwer nie musi go korygować', () => {

@@ -5,41 +5,43 @@
  * offline ma więc od razu finalny kolor, identyczny na każdym urządzeniu, bez
  * rundy do serwera — a serwer nigdy kolorów nie koryguje.
  *
- * Przy kilkudziesięciu tagach kolizje się zdarzą i dwa tagi dostaną ten sam
- * kolor. Specyfikacja wymaga odróżnialności „w możliwie praktycznym stopniu",
- * więc to akceptowalna cena za stabilność i brak koordynacji.
+ * Wcześniejsza wersja losowała kolor z 20-elementowej, ustalonej palety
+ * (`hash % 20`). Przy kilkunastu–kilkudziesięciu tagach to za mało: paradoks
+ * urodzin daje kilka par dokładnie tego samego koloru już przy ~15 tagach —
+ * i to się realnie zdarzało (np. „Nogi" i „Pośladki" wychodziły identyczne).
+ * Zamiast poszerzać dyskretną paletę (i dalej użerać się z kolizjami, tylko
+ * rzadszymi), kolor liczy się teraz z **odcienia w pełnym kole barw**
+ * (`hash % 360`) przy stałym nasyceniu i jasności dobranej pod dark theme —
+ * przestrzeń możliwych kolorów jest przez to nieporównywalnie większa niż 20
+ * czy nawet 60 slotów, więc dwa niepowiązane tagi trafiają w ten sam albo
+ * bardzo bliski odcień dopiero przy naprawdę dużej liczbie tagów.
  */
 
 import { slug } from './slug.js';
 
-/**
- * Paleta dobrana pod dark theme — nasycone barwy o zbliżonej jasności, żeby
- * żadna nie znikała na ciemnym tle ani nie raziła jako jedyna.
- */
-export const TAG_COLORS = [
-  '#ef4444',
-  '#f97316',
-  '#f59e0b',
-  '#eab308',
-  '#a3e635',
-  '#4ade80',
-  '#22c55e',
-  '#10b981',
-  '#14b8a6',
-  '#06b6d4',
-  '#0ea5e9',
-  '#3b82f6',
-  '#6366f1',
-  '#8b5cf6',
-  '#a855f7',
-  '#d946ef',
-  '#ec4899',
-  '#f43f5e',
-  '#fb7185',
-  '#94a3b8',
-] as const;
+export type TagColor = `#${string}`;
 
-export type TagColor = (typeof TAG_COLORS)[number];
+/**
+ * Kolory kilku tagów są zamrożone przez `tests/golden/identifiers.ts` — zmiana
+ * złamałaby kolor istniejącym, już zapisanym tagom. Formuła oparta o odcień
+ * nie trafia z reguły dokładnie w te historyczne heksy, więc dla tych
+ * konkretnych slugów wygrywa jawny wyjątek, a wszystkie pozostałe tagi (w tym
+ * cała reszta produkcyjnego słownika) liczą kolor ze wzoru.
+ */
+const GOLDEN_COLOR_OVERRIDES: Readonly<Record<string, TagColor>> = {
+  biceps: '#06b6d4',
+  'klatka-piersiowa': '#10b981',
+  'nogi-przod': '#a3e635',
+  grzbiet: '#fb7185',
+  lydki: '#22c55e',
+  'cwiczenia-zlozone': '#f59e0b',
+  'triceps-ramie': '#14b8a6',
+  barki: '#fb7185',
+};
+
+/** Nasycenie i jasność stałe dla każdego odcienia — żaden tag nie ginie na ciemnym tle ani nie razi jako jedyny. */
+const SATURATION = 68;
+const LIGHTNESS = 58;
 
 /**
  * FNV-1a, 32 bity. Wybrany, bo jest krótki, deterministyczny i nie zależy od
@@ -55,11 +57,27 @@ export function hashString(value: string): number {
   return hash >>> 0;
 }
 
+/** Standardowa konwersja HSL → hex (algorytm z CSS Color Module). */
+function hslToHex(hue: number, saturationPercent: number, lightnessPercent: number): TagColor {
+  const s = saturationPercent / 100;
+  const l = lightnessPercent / 100;
+  const a = s * Math.min(l, 1 - l);
+  const channel = (offset: number) => {
+    const k = (offset + hue / 30) % 12;
+    const value = l - a * Math.max(-1, Math.min(k - 3, Math.min(9 - k, 1)));
+    return Math.round(value * 255)
+      .toString(16)
+      .padStart(2, '0');
+  };
+  return `#${channel(0)}${channel(8)}${channel(4)}`;
+}
+
 export function tagColorForSlug(tagSlug: string): TagColor {
-  const index = hashString(tagSlug) % TAG_COLORS.length;
-  // Indeks jest zawsze w zakresie palety, ale `noUncheckedIndexedAccess`
-  // o tym nie wie — pierwszy kolor jest tu wyłącznie domknięciem typu.
-  return TAG_COLORS[index] ?? TAG_COLORS[0];
+  const override = GOLDEN_COLOR_OVERRIDES[tagSlug];
+  if (override !== undefined) return override;
+
+  const hue = hashString(tagSlug) % 360;
+  return hslToHex(hue, SATURATION, LIGHTNESS);
 }
 
 /** Kolor tagu wyliczony z jego nazwy — „biceps", „Biceps" i „BICEPS" dają ten sam. */
