@@ -33,14 +33,14 @@ export async function signInWithGoogle(): Promise<{ cancelled: boolean }> {
 
   const idToken = response.data?.idToken;
   if (!idToken) {
-    throw new Error('Google nie zwróciło tokenu tożsamości');
+    throw new Error("Google didn't return an identity token");
   }
 
   const { error } = await authClient.signIn.social({
     provider: 'google',
     idToken: { token: idToken },
   });
-  if (error) throw new Error(error.message ?? 'Logowanie przez Google nie powiodło się');
+  if (error) throw new Error(error.message ?? 'Google sign-in failed');
 
   return { cancelled: false };
 }

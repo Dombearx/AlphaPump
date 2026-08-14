@@ -120,6 +120,9 @@ describe('warstwa leksykalna (warstwa wyłączona)', () => {
     context = await fixture();
     await addExercise(context, 'Wyciskanie sztangi leżąc');
     await addExercise(context, 'Deadlift');
+    // Ten sam ruch, inna pisownia — samodzielny fixture zamiast polegania na
+    // tym, że akurat tak nazywa się jakieś ćwiczenie wbudowane z seeda.
+    await addExercise(context, 'Martwy ciąg');
   });
 
   afterAll(async () => {
@@ -149,7 +152,7 @@ describe('warstwa leksykalna (warstwa wyłączona)', () => {
     const response = await similar(context, 'Martwy ciąg');
     const names = response.body.candidates.map((candidate) => candidate.name);
 
-    // Ćwiczenie wbudowane o tej samej pisowni znajduje się bez trudu…
+    // Ćwiczenie o tej samej pisowni znajduje się bez trudu…
     expect(names).toContain('Martwy ciąg');
     // …a „Deadlift", czyli ten sam ruch pod inną nazwą, nie — te dwa napisy nie
     // dzielą ani jednego trigramu. To jest granica warstwy 1 i dokładnie ta
@@ -219,8 +222,8 @@ describe('warstwa hybrydowa i re-ranker', () => {
     expect(response.body.layer).toBe('llm');
 
     // Werdykt modelu wypycha uznane duplikaty na początek listy, więc „Deadlift"
-    // stoi przed wbudowanym „Martwym ciągiem", którego model nie ocenił jako
-    // duplikatu — mimo że tamten jest bliżej w warstwie leksykalnej.
+    // stoi przed „Martwym ciągiem", którego model nie ocenił jako duplikatu —
+    // mimo że tamten jest bliżej w warstwie leksykalnej.
     expect(response.body.candidates[0]).toMatchObject({
       name: 'Deadlift',
       sources: ['semantic'],

@@ -36,18 +36,18 @@ export interface MeasurementField {
 }
 
 const FIELDS: Readonly<Record<MeasurementKey, MeasurementField>> = {
-  weightG: { key: 'weightG', kind: 'weight', label: 'Ciężar', unit: 'kg', placeholder: '0' },
-  reps: { key: 'reps', kind: 'reps', label: 'Powtórzenia', unit: '×', placeholder: '0' },
-  durationS: { key: 'durationS', kind: 'duration', label: 'Czas', unit: '', placeholder: 'mm:ss' },
-  distanceM: { key: 'distanceM', kind: 'distance', label: 'Dystans', unit: 'm', placeholder: '0' },
+  weightG: { key: 'weightG', kind: 'weight', label: 'Weight', unit: 'kg', placeholder: '0' },
+  reps: { key: 'reps', kind: 'reps', label: 'Reps', unit: '×', placeholder: '0' },
+  durationS: { key: 'durationS', kind: 'duration', label: 'Time', unit: '', placeholder: 'mm:ss' },
+  distanceM: { key: 'distanceM', kind: 'distance', label: 'Distance', unit: 'm', placeholder: '0' },
 };
 
 const BODYWEIGHT_FIELD: MeasurementField = {
   key: 'bodyweightG',
   kind: 'weight',
-  label: 'Masa ciała',
+  label: 'Bodyweight',
   unit: 'kg',
-  placeholder: 'opcjonalnie',
+  placeholder: 'optional',
 };
 
 /**
@@ -65,17 +65,17 @@ export function fieldsFor(loggingType: LoggingType): MeasurementField[] {
 /* ------------------------------------------------------------------- odczyt */
 
 /**
- * Liczba dziesiętna po polsku, bez ogona zer: `82.5` → `82,5`, `80` → `80`.
+ * Decimal number without trailing zeros: `82.5` → `82.5`, `80` → `80`.
  *
- * Zera na końcu nie są kosmetyką — pole formularza wypełniane tą samą funkcją
- * pokazywałoby „82,50" tam, gdzie użytkownik wpisał „82,5".
+ * The trailing zeros aren't cosmetic — a form field filled by this same
+ * function would show `82.50` where the user typed `82.5`.
  */
 function decimal(value: number): string {
   if (Number.isInteger(value)) return String(value);
-  return value.toFixed(3).replace(/0+$/, '').replace(/\.$/, '').replace('.', ',');
+  return value.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
 }
 
-/** `9000` → `9`, `9500` → `9,5`. Przecinek, bo aplikacja mówi po polsku. */
+/** `9000` → `9`, `9500` → `9.5`. */
 export function formatWeight(grams: number): string {
   return decimal(gramsToKilograms(grams));
 }
@@ -127,7 +127,7 @@ export function formatSet(loggingType: LoggingType, measurements: SetMeasurement
     case 'bodyweight_time':
       return formatDuration(durationS ?? 0);
     case 'distance_time':
-      return `${formatDistance(distanceM ?? 0)} w ${formatDuration(durationS ?? 0)}`;
+      return `${formatDistance(distanceM ?? 0)} in ${formatDuration(durationS ?? 0)}`;
   }
 }
 
@@ -206,21 +206,34 @@ export function parseValue(kind: MeasurementKind, text: string): number | null {
   }
 }
 
+/**
+ * Wartość pola przesunięta o krok — do przycisków „+"/„−" przy ciężarze
+ * i powtórzeniach. Puste pole liczy się jako zero, więc pierwsze naciśnięcie
+ * „+" ustawia najmniejszą sensowną wartość zamiast wymagać ręcznego wpisania.
+ */
+export function stepValue(kind: 'weight' | 'reps', text: string, direction: 1 | -1): string {
+  const current = (kind === 'weight' ? parseWeight(text) : parseCount(text)) ?? 0;
+  const step = kind === 'weight' ? kilogramsToGrams(1) : 1;
+  const minimum = kind === 'reps' ? 1 : 0;
+  const next = Math.max(minimum, current + direction * step);
+  return formatValue(kind, next);
+}
+
 /* ------------------------------------------------------- nazwy i cele cyklu */
 
 /** Typ logowania po ludzku — pokazywany przy tworzeniu ćwiczenia. */
 export const LOGGING_TYPE_LABELS: Readonly<Record<LoggingType, string>> = {
-  weight_reps: 'Ciężar i powtórzenia',
-  weight_time: 'Ciężar i czas',
-  bodyweight_reps: 'Masa ciała i powtórzenia',
-  bodyweight_time: 'Masa ciała i czas',
-  distance_time: 'Dystans i czas',
+  weight_reps: 'Weight and reps',
+  weight_time: 'Weight and time',
+  bodyweight_reps: 'Bodyweight and reps',
+  bodyweight_time: 'Bodyweight and time',
+  distance_time: 'Distance and time',
 };
 
 export const GOAL_METRIC_LABELS: Readonly<Record<GoalMetric, string>> = {
-  sets: 'Serie',
-  duration: 'Czas',
-  distance: 'Dystans',
+  sets: 'Sets',
+  duration: 'Time',
+  distance: 'Distance',
 };
 
 /**
@@ -254,7 +267,7 @@ export function parseMetricTarget(metric: GoalMetric, text: string): number | nu
 export function metricUnit(metric: GoalMetric): string {
   switch (metric) {
     case 'sets':
-      return 'serii';
+      return 'sets';
     case 'duration':
       return '';
     case 'distance':

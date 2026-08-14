@@ -11,9 +11,9 @@ import type { WorkoutSet } from '@alphapump/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createHarness, type Harness, type TestUser } from './harness.js';
 
-const BENCH = builtInExerciseId('Wyciskanie sztangi leżąc');
-const PLANK = builtInExerciseId('Deska');
-const RUN = builtInExerciseId('Bieg');
+const BENCH = builtInExerciseId('Barbell bench press');
+const PLANK = builtInExerciseId('Plank');
+const RUN = builtInExerciseId('Running');
 
 describe('serie', () => {
   let harness: Harness;

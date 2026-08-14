@@ -31,7 +31,7 @@ export function SyncBadge() {
     <>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Status synchronizacji: ${description.label}`}
+        accessibilityLabel={`Sync status: ${description.label}`}
         className="flex-row items-center gap-2 px-2 py-1 active:opacity-70"
         onPress={() => setOpen(true)}
       >
@@ -43,21 +43,21 @@ export function SyncBadge() {
         <Pressable className="flex-1 justify-end bg-black/60" onPress={() => setOpen(false)}>
           <View className="gap-4 rounded-t-3xl border-t border-border bg-surface p-6">
             <View className="gap-1">
-              <Text className="text-lg font-semibold text-text">Synchronizacja</Text>
+              <Text className="text-lg font-semibold text-text">Sync</Text>
               <Text className="text-muted">{description.detail}</Text>
             </View>
 
             {snapshot.rejected > 0 && (
               <Text className="text-danger">
-                Serwer odrzucił {snapshot.rejected} wiersz(e) z ostatniej paczki — najczęściej
-                oznacza to brak uprawnień do edycji cudzego ćwiczenia.
+                The server rejected {snapshot.rejected} row(s) from the last batch — this usually
+                means missing permission to edit someone else's exercise.
               </Text>
             )}
 
             <View className="flex-row gap-3">
               <Button
                 grow
-                label="Synchronizuj teraz"
+                label="Sync now"
                 onPress={() => {
                   // Świadomie bez `await` — okno nie ma na co czekać, a wynik
                   // i tak pokaże się sam, bo pigułka słucha silnika.
@@ -65,7 +65,7 @@ export function SyncBadge() {
                   setOpen(false);
                 }}
               />
-              <Button grow variant="secondary" label="Zamknij" onPress={() => setOpen(false)} />
+              <Button grow variant="secondary" label="Close" onPress={() => setOpen(false)} />
             </View>
           </View>
         </Pressable>

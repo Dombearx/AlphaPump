@@ -60,7 +60,7 @@ const apiKeyRowSchema = z.object({
 });
 
 /** Etykieta tokenu bez nazwy — starsze wpisy i tokeny wydane spoza aplikacji. */
-export const UNNAMED_API_KEY = 'Token bez nazwy';
+export const UNNAMED_API_KEY = 'Unnamed token';
 
 /**
  * Zawęża i porządkuje odpowiedź serwera. Wiersz w nieznanym kształcie jest
@@ -117,7 +117,7 @@ export function normalizeApiKeyName(input: string): string {
  * w chwili, w której trzeba unieważnić dokładnie jeden.
  */
 export function apiKeyNameProblem(input: string): string | null {
-  return normalizeApiKeyName(input).length === 0 ? 'Podaj nazwę — po niej poznasz token' : null;
+  return normalizeApiKeyName(input).length === 0 ? "Give it a name — that's how you'll recognize the token" : null;
 }
 
 /**
@@ -127,11 +127,11 @@ export function apiKeyNameProblem(input: string): string | null {
  * jeszcze do czegoś służy" — a to ono pada, zanim ktoś go unieważni.
  */
 export function describeApiKey(key: ApiKeySummary, today: IsoDate): string {
-  const created = `utworzony ${formatDate(toIsoDate(key.createdAt), today)}`;
+  const created = `created ${formatDate(toIsoDate(key.createdAt), today)}`;
   const used =
     key.lastUsedAt === null
-      ? 'jeszcze nieużywany'
-      : `ostatnio użyty ${formatDate(toIsoDate(key.lastUsedAt), today)}`;
+      ? 'never used'
+      : `last used ${formatDate(toIsoDate(key.lastUsedAt), today)}`;
 
   return `${created} · ${used}`;
 }

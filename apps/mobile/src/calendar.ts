@@ -24,21 +24,21 @@ export function weekdayIndex(day: IsoDate): number {
   return (new Date(Date.UTC(year, month - 1, date)).getUTCDay() + 6) % 7;
 }
 
-export const WEEKDAY_LABELS = ['pon', 'wt', 'śr', 'czw', 'pt', 'sob', 'ndz'] as const;
+export const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 
 export const MONTH_LABELS = [
-  'styczeń',
-  'luty',
-  'marzec',
-  'kwiecień',
-  'maj',
-  'czerwiec',
-  'lipiec',
-  'sierpień',
-  'wrzesień',
-  'październik',
-  'listopad',
-  'grudzień',
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
 ] as const;
 
 export function startOfWeek(day: IsoDate): IsoDate {

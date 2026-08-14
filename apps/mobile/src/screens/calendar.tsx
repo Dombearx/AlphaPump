@@ -35,8 +35,8 @@ import { capitalize, formatDate, setsPlural, today as currentDay } from '../day-
 import { Button, Chip, EmptyState, IconButton, Loading } from '../ui/primitives';
 
 const SCALES: { value: CalendarScale; label: string }[] = [
-  { value: 'month', label: 'Miesiąc' },
-  { value: 'week', label: 'Tydzień' },
+  { value: 'month', label: 'Month' },
+  { value: 'week', label: 'Week' },
 ];
 
 export function CalendarScreen() {
@@ -71,7 +71,7 @@ export function CalendarScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-base" edges={['bottom']}>
-      <Stack.Screen options={{ title: 'Kalendarz' }} />
+      <Stack.Screen options={{ title: 'Calendar' }} />
 
       <ScrollView contentContainerClassName="gap-4 p-4 pb-10">
         <View className="flex-row gap-2">
@@ -86,14 +86,14 @@ export function CalendarScreen() {
         </View>
 
         <View className="flex-row items-center justify-between">
-          <IconButton label="Wstecz" glyph="‹" onPress={() => shift(-1)} />
+          <IconButton label="Back" glyph="‹" onPress={() => shift(-1)} />
           <View className="items-center">
             <Text className="text-lg text-text">{headline(anchor, scale, today)}</Text>
             <Text className="text-xs text-muted">
-              {total === 0 ? 'brak serii' : `${String(total)} ${setsPlural(total)}`}
+              {total === 0 ? 'no sets' : `${String(total)} ${setsPlural(total)}`}
             </Text>
           </View>
-          <IconButton label="Naprzód" glyph="›" onPress={() => shift(1)} />
+          <IconButton label="Forward" glyph="›" onPress={() => shift(1)} />
         </View>
 
         <View className="flex-row">
@@ -120,13 +120,13 @@ export function CalendarScreen() {
 
         {total === 0 && (
           <EmptyState
-            title="Pusto w tym okresie"
-            hint="Wejdź w dowolny dzień, żeby dopisać serie wstecz."
+            title="Nothing in this period"
+            hint="Open any day to log sets retroactively."
           />
         )}
 
         {anchor !== today && (
-          <Button variant="secondary" label="Wróć do dziś" onPress={() => setAnchor(today)} />
+          <Button variant="secondary" label="Back to today" onPress={() => setAnchor(today)} />
         )}
       </ScrollView>
     </SafeAreaView>
@@ -146,7 +146,7 @@ function DayTile({ day, onPress }: { day: CalendarDay; onPress: () => void }) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${day.day}, serie: ${String(day.sets)}`}
+      accessibilityLabel={`${day.day}, sets: ${String(day.sets)}`}
       onPress={onPress}
       className={`flex-1 items-center gap-1 rounded-xl border ${border} bg-surface py-2 active:opacity-70 ${dim}`}
     >

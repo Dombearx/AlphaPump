@@ -118,7 +118,7 @@ export async function importLocalArchive(
   const problems = findArchiveProblems(archive);
   if (problems.length > 0) {
     throw new ArchiveRejectedError(
-      'Archiwum jest niespójne — nie da się go odtworzyć',
+      "The archive is inconsistent — it can't be restored",
       problems.map((problem) => `${problem.entity} ${problem.id}: ${problem.message}`),
     );
   }
@@ -145,7 +145,7 @@ export async function importLocalArchive(
   skipped.users = archive.users.length;
 
   if (unresolved.length > 0) {
-    notes.add('Pominięto dane kont, których nie ma na tym urządzeniu.');
+    notes.add('Skipped data for accounts not present on this device.');
   }
 
   await withTransaction(
@@ -358,10 +358,10 @@ export async function importLocalArchive(
   );
 
   if (skipped.sets > 0) {
-    notes.add('Pominięto serie należące do innego konta albo wskazujące na nieznane ćwiczenie.');
+    notes.add('Skipped sets belonging to another account or pointing to an unknown exercise.');
   }
   if (skipped.exercises > 0) {
-    notes.add('Pominięto ćwiczenia, których autora nie ma na tym urządzeniu.');
+    notes.add("Skipped exercises whose author isn't on this device.");
   }
 
   return {

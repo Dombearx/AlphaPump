@@ -21,18 +21,19 @@ import { useSession } from '../auth/client';
 import { formatDistance, formatWeight } from '../measurements';
 import { remoteReader } from '../remote/reader';
 import { useRemote } from '../remote/use-remote';
+import { COLORS } from '../theme';
 import { Button, Chip, ChipRow, EmptyState, Loading, Row } from '../ui/primitives';
 
 const METRIC_LABELS: Readonly<Record<RankingMetric, string>> = {
-  volume: 'Objętość',
-  distance: 'Dystans',
-  records: 'Rekordy',
+  volume: 'Volume',
+  distance: 'Distance',
+  records: 'Records',
 };
 
 const METRIC_HINTS: Readonly<Record<RankingMetric, string>> = {
-  volume: 'Suma ciężaru razy powtórzenia ze wszystkich serii.',
-  distance: 'Suma dystansu wszystkich serii biegowych.',
-  records: 'Liczba rekordów globalnych, których nikt jeszcze nie pobił.',
+  volume: 'Sum of weight times reps across every set.',
+  distance: 'Sum of distance across every running set.',
+  records: 'Number of global records nobody has beaten yet.',
 };
 
 /** Wartość w jednostkach metryki — ta sama skala co przy pojedynczej serii. */
@@ -58,7 +59,7 @@ export function RankingsScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-base" edges={['bottom']}>
-      <Stack.Screen options={{ title: 'Rankingi' }} />
+      <Stack.Screen options={{ title: 'Rankings' }} />
 
       <View className="gap-3 p-4 pb-2">
         <ChipRow>
@@ -75,30 +76,30 @@ export function RankingsScreen() {
       </View>
 
       <ScrollView contentContainerClassName="gap-2 px-4 pb-8">
-        {state.status === 'loading' && <Loading label="Wczytywanie rankingu…" />}
+        {state.status === 'loading' && <Loading label="Loading ranking…" />}
 
         {state.status === 'offline' && (
           <View className="gap-4">
             <EmptyState
               title="Offline"
-              hint="Ranking liczy się z serii wszystkich użytkowników, więc wymaga połączenia z serwerem."
+              hint="The ranking is computed from every user's sets, so it needs a connection to the server."
             />
-            <Button variant="secondary" label="Spróbuj ponownie" onPress={reload} />
+            <Button variant="secondary" label="Try again" onPress={reload} />
           </View>
         )}
 
         {state.status === 'error' && (
           <View className="gap-4">
-            <EmptyState title="Nie udało się pobrać rankingu" hint={state.message} />
-            <Button variant="secondary" label="Spróbuj ponownie" onPress={reload} />
+            <EmptyState title="Failed to fetch the ranking" hint={state.message} />
+            <Button variant="secondary" label="Try again" onPress={reload} />
           </View>
         )}
 
         {state.status === 'ready' &&
           (state.data.length === 0 ? (
             <EmptyState
-              title="Nikt jeszcze nie ma wyniku"
-              hint="Ranking zapełni się po pierwszych zsynchronizowanych seriach."
+              title="Nobody has a result yet"
+              hint="The ranking fills up once the first sets are synced."
             />
           ) : (
             state.data.map((entry) => (
@@ -127,7 +128,10 @@ function RankingRow({
   return (
     <Row selected={isMe}>
       <Text className="w-8 text-right text-muted">{entry.position}.</Text>
-      <Text className={`flex-1 text-base ${isMe ? 'font-semibold text-accent' : 'text-text'}`}>
+      <Text
+        className={`flex-1 text-base ${isMe ? 'font-semibold' : ''}`}
+        style={{ color: isMe ? COLORS.accent : COLORS.text }}
+      >
         {entry.nickname}
       </Text>
       <Text className="text-text">{formatRankingValue(metric, entry.value)}</Text>

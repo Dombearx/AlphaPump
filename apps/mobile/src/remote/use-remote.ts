@@ -46,11 +46,11 @@ export function useRemote<T>(load: () => Promise<T>, deps: readonly unknown[]): 
         if (isOffline(error)) {
           setState({ status: 'offline' });
         } else if (error instanceof SyncAuthError) {
-          setState({ status: 'error', message: 'Sesja wygasła — zaloguj się ponownie' });
+          setState({ status: 'error', message: 'The session expired — sign in again' });
         } else {
           setState({
             status: 'error',
-            message: error instanceof Error ? error.message : 'Nie udało się pobrać danych',
+            message: error instanceof Error ? error.message : 'Failed to fetch data',
           });
         }
       }

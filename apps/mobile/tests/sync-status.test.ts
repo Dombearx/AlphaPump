@@ -29,12 +29,12 @@ describe('opis statusu', () => {
     expect(description.label).toBe('Offline');
     expect(description.tone).toBe('neutral');
     expect(description.detail).toContain('VPN');
-    expect(description.detail).toContain('3 zmiany');
+    expect(description.detail).toContain('3 changes');
   });
 
   it('błąd serwera jest oznaczony jako błąd', () => {
     const description = describeSync(
-      snapshot({ phase: 'error', lastError: 'Serwer odpowiedział 500' }),
+      snapshot({ phase: 'error', lastError: 'Server responded 500' }),
       NOW,
     );
 
@@ -45,39 +45,39 @@ describe('opis statusu', () => {
   it('czekające zmiany widać, zanim pojadą', () => {
     const description = describeSync(snapshot({ pending: 1 }), NOW);
 
-    expect(description.label).toBe('Do wysłania: 1');
-    expect(description.detail).toContain('1 zmiana');
+    expect(description.label).toBe('To send: 1');
+    expect(description.detail).toContain('1 change');
   });
 
   it('wszystko wysłane mówi krótko', () => {
-    expect(describeSync(snapshot(), NOW).label).toBe('Zsynchronizowano');
+    expect(describeSync(snapshot(), NOW).label).toBe('Synced');
   });
 
   it('wygasła sesja prosi o zalogowanie', () => {
-    expect(describeSync(snapshot({ phase: 'signed-out' }), NOW).label).toBe('Zaloguj się');
+    expect(describeSync(snapshot({ phase: 'signed-out' }), NOW).label).toBe('Sign in');
   });
 
   it('odmienia liczbę zmian', () => {
     const label = (pending: number) =>
       describeSync(snapshot({ phase: 'offline', pending }), NOW).detail;
 
-    expect(label(1)).toContain('1 zmiana');
-    expect(label(3)).toContain('3 zmiany');
-    expect(label(5)).toContain('5 zmian');
-    expect(label(22)).toContain('22 zmiany');
-    expect(label(13)).toContain('13 zmian');
+    expect(label(1)).toContain('1 change');
+    expect(label(3)).toContain('3 changes');
+    expect(label(5)).toContain('5 changes');
+    expect(label(22)).toContain('22 changes');
+    expect(label(13)).toContain('13 changes');
   });
 });
 
 describe('czas ostatniej wymiany', () => {
   it('mówi o minutach, godzinach i dniach', () => {
-    expect(lastSyncSentence(new Date('2026-08-11T11:59:30Z'), NOW)).toContain('przed chwilą');
+    expect(lastSyncSentence(new Date('2026-08-11T11:59:30Z'), NOW)).toContain('just now');
     expect(lastSyncSentence(new Date('2026-08-11T11:30:00Z'), NOW)).toContain('30 min');
-    expect(lastSyncSentence(new Date('2026-08-11T08:00:00Z'), NOW)).toContain('4 godz.');
-    expect(lastSyncSentence(new Date('2026-08-08T12:00:00Z'), NOW)).toContain('3 dni');
+    expect(lastSyncSentence(new Date('2026-08-11T08:00:00Z'), NOW)).toContain('4 hr');
+    expect(lastSyncSentence(new Date('2026-08-08T12:00:00Z'), NOW)).toContain('3 d');
   });
 
   it('urządzenie bez historii mówi to wprost', () => {
-    expect(lastSyncSentence(null, NOW)).toContain('Jeszcze nie synchronizowano');
+    expect(lastSyncSentence(null, NOW)).toContain("hasn't synced");
   });
 });

@@ -85,13 +85,13 @@ export function createRemoteReader(options: RemoteReaderOptions): RemoteReader {
 
     if (response.status === 401 || response.status === 403) throw new SyncAuthError();
     if (!response.ok) {
-      throw new SyncServerError(`Serwer odpowiedział ${String(response.status)}`, response.status);
+      throw new SyncServerError(`Server responded ${String(response.status)}`, response.status);
     }
 
     try {
       return (await response.json()) as unknown;
     } catch (error) {
-      throw new SyncServerError(`Odpowiedź serwera nie jest poprawnym JSON-em: ${String(error)}`);
+      throw new SyncServerError(`Server response isn't valid JSON: ${String(error)}`);
     }
   };
 
@@ -99,14 +99,14 @@ export function createRemoteReader(options: RemoteReaderOptions): RemoteReader {
     async globalRecords(exerciseId) {
       const body = await read(`/exercises/${exerciseId}/records`);
       const parsed = globalRecordsResponseSchema.safeParse(body);
-      if (!parsed.success) throw new SyncServerError('Odpowiedź o rekordach ma nieznany kształt');
+      if (!parsed.success) throw new SyncServerError('Records response has an unknown shape');
       return parsed.data.records;
     },
 
     async ranking(metric) {
       const body = await read(`/rankings?metric=${metric}`);
       const parsed = rankingResponseSchema.safeParse(body);
-      if (!parsed.success) throw new SyncServerError('Odpowiedź rankingu ma nieznany kształt');
+      if (!parsed.success) throw new SyncServerError('Ranking response has an unknown shape');
       return parsed.data.entries;
     },
 
@@ -117,7 +117,7 @@ export function createRemoteReader(options: RemoteReaderOptions): RemoteReader {
       const body = await read(`/exercises/similar?${query.toString()}`);
       const parsed = duplicateCheckResponseSchema.safeParse(body);
       if (!parsed.success) {
-        throw new SyncServerError('Odpowiedź o podobnych ćwiczeniach ma nieznany kształt');
+        throw new SyncServerError('Similar-exercises response has an unknown shape');
       }
       return parsed.data;
     },

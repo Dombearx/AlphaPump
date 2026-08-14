@@ -71,11 +71,11 @@ export function CycleScreen({ cycleId }: { cycleId: string }) {
   if (author === null) return <Loading />;
   if (summary === undefined) {
     return goals.updatedAt === undefined ? (
-      <Loading label="Wczytywanie cyklu…" />
+      <Loading label="Loading cycle…" />
     ) : (
       <SafeAreaView className="flex-1 justify-center gap-4 bg-base p-6">
-        <EmptyState title="Nie ma już takiego cyklu" />
-        <Button label="Wróć do cykli" onPress={() => router.replace('/cycles')} />
+        <EmptyState title="This cycle no longer exists" />
+        <Button label="Back to cycles" onPress={() => router.replace('/cycles')} />
       </SafeAreaView>
     );
   }
@@ -92,12 +92,12 @@ export function CycleScreen({ cycleId }: { cycleId: string }) {
 
   const reset = () => {
     Alert.alert(
-      'Zresetować cykl?',
-      'Liczenie ruszy od dziś. Serie zostają — poprzedni okres dalej będzie widoczny.',
+      'Reset this cycle?',
+      'Counting starts over from today. Sets stay — the previous period will still be visible.',
       [
-        { text: 'Anuluj', style: 'cancel' },
+        { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Zresetuj',
+          text: 'Reset',
           onPress: () => act(() => resetCycle(db, cycleId, today, author)),
         },
       ],
@@ -105,10 +105,10 @@ export function CycleScreen({ cycleId }: { cycleId: string }) {
   };
 
   const remove = () => {
-    Alert.alert('Usunąć cykl?', 'Serie zostaną nietknięte — zniknie tylko cel.', [
-      { text: 'Anuluj', style: 'cancel' },
+    Alert.alert('Delete this cycle?', 'Sets stay untouched — only the goal disappears.', [
+      { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Usuń',
+        text: 'Delete',
         style: 'destructive',
         onPress: () =>
           act(async () => {
@@ -133,7 +133,7 @@ export function CycleScreen({ cycleId }: { cycleId: string }) {
           </View>
           <Text className="text-xs text-muted">
             {formatRange(cycle, today)}
-            {isArchived ? ' · w archiwum' : ''}
+            {isArchived ? ' · archived' : ''}
           </Text>
           <ProgressBar ratio={progress.ratio} done={progress.completed} />
         </Card>
@@ -146,7 +146,7 @@ export function CycleScreen({ cycleId }: { cycleId: string }) {
               <Card key={goal.goalId} className="gap-2">
                 <View className="flex-row items-baseline justify-between">
                   <Text className="flex-1 text-base text-text">
-                    {row?.exerciseName ?? row?.tagName ?? 'Pozycja celu'}
+                    {row?.exerciseName ?? row?.tagName ?? 'Goal item'}
                   </Text>
                   <Text className={goal.completed ? 'text-success' : 'text-muted'}>
                     {formatMetric(goal.metric, goal.current)} /{' '}
@@ -156,7 +156,7 @@ export function CycleScreen({ cycleId }: { cycleId: string }) {
                 <ProgressBar ratio={goal.ratio} done={goal.completed} />
                 {!goal.completed && (
                   <Text className="text-xs text-muted">
-                    zostało {formatMetric(goal.metric, goal.remaining)}
+                    {formatMetric(goal.metric, goal.remaining)} left
                   </Text>
                 )}
               </Card>
@@ -168,7 +168,7 @@ export function CycleScreen({ cycleId }: { cycleId: string }) {
           <View className="gap-2">
             <Row>
               <View className="flex-1">
-                <Text className="text-text">Poprzedni okres</Text>
+                <Text className="text-text">Previous period</Text>
                 <Text className="text-xs text-muted">
                   {formatDate(previous.period.startsOn, today)} –{' '}
                   {formatDate(previous.period.endsOn, today)}
@@ -182,16 +182,16 @@ export function CycleScreen({ cycleId }: { cycleId: string }) {
         <View className="gap-2">
           <Button
             variant="secondary"
-            label="Edytuj"
+            label="Edit"
             onPress={() => router.push(`/cycles/${cycleId}/edit`)}
           />
-          <Button variant="secondary" label="Zresetuj od dziś" onPress={reset} />
+          <Button variant="secondary" label="Reset from today" onPress={reset} />
           <Button
             variant="secondary"
-            label={isArchived ? 'Przywróć z archiwum' : 'Przenieś do archiwum'}
+            label={isArchived ? 'Restore from archive' : 'Move to archive'}
             onPress={() => act(() => setCycleArchived(db, cycleId, !isArchived, author))}
           />
-          <Button variant="danger" label="Usuń cykl" onPress={remove} />
+          <Button variant="danger" label="Delete cycle" onPress={remove} />
         </View>
       </ScrollView>
     </SafeAreaView>

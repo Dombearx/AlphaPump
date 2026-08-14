@@ -50,7 +50,7 @@ export default function SignInScreen() {
     try {
       await action();
     } catch (error) {
-      setProblem(error instanceof Error ? error.message : 'Coś poszło nie tak');
+      setProblem(error instanceof Error ? error.message : 'Something went wrong');
     } finally {
       setBusy(false);
     }
@@ -67,7 +67,7 @@ export default function SignInScreen() {
               name: nickname.trim() || email.trim(),
             });
 
-      if (result.error) throw new Error(result.error.message ?? 'Logowanie nie powiodło się');
+      if (result.error) throw new Error(result.error.message ?? 'Sign-in failed');
       if (result.data?.user) await cacheSessionUser(db, result.data.user);
     });
 
@@ -89,34 +89,34 @@ export default function SignInScreen() {
           <View className="mb-2">
             <Text className="text-4xl font-bold text-text">AlphaPump</Text>
             <Text className="mt-1 text-muted">
-              {mode === 'sign-in' ? 'Zaloguj się, żeby zacząć.' : 'Załóż konto — to zajmie chwilę.'}
+              {mode === 'sign-in' ? 'Sign in to get started.' : 'Create an account — it only takes a moment.'}
             </Text>
           </View>
 
           {mode === 'sign-up' && (
             <Field
-              label="Nick"
+              label="Nickname"
               value={nickname}
               onChangeText={setNickname}
-              placeholder="widoczny przy rekordach"
+              placeholder="shown on records"
               autoCapitalize="none"
             />
           )}
 
           <Field
-            label="E-mail"
+            label="Email"
             value={email}
             onChangeText={setEmail}
-            placeholder="ty@example.com"
+            placeholder="you@example.com"
             autoCapitalize="none"
             keyboardType="email-address"
           />
 
           <Field
-            label="Hasło"
+            label="Password"
             value={password}
             onChangeText={setPassword}
-            placeholder="minimum 8 znaków"
+            placeholder="minimum 8 characters"
             secureTextEntry
           />
 
@@ -131,7 +131,7 @@ export default function SignInScreen() {
               <ActivityIndicator color={COLORS.base} />
             ) : (
               <Text className="text-center text-base font-semibold text-base">
-                {mode === 'sign-in' ? 'Zaloguj się' : 'Załóż konto'}
+                {mode === 'sign-in' ? 'Sign in' : 'Create account'}
               </Text>
             )}
           </Pressable>
@@ -143,7 +143,7 @@ export default function SignInScreen() {
               onPress={() => void withGoogle()}
             >
               <Text className="text-center text-base font-semibold text-text">
-                Kontynuuj z Google
+                Continue with Google
               </Text>
             </Pressable>
           )}
@@ -153,7 +153,7 @@ export default function SignInScreen() {
             onPress={() => setMode(mode === 'sign-in' ? 'sign-up' : 'sign-in')}
           >
             <Text className="text-center text-muted">
-              {mode === 'sign-in' ? 'Nie masz konta? Załóż je.' : 'Masz już konto? Zaloguj się.'}
+              {mode === 'sign-in' ? "Don't have an account? Create one." : 'Already have an account? Sign in.'}
             </Text>
           </Pressable>
         </ScrollView>

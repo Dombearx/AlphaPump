@@ -50,10 +50,10 @@ export interface ChartMetric {
 }
 
 const AXIS_METRICS: Readonly<Record<MeasurementKey, ChartMetric>> = {
-  weightG: { key: 'weightG', label: 'Ciężar', kind: 'weight', aggregate: 'best' },
-  reps: { key: 'reps', label: 'Powtórzenia', kind: 'reps', aggregate: 'best' },
-  durationS: { key: 'durationS', label: 'Czas', kind: 'duration', aggregate: 'best' },
-  distanceM: { key: 'distanceM', label: 'Dystans', kind: 'distance', aggregate: 'best' },
+  weightG: { key: 'weightG', label: 'Weight', kind: 'weight', aggregate: 'best' },
+  reps: { key: 'reps', label: 'Reps', kind: 'reps', aggregate: 'best' },
+  durationS: { key: 'durationS', label: 'Time', kind: 'duration', aggregate: 'best' },
+  distanceM: { key: 'distanceM', label: 'Distance', kind: 'distance', aggregate: 'best' },
 };
 
 /**
@@ -65,23 +65,23 @@ const AXIS_METRICS: Readonly<Record<MeasurementKey, ChartMetric>> = {
  * dystansu.
  */
 const TOTAL_METRIC: Readonly<Record<LoggingType, ChartMetric>> = {
-  weight_reps: { key: 'volume', label: 'Objętość', kind: 'weight', aggregate: 'total' },
-  weight_time: { key: 'totalDuration', label: 'Łączny czas', kind: 'duration', aggregate: 'total' },
+  weight_reps: { key: 'volume', label: 'Volume', kind: 'weight', aggregate: 'total' },
+  weight_time: { key: 'totalDuration', label: 'Total time', kind: 'duration', aggregate: 'total' },
   bodyweight_reps: {
     key: 'totalReps',
-    label: 'Łącznie powtórzeń',
+    label: 'Total reps',
     kind: 'reps',
     aggregate: 'total',
   },
   bodyweight_time: {
     key: 'totalDuration',
-    label: 'Łączny czas',
+    label: 'Total time',
     kind: 'duration',
     aggregate: 'total',
   },
   distance_time: {
     key: 'totalDistance',
-    label: 'Łączny dystans',
+    label: 'Total distance',
     kind: 'distance',
     aggregate: 'total',
   },
@@ -89,7 +89,7 @@ const TOTAL_METRIC: Readonly<Record<LoggingType, ChartMetric>> = {
 
 const SETS_METRIC: ChartMetric = {
   key: 'sets',
-  label: 'Serie',
+  label: 'Sets',
   kind: 'count',
   aggregate: 'count',
 };

@@ -55,7 +55,7 @@ export function TransferScreen() {
       try {
         await action();
       } catch (error) {
-        setProblem(error instanceof Error ? error.message : 'Operacja się nie udała');
+        setProblem(error instanceof Error ? error.message : 'The operation failed');
       } finally {
         setBusy(false);
       }
@@ -79,7 +79,7 @@ export function TransferScreen() {
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(file.uri, {
           mimeType: 'application/json',
-          dialogTitle: 'Eksport danych AlphaPump',
+          dialogTitle: 'AlphaPump data export',
         });
       }
     });
@@ -110,25 +110,25 @@ export function TransferScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-base" edges={['bottom']}>
-      <Stack.Screen options={{ title: 'Eksport i import' }} />
+      <Stack.Screen options={{ title: 'Export and import' }} />
 
       <ScrollView contentContainerClassName="gap-4 p-4">
         <Card className="gap-2">
-          <SectionTitle>Eksport</SectionTitle>
+          <SectionTitle>Export</SectionTitle>
           <Text className="text-muted">
-            Plik JSON z Twoimi seriami, cyklami oraz ćwiczeniami i tagami, których dotyczą. Bez
-            haseł i bez kluczy API. Działa bez internetu — dane są na tym urządzeniu.
+            A JSON file with your sets, cycles, and the exercises and tags they reference. No
+            passwords, no API keys. Works offline — the data lives on this device.
           </Text>
           <View className="mt-1">
-            <Button label="Wyeksportuj dane" busy={busy} onPress={exportData} />
+            <Button label="Export data" busy={busy} onPress={exportData} />
           </View>
           {exported !== null && (
             <Text className="text-success">
               {(() => {
                 const summary = archiveSummary(exported);
                 return (
-                  `Gotowe: ${String(summary.sets)} serii, ` +
-                  `${String(summary.exercises)} ćwiczeń, ${String(summary.cycles)} cykli.`
+                  `Done: ${String(summary.sets)} sets, ` +
+                  `${String(summary.exercises)} exercises, ${String(summary.cycles)} cycles.`
                 );
               })()}
             </Text>
@@ -138,24 +138,23 @@ export function TransferScreen() {
         <Card className="gap-2">
           <SectionTitle>Import</SectionTitle>
           <Text className="text-muted">
-            Wgrywa plik do bazy na tym urządzeniu. Dane starsze niż to, co już tu jest, nie cofną
-            zmian — rozstrzyga ta sama reguła co przy synchronizacji. Na serwer pojadą przy
-            najbliższej wymianie danych.
+            Loads the file into this device's database. Data older than what's already here won't
+            undo changes — the same rule as sync applies. It reaches the server on the next sync.
           </Text>
           <View className="mt-1">
-            <Button variant="secondary" label="Wgraj plik" busy={busy} onPress={importData} />
+            <Button variant="secondary" label="Load file" busy={busy} onPress={importData} />
           </View>
 
           {report !== null && (
             <View className="gap-1">
               <Text className="text-success">
-                Zaimportowano: {String(report.imported.sets)} serii,{' '}
-                {String(report.imported.exercises)} ćwiczeń, {String(report.imported.cycles)} cykli.
+                Imported: {String(report.imported.sets)} sets,{' '}
+                {String(report.imported.exercises)} exercises, {String(report.imported.cycles)} cycles.
               </Text>
               {report.remappedExercises > 0 && (
                 <Text className="text-xs text-muted">
-                  Przypisano na nowo {String(report.remappedExercises)} ćwiczeń — plik powstał na
-                  koncie o innym identyfikatorze.
+                  Reassigned {String(report.remappedExercises)} exercises — the file was created
+                  under an account with a different ID.
                 </Text>
               )}
               {report.notes.map((note) => (

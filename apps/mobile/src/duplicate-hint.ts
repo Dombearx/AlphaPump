@@ -117,6 +117,6 @@ export function mergeDuplicateHints(
 /** Krótkie wyjaśnienie obecności pozycji na liście — gotowe do pokazania. */
 export function describeHint(hint: DuplicateHint): string {
   if (hint.reason !== null) return hint.reason;
-  if (hint.origin === 'local') return 'podobna nazwa';
-  return 'podobne znaczenie';
+  if (hint.origin === 'local') return 'similar name';
+  return 'similar meaning';
 }

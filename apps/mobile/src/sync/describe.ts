@@ -25,15 +25,15 @@ export interface SyncDescription {
 
 export function describeSync(snapshot: SyncSnapshot, now: Date = new Date()): SyncDescription {
   const pending = snapshot.pending;
-  const queue = pending > 0 ? ` Czeka ${String(pending)} ${plural(pending)}.` : '';
+  const queue = pending > 0 ? ` ${String(pending)} ${plural(pending)} pending.` : '';
   const last = lastSyncSentence(snapshot.lastSyncedAt, now);
 
   switch (snapshot.phase) {
     case 'syncing':
       return {
-        label: 'Synchronizacja…',
+        label: 'Syncing…',
         tone: 'progress',
-        detail: `Wymiana danych z serwerem.${queue}`,
+        detail: `Exchanging data with the server.${queue}`,
       };
 
     case 'offline':
@@ -41,54 +41,50 @@ export function describeSync(snapshot: SyncSnapshot, now: Date = new Date()): Sy
         label: 'Offline',
         tone: 'neutral',
         detail:
-          `Serwer jest poza zasięgiem — sprawdź połączenie z VPN. Zmiany zostaną wysłane, gdy wróci.${queue} ${last}`.trim(),
+          `The server is unreachable — check your VPN connection. Changes will be sent once it's back.${queue} ${last}`.trim(),
       };
 
     case 'signed-out':
       return {
-        label: 'Zaloguj się',
+        label: 'Sign in',
         tone: 'warning',
-        detail: `Sesja wygasła, więc dane czekają na urządzeniu.${queue} ${last}`.trim(),
+        detail: `The session expired, so data is waiting on the device.${queue} ${last}`.trim(),
       };
 
     case 'error':
       return {
-        label: 'Błąd',
+        label: 'Error',
         tone: 'danger',
-        detail: `${snapshot.lastError ?? 'Serwer odpowiedział błędem.'}${queue} ${last}`.trim(),
+        detail: `${snapshot.lastError ?? 'The server responded with an error.'}${queue} ${last}`.trim(),
       };
 
     case 'idle':
       if (pending > 0) {
         return {
-          label: `Do wysłania: ${String(pending)}`,
+          label: `To send: ${String(pending)}`,
           tone: 'warning',
-          detail: `${queue.trim()} Pojedzie przy najbliższej wymianie. ${last}`.trim(),
+          detail: `${queue.trim()} It will go out on the next sync. ${last}`.trim(),
         };
       }
-      return { label: 'Zsynchronizowano', tone: 'neutral', detail: last };
+      return { label: 'Synced', tone: 'neutral', detail: last };
   }
 }
 
 function plural(count: number): string {
-  if (count === 1) return 'zmiana';
-  const tens = count % 100;
-  const ones = count % 10;
-  const few = ones >= 2 && ones <= 4 && !(tens >= 12 && tens <= 14);
-  return few ? 'zmiany' : 'zmian';
+  return count === 1 ? 'change' : 'changes';
 }
 
-/** „Ostatnia wymiana: 5 min temu". Bez sekund — precyzja i tak nikomu nie służy. */
+/** "Last sync: 5 min ago". No seconds — that precision doesn't help anyone. */
 export function lastSyncSentence(at: Date | null, now: Date): string {
-  if (at === null) return 'Jeszcze nie synchronizowano na tym urządzeniu.';
+  if (at === null) return "This device hasn't synced yet.";
 
   const minutes = Math.floor((now.getTime() - at.getTime()) / 60_000);
-  if (minutes < 1) return 'Ostatnia wymiana: przed chwilą.';
-  if (minutes < 60) return `Ostatnia wymiana: ${String(minutes)} min temu.`;
+  if (minutes < 1) return 'Last sync: just now.';
+  if (minutes < 60) return `Last sync: ${String(minutes)} min ago.`;
 
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `Ostatnia wymiana: ${String(hours)} godz. temu.`;
+  if (hours < 24) return `Last sync: ${String(hours)} hr ago.`;
 
   const days = Math.floor(hours / 24);
-  return `Ostatnia wymiana: ${String(days)} dni temu.`;
+  return `Last sync: ${String(days)} d ago.`;
 }

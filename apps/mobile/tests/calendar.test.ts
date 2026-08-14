@@ -41,8 +41,8 @@ describe('granice okresów', () => {
     expect(addMonths('2026-01-15', -1)).toBe('2025-12-01');
   });
 
-  it('nagłówek miesiąca jest po polsku', () => {
-    expect(monthLabel(TODAY)).toBe('sierpień 2026');
+  it('nagłówek miesiąca jest po angielsku', () => {
+    expect(monthLabel(TODAY)).toBe('August 2026');
   });
 });
 

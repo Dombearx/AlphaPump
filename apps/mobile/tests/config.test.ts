@@ -31,6 +31,17 @@ describe('konfiguracja aplikacji', () => {
   });
 
   it('odrzuca adres, który nie jest adresem', () => {
-    expect(() => parseAppConfig({ apiUrl: 'minipc:3000' })).toThrow(/Niepoprawna konfiguracja/);
+    expect(() => parseAppConfig({ apiUrl: 'minipc:3000' })).toThrow(/Invalid app configuration/);
+  });
+
+  it('traktuje puste obiekty z manifestu Expo Go jak brak konfiguracji Google', () => {
+    // Klasyczny protokół manifestu Expo Go serializuje `null` w `extra` jako `{}`.
+    const config = parseAppConfig({
+      apiUrl: 'http://alphapump.local:3000',
+      googleWebClientId: {},
+      googleIosClientId: {},
+    });
+
+    expect(isGoogleSignInConfigured(config)).toBe(false);
   });
 });

@@ -102,7 +102,7 @@ describe('pozostałe pola', () => {
 
   it('ciężar pokazuje się w kilogramach, po polsku', () => {
     expect(formatWeight(80_000)).toBe('80');
-    expect(formatWeight(82_500)).toBe('82,5');
+    expect(formatWeight(82_500)).toBe('82.5');
   });
 });
 
@@ -116,7 +116,7 @@ describe('seria jednym napisem', () => {
     expect(formatSet('bodyweight_reps', { ...measurements, weightG: null })).toBe('× 8');
     expect(formatSet('bodyweight_time', measurements)).toBe('1:30');
     expect(formatSet('distance_time', { ...measurements, weightG: null, reps: null })).toBe(
-      '5 km w 1:30',
+      '5 km in 1:30',
     );
   });
 });

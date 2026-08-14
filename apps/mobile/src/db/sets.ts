@@ -80,14 +80,14 @@ export interface SavedSet {
 /** Seria zniknęła między otwarciem ekranu a zapisem — na przykład przez pull. */
 export class SetNotFoundError extends Error {
   constructor(setId: string) {
-    super(`Nie ma serii o identyfikatorze ${setId}`);
+    super(`No set with ID ${setId}`);
     this.name = 'SetNotFoundError';
   }
 }
 
 export class ExerciseNotFoundError extends Error {
   constructor(exerciseId: string) {
-    super(`Nie ma ćwiczenia o identyfikatorze ${exerciseId}`);
+    super(`No exercise with ID ${exerciseId}`);
     this.name = 'ExerciseNotFoundError';
   }
 }

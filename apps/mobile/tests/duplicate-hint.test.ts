@@ -131,7 +131,7 @@ describe('describeHint', () => {
     const [fromLocal] = mergeDuplicateHints([local('e-1', 'Martwy ciąg')], null);
     const [fromServer] = mergeDuplicateHints([], remote([candidate('e-3', 'Deadlift')], 'hybrid'));
 
-    expect(describeHint(fromLocal!)).toBe('podobna nazwa');
-    expect(describeHint(fromServer!)).toBe('podobne znaczenie');
+    expect(describeHint(fromLocal!)).toBe('similar name');
+    expect(describeHint(fromServer!)).toBe('similar meaning');
   });
 });

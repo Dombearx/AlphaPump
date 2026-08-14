@@ -26,9 +26,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createHarness, type Harness, type TestUser } from './harness.js';
 import type { AffectedScope } from '../src/sync/derived.js';
 
-const BENCH = builtInExerciseId('Wyciskanie sztangi leżąc');
-const SQUAT = builtInExerciseId('Przysiad ze sztangą');
-const PLANK = builtInExerciseId('Deska');
+const BENCH = builtInExerciseId('Barbell bench press');
+const SQUAT = builtInExerciseId('Barbell squat');
+const PLANK = builtInExerciseId('Plank');
 
 const DAY = '2026-08-10';
 

@@ -136,7 +136,7 @@ describe('panel administracyjny', () => {
 
   it('daje wgląd w dane systemowe bez sięgania do bazy', async () => {
     const tag = await harness.json<{ id: string }>('POST', '/tags', {
-      body: { name: 'Plecy' },
+      body: { name: 'Back' },
       headers: admin.headers,
     });
     const exercise = await harness.json<{ id: string }>('POST', '/exercises', {

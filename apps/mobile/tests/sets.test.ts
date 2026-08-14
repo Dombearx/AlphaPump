@@ -178,7 +178,7 @@ describe('serie w bazie lokalnej', () => {
 
       await expect(
         updateSet(local.db, { ...AUTHOR, setId: created.id, values: reps(90, 8) }),
-      ).rejects.toThrow(/Nie ma serii/);
+      ).rejects.toThrow(/No set with ID/);
     });
   });
 

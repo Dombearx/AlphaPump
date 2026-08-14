@@ -59,14 +59,14 @@ export function CyclesScreen() {
     <SafeAreaView className="flex-1 bg-base" edges={['bottom']}>
       <Stack.Screen
         options={{
-          title: 'Cykle',
+          title: 'Cycles',
           headerRight: () => (
             <Pressable
               accessibilityRole="button"
               className="px-2 py-1 active:opacity-70"
               onPress={() => router.push('/cycles/new')}
             >
-              <Text className="text-accent">Nowy</Text>
+              <Text className="text-accent">New</Text>
             </Pressable>
           ),
         }}
@@ -74,8 +74,8 @@ export function CyclesScreen() {
 
       <View className="p-4 pb-2">
         <ChipRow>
-          <Chip label="Aktywne" selected={!archived} onPress={() => setArchived(false)} />
-          <Chip label="Archiwum" selected={archived} onPress={() => setArchived(true)} />
+          <Chip label="Active" selected={!archived} onPress={() => setArchived(false)} />
+          <Chip label="Archive" selected={archived} onPress={() => setArchived(true)} />
         </ChipRow>
       </View>
 
@@ -83,14 +83,14 @@ export function CyclesScreen() {
         {summaries.length === 0 ? (
           <View className="gap-4">
             <EmptyState
-              title={archived ? 'Archiwum jest puste' : 'Nie masz aktywnych cykli'}
+              title={archived ? 'The archive is empty' : "You don't have any active cycles"}
               hint={
                 archived
-                  ? 'Zarchiwizowany cykl trafi tutaj razem ze swoim dorobkiem.'
-                  : 'Cykl to cel na czas: „12 serii na biceps", „10 km biegu".'
+                  ? 'An archived cycle lands here along with what it achieved.'
+                  : 'A cycle is a goal over time: "12 biceps sets", "10 km of running".'
               }
             />
-            {!archived && <Button label="Nowy cykl" onPress={() => router.push('/cycles/new')} />}
+            {!archived && <Button label="New cycle" onPress={() => router.push('/cycles/new')} />}
           </View>
         ) : (
           summaries.map((summary) => (
@@ -137,7 +137,7 @@ function CycleCard({
             return (
               <View key={goal.goalId} className="flex-row items-baseline justify-between">
                 <Text className="flex-1 text-sm text-text">
-                  {row?.exerciseName ?? row?.tagName ?? 'Pozycja celu'}
+                  {row?.exerciseName ?? row?.tagName ?? 'Goal item'}
                 </Text>
                 <Text className={goal.completed ? 'text-sm text-success' : 'text-sm text-muted'}>
                   {formatMetric(goal.metric, goal.current)} /{' '}
@@ -162,6 +162,6 @@ export function formatRange(
 ): string {
   const start = formatDate(cycle.startsOn, today);
   return cycle.endsOn === null
-    ? `od ${start}, bez końca`
+    ? `from ${start}, no end`
     : `${start} – ${formatDate(cycle.endsOn, today)}`;
 }

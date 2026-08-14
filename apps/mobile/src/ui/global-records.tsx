@@ -29,29 +29,29 @@ export function GlobalRecordsCard({
 
   return (
     <Card className="gap-2">
-      <Text className="text-sm uppercase tracking-wide text-muted">Rekordy globalne</Text>
+      <Text className="text-sm uppercase tracking-wide text-muted">Global records</Text>
 
-      {state.status === 'loading' && <Text className="text-muted">Wczytywanie…</Text>}
+      {state.status === 'loading' && <Text className="text-muted">Loading…</Text>}
 
       {state.status === 'offline' && (
         <>
           <Text className="text-muted">
-            Offline — rekordy globalne liczą się z serii wszystkich użytkowników.
+            Offline — global records are computed from every user's sets.
           </Text>
-          <Button variant="secondary" label="Spróbuj ponownie" onPress={reload} />
+          <Button variant="secondary" label="Try again" onPress={reload} />
         </>
       )}
 
       {state.status === 'error' && (
         <>
           <Text className="text-danger">{state.message}</Text>
-          <Button variant="secondary" label="Spróbuj ponownie" onPress={reload} />
+          <Button variant="secondary" label="Try again" onPress={reload} />
         </>
       )}
 
       {state.status === 'ready' &&
         (state.data.length === 0 ? (
-          <Text className="text-muted">Nikt nie zapisał jeszcze serii tego ćwiczenia.</Text>
+          <Text className="text-muted">Nobody has logged a set of this exercise yet.</Text>
         ) : (
           state.data.map((record) => (
             <RecordRow key={recordKey(record)} record={record} loggingType={loggingType} />

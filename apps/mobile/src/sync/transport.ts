@@ -34,7 +34,7 @@ import {
 /** Serwera nie da się dosięgnąć. Nie jest to błąd — to normalny stan pracy. */
 export class SyncOfflineError extends Error {
   constructor(cause?: unknown) {
-    super('Serwer jest nieosiągalny');
+    super('The server is unreachable');
     this.name = 'SyncOfflineError';
     this.cause = cause;
   }
@@ -43,7 +43,7 @@ export class SyncOfflineError extends Error {
 /** Sesja wygasła albo konto straciło dostęp. */
 export class SyncAuthError extends Error {
   constructor() {
-    super('Sesja wygasła — zaloguj się ponownie');
+    super('The session expired — sign in again');
     this.name = 'SyncAuthError';
   }
 }
@@ -107,14 +107,14 @@ export function createHttpTransport(options: HttpTransportOptions): SyncTranspor
     if (response.status === 401 || response.status === 403) throw new SyncAuthError();
 
     if (!response.ok) {
-      throw new SyncServerError(`Serwer odpowiedział ${String(response.status)}`, response.status);
+      throw new SyncServerError(`Server responded ${String(response.status)}`, response.status);
     }
 
     try {
       return (await response.json()) as unknown;
     } catch (error) {
       throw new SyncServerError(
-        `Odpowiedź serwera nie jest poprawnym JSON-em: ${String(error)}`,
+        `Server response isn't valid JSON: ${String(error)}`,
         response.status,
       );
     }
@@ -124,7 +124,7 @@ export function createHttpTransport(options: HttpTransportOptions): SyncTranspor
     async push(payload) {
       const body = await request('/sync/push', { method: 'POST', body: JSON.stringify(payload) });
       const parsed = syncPushResponseSchema.safeParse(body);
-      if (!parsed.success) throw new SyncServerError('Odpowiedź pushu ma nieznany kształt');
+      if (!parsed.success) throw new SyncServerError('Push response has an unknown shape');
       return parsed.data;
     },
 
@@ -132,7 +132,7 @@ export function createHttpTransport(options: HttpTransportOptions): SyncTranspor
       const query = `?since=${String(since)}&limit=${String(limit)}`;
       const body = await request(`/sync/pull${query}`, { method: 'GET' });
       const parsed = syncPullResponseSchema.safeParse(body);
-      if (!parsed.success) throw new SyncServerError('Odpowiedź pullu ma nieznany kształt');
+      if (!parsed.success) throw new SyncServerError('Pull response has an unknown shape');
       return parsed.data;
     },
   };

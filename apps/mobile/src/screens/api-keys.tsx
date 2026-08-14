@@ -85,7 +85,7 @@ async function unwrap<T>(call: Promise<AuthResult<T>>): Promise<T> {
     // Brak statusu to brak odpowiedzi — czyli jesteśmy poza VPN-em.
     if (status === 0) throw new SyncOfflineError(result.error);
     throw new SyncServerError(
-      result.error.message ?? `Serwer odpowiedział ${String(status)}`,
+      result.error.message ?? `Server responded ${String(status)}`,
       status,
     );
   }
@@ -139,10 +139,10 @@ export function ApiKeysScreen() {
     } catch (error) {
       setProblem(
         error instanceof SyncOfflineError
-          ? 'Serwer jest nieosiągalny — token wydaje serwer, więc trzeba być w VPN-ie'
+          ? "Can't reach the server — tokens are issued by the server, so you need to be on the VPN"
           : error instanceof Error
             ? error.message
-            : 'Nie udało się wydać tokenu',
+            : 'Failed to issue the token',
       );
     } finally {
       setBusy(false);
@@ -160,7 +160,7 @@ export function ApiKeysScreen() {
         setFresh((shown) => (shown?.id === key.id ? null : shown));
         reload();
       } catch (error) {
-        setProblem(error instanceof Error ? error.message : 'Nie udało się unieważnić tokenu');
+        setProblem(error instanceof Error ? error.message : 'Failed to revoke the token');
       } finally {
         setBusy(false);
       }
@@ -173,28 +173,28 @@ export function ApiKeysScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-base" edges={['bottom']}>
-      <Stack.Screen options={{ title: 'Tokeny API' }} />
+      <Stack.Screen options={{ title: 'API tokens' }} />
 
       <ScrollView contentContainerClassName="gap-4 p-4 pb-8">
         <Text className="text-muted">
-          Token pozwala korzystać z API poza aplikacją — na przykład botowi zapisującemu serie.
-          Działa wyłącznie wewnątrz VPN-u i możesz mieć ich wiele.
+          A token lets you use the API outside the app — for example a bot that logs sets. It
+          only works inside the VPN, and you can have several.
         </Text>
 
         {fresh !== null && (
           <Card className="gap-2 border-accent">
-            <SectionTitle>Nowy token: {fresh.name}</SectionTitle>
+            <SectionTitle>New token: {fresh.name}</SectionTitle>
             <Text selectable className="font-mono text-base text-text">
               {fresh.secret}
             </Text>
             <Text className="text-xs text-muted">
-              Zapisz go teraz — serwer trzyma już tylko jego skrót i drugi raz go nie pokaże.
-              Zgubiony token unieważnia się i wydaje nowy.
+              Save it now — the server only keeps its hash from here on and won't show it again.
+              A lost token gets revoked and a new one issued.
             </Text>
             <View className="mt-1">
               <Button
                 variant="secondary"
-                label={copied ? 'Skopiowano' : 'Kopiuj token'}
+                label={copied ? 'Copied' : 'Copy token'}
                 onPress={() => {
                   void Clipboard.setStringAsync(fresh.secret).then(() => setCopied(true));
                 }}
@@ -205,47 +205,47 @@ export function ApiKeysScreen() {
 
         <Card className="gap-3">
           <Field
-            label="Nazwa nowego tokenu"
+            label="New token name"
             value={name}
             onChangeText={(value) => {
               setName(value);
               setProblem(null);
             }}
-            placeholder="bot Discord"
+            placeholder="Discord bot"
             maxLength={API_KEY_NAME_MAX_LENGTH}
             autoCapitalize="none"
-            hint="Po nazwie poznasz, który token unieważnić."
+            hint="The name is how you'll recognize which token to revoke."
           />
           {problem !== null && <Text className="text-sm text-danger">{problem}</Text>}
-          <Button label="Wydaj token" busy={busy} onPress={() => void create()} />
+          <Button label="Issue token" busy={busy} onPress={() => void create()} />
         </Card>
 
-        <SectionTitle>Wydane tokeny</SectionTitle>
+        <SectionTitle>Issued tokens</SectionTitle>
 
-        {state.status === 'loading' && <Loading label="Wczytywanie tokenów…" />}
+        {state.status === 'loading' && <Loading label="Loading tokens…" />}
 
         {state.status === 'offline' && (
           <View className="gap-4">
             <EmptyState
               title="Offline"
-              hint="Tokenami zarządza serwer, więc ten ekran wymaga połączenia. Reszta aplikacji działa dalej."
+              hint="Tokens are managed by the server, so this screen needs a connection. The rest of the app keeps working."
             />
-            <Button variant="secondary" label="Spróbuj ponownie" onPress={reload} />
+            <Button variant="secondary" label="Try again" onPress={reload} />
           </View>
         )}
 
         {state.status === 'error' && (
           <View className="gap-4">
-            <EmptyState title="Nie udało się pobrać tokenów" hint={state.message} />
-            <Button variant="secondary" label="Spróbuj ponownie" onPress={reload} />
+            <EmptyState title="Failed to fetch tokens" hint={state.message} />
+            <Button variant="secondary" label="Try again" onPress={reload} />
           </View>
         )}
 
         {state.status === 'ready' &&
           (state.data.length === 0 ? (
             <EmptyState
-              title="Nie masz jeszcze tokenów"
-              hint="Wydaj token dopiero wtedy, gdy jakieś narzędzie ma pisać do API w twoim imieniu."
+              title="You don't have any tokens yet"
+              hint="Issue a token once some tool needs to write to the API on your behalf."
             />
           ) : (
             <View className="gap-2">
@@ -258,7 +258,7 @@ export function ApiKeysScreen() {
                   </View>
                   <Button
                     variant="danger"
-                    label="Unieważnij"
+                    label="Revoke"
                     disabled={busy}
                     onPress={() => void revoke(key)}
                   />

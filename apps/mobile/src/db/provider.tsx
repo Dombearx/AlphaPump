@@ -44,7 +44,7 @@ function Preparing() {
   return (
     <View className="flex-1 items-center justify-center bg-base">
       <ActivityIndicator size="large" color="#f97316" />
-      <Text className="mt-4 text-muted">Przygotowywanie bazy lokalnej…</Text>
+      <Text className="mt-4 text-muted">Preparing local database…</Text>
     </View>
   );
 }
@@ -52,7 +52,7 @@ function Preparing() {
 function Failure({ message }: { message: string }) {
   return (
     <View className="flex-1 items-center justify-center gap-2 bg-base px-6">
-      <Text className="text-lg font-semibold text-danger">Baza lokalna nie wystartowała</Text>
+      <Text className="text-lg font-semibold text-danger">The local database failed to start</Text>
       <Text className="text-center text-muted">{message}</Text>
     </View>
   );

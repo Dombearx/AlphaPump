@@ -13,7 +13,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createHarness, type Harness, type TestUser } from './harness.js';
 
 const BICEPS = tagId('Biceps');
-const PLECY = tagId('Plecy');
+const BACK = tagId('Back');
 
 describe('biblioteka', () => {
   let harness: Harness;
@@ -124,21 +124,21 @@ describe('biblioteka', () => {
       });
       expect(response.status).toBe(200);
       expect(response.body.map((exercise) => exercise.id)).toContain(
-        builtInExerciseId('Martwy ciąg'),
+        builtInExerciseId('Deadlift'),
       );
     });
 
     it('filtruje po tagu głównym', async () => {
-      const response = await harness.json<Exercise[]>(`GET`, `/exercises?tagId=${PLECY}`, {
+      const response = await harness.json<Exercise[]>(`GET`, `/exercises?tagId=${BACK}`, {
         headers: author.headers,
       });
       const names = response.body.map((exercise) => exercise.name);
-      expect(names).toContain('Wiosłowanie sztangą');
-      expect(names).not.toContain('Bieg');
+      expect(names).toContain('Barbell row');
+      expect(names).not.toContain('Running');
     });
 
     it('filtruje także po tagu dodatkowym', async () => {
-      // „Podciąganie podchwytem" ma tag główny „Plecy", a „Biceps" wyłącznie
+      // „Chin-up" ma tag główny „Back", a „Biceps" wyłącznie
       // jako dodatkowy — więc trafia tu przez skorelowane podzapytanie po
       // `exercise_tags`, a nie przez porównanie tagu głównego. Bez tej asercji
       // ta gałąź warunku nie byłaby w ogóle wykonywana przez testy.
@@ -147,9 +147,9 @@ describe('biblioteka', () => {
       });
 
       const names = response.body.map((exercise) => exercise.name);
-      expect(names).toContain('Podciąganie podchwytem');
-      expect(names).toContain('Uginanie ramion ze sztangą');
-      expect(names).not.toContain('Bieg');
+      expect(names).toContain('Chin-up');
+      expect(names).toContain('Barbell curl');
+      expect(names).not.toContain('Running');
     });
 
     it('odróżnia ćwiczenia wbudowane od dodanych przez użytkowników', async () => {
@@ -169,7 +169,7 @@ describe('biblioteka', () => {
         headers: author.headers,
       });
 
-      expect(builtIn.body.map((exercise) => exercise.name)).toContain('Martwy ciąg');
+      expect(builtIn.body.map((exercise) => exercise.name)).toContain('Deadlift');
       expect(authored.body.map((exercise) => exercise.name)).toEqual(['Uginanie na modlitewniku']);
     });
 
@@ -180,12 +180,12 @@ describe('biblioteka', () => {
           name: 'Wyciskanie hantli stojąc',
           loggingType: 'weight_reps',
           primaryTagId: BICEPS,
-          additionalTagIds: [PLECY],
+          additionalTagIds: [BACK],
         },
       });
       expect(response.status).toBe(201);
       expect(response.body.id).toBe(exerciseId(author.id, 'Wyciskanie hantli stojąc'));
-      expect(response.body.additionalTagIds).toEqual([PLECY]);
+      expect(response.body.additionalTagIds).toEqual([BACK]);
     });
 
     it('powtórzone utworzenie zwraca istniejące ćwiczenie zamiast duplikatu', async () => {

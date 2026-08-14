@@ -16,8 +16,18 @@ import { z } from 'zod';
  * ani nie dojedzie do API, ani nie da się z niego wyliczyć wyjątku cleartext.
  */
 const httpUrlSchema = z.url().regex(/^https?:\/\//i, {
-  message: 'Adres API musi zaczynać się od http:// albo https://',
+  message: 'The API address must start with http:// or https://',
 });
+
+/**
+ * Manifest klasycznego protokołu Expo Go serializuje `extra` tak, że `null`
+ * dochodzi do klienta jako `{}` (pusty obiekt), nie `null` — stąd normalizacja
+ * przed właściwą walidacją stringa.
+ */
+const nullableClientId = z.preprocess(
+  (value) => (typeof value === 'object' && value !== null && Object.keys(value).length === 0 ? null : value),
+  z.string().min(1).nullable().default(null),
+);
 
 export const appConfigSchema = z.object({
   /** Adres API wewnątrz VPN — bez końcowego ukośnika. */
@@ -27,8 +37,8 @@ export const appConfigSchema = z.object({
    * e-mail z hasłem działa dalej, bo brak jednej metody nie może zablokować
    * uruchomienia aplikacji.
    */
-  googleWebClientId: z.string().min(1).nullable().default(null),
-  googleIosClientId: z.string().min(1).nullable().default(null),
+  googleWebClientId: nullableClientId,
+  googleIosClientId: nullableClientId,
 });
 
 export type AppConfig = z.infer<typeof appConfigSchema>;
@@ -39,7 +49,7 @@ export function parseAppConfig(extra: unknown): AppConfig {
     const problems = parsed.error.issues
       .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
       .join('\n  ');
-    throw new Error(`Niepoprawna konfiguracja aplikacji:\n  ${problems}`);
+    throw new Error(`Invalid app configuration:\n  ${problems}`);
   }
   return { ...parsed.data, apiUrl: parsed.data.apiUrl.replace(/\/+$/, '') };
 }

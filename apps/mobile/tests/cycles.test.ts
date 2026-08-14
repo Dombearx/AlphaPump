@@ -43,7 +43,7 @@ import {
 
 const AUTHOR = { userId: TEST_USER.id, deviceId: 'device-a' };
 const DAY = '2026-08-11';
-const BACK_TAG = tagId('Plecy');
+const BACK_TAG = tagId('Back');
 
 const reps = (weightKg: number, count: number): SetValues => ({
   weightG: weightKg * 1000,
@@ -361,8 +361,8 @@ describe('cykle w bazie lokalnej', () => {
       // Najbliżej ukończenia najpierw: podciąganie potrzebuje dwóch serii,
       // klatka jeszcze trzech.
       expect(targets.map((target) => target.label)).toEqual([
-        'Podciąganie nachwytem',
-        'Klatka piersiowa',
+        'Pull-up',
+        'Chest',
       ]);
       expect(targets[0]?.exerciseId).toBe(EXERCISES.pullUps!.id);
       expect(targets[1]?.tagId).toBe(TAGS.chest);

@@ -44,7 +44,7 @@ export interface CycleValues {
 
 export class CycleNotFoundError extends Error {
   constructor(cycleId: string) {
-    super(`Nie ma cyklu o identyfikatorze ${cycleId}`);
+    super(`No cycle with ID ${cycleId}`);
     this.name = 'CycleNotFoundError';
   }
 }

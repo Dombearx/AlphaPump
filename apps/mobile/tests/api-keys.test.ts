@@ -119,13 +119,13 @@ describe('opis tokenu', () => {
   };
 
   it('mówi wprost, że token nigdy nie był używany', () => {
-    expect(describeApiKey(key, TODAY)).toBe('utworzony 10 sierpnia · jeszcze nieużywany');
+    expect(describeApiKey(key, TODAY)).toBe('created 10 August · never used');
   });
 
   it('pokazuje datę ostatniego użycia, gdy token pracuje', () => {
     const used = { ...key, lastUsedAt: new Date('2026-08-12T06:00:00.000Z') };
 
-    expect(describeApiKey(used, TODAY)).toBe('utworzony 10 sierpnia · ostatnio użyty 12 sierpnia');
+    expect(describeApiKey(used, TODAY)).toBe('created 10 August · last used 12 August');
   });
 
   it('pokazuje wyłącznie początek tokenu — reszty serwer już nie zna', () => {

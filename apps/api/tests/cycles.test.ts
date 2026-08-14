@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createHarness, type Harness, type TestUser } from './harness.js';
 
 const BICEPS = tagId('Biceps');
-const RUN = builtInExerciseId('Bieg');
+const RUN = builtInExerciseId('Running');
 
 describe('cykle', () => {
   let harness: Harness;

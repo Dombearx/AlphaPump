@@ -170,7 +170,7 @@ export function remainingTargets(
         cycleId: cycle.id,
         cycleName: cycle.name,
         metric: goal.metric,
-        label: row.exerciseName ?? row.tagName ?? 'Pozycja celu',
+        label: row.exerciseName ?? row.tagName ?? 'Goal item',
         color: row.tagColor ?? DEFAULT_COLOR,
         exerciseId: row.exerciseId,
         tagId: row.tagId,
