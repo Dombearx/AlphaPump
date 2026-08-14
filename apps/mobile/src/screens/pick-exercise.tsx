@@ -27,7 +27,7 @@ import type { IsoDate } from '@alphapump/core';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { Redirect, Stack, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { Keyboard, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSession } from '../auth/client';
 import {
@@ -39,9 +39,11 @@ import {
 } from '../cycle-progress';
 import { db } from '../db/client';
 import {
+  allAdditionalTags,
   cycleGoalList,
   cycleList,
   exerciseLibrary,
+  groupAdditionalTags,
   setsForCycles,
   tagLibrary,
   type LibraryRow,
@@ -71,6 +73,11 @@ export function PickExerciseScreen({ day }: { day: IsoDate }) {
 
   const tags = useLiveQuery(tagLibrary(db), []);
   const library = useLiveQuery(exerciseLibrary(db, userId, { tagId }), [userId, tagId]);
+  const extraTags = useLiveQuery(allAdditionalTags(db), []);
+  const extraTagsByExercise = useMemo(
+    () => groupAdditionalTags(extraTags.data ?? []),
+    [extraTags.data],
+  );
 
   const cycleRows = useLiveQuery(cycleList(db, userId, false), [userId]);
   const goalRows = useLiveQuery(cycleGoalList(db, userId), [userId]);
@@ -96,50 +103,55 @@ export function PickExerciseScreen({ day }: { day: IsoDate }) {
       router.replace(`/day/${day}/log/${target.exerciseId}`);
       return;
     }
+    Keyboard.dismiss();
     setTagId(target.tagId);
+  };
+
+  const pickTag = (id: string | null) => {
+    Keyboard.dismiss();
+    setTagId(id);
   };
 
   return (
     <SafeAreaView className="flex-1 bg-base" edges={['bottom']}>
-      <Stack.Screen options={{ title: 'Wybierz ćwiczenie' }} />
+      <Stack.Screen options={{ title: 'Pick an exercise' }} />
 
-      <View className="gap-3 p-4 pb-2">
+      <View className="p-4 pb-2">
         <Field
-          label="Szukaj"
+          label="Search"
           value={query}
           onChangeText={setQuery}
-          placeholder="nazwa ćwiczenia albo tag"
+          placeholder="exercise name or tag"
           autoCapitalize="none"
           autoCorrect={false}
-          autoFocus
         />
+      </View>
 
-        <ChipRow>
-          <Chip label="Wszystkie" selected={tagId === null} onPress={() => setTagId(null)} />
+      <ScrollView contentContainerClassName="gap-2 px-4 pb-8" keyboardShouldPersistTaps="handled">
+        <ChipRow wrap>
+          <Chip label="All" selected={tagId === null} onPress={() => pickTag(null)} />
           {(tags.data ?? []).map((tag) => (
             <Chip
               key={tag.id}
               label={tag.name}
               color={tag.color}
               selected={tagId === tag.id}
-              onPress={() => setTagId(tagId === tag.id ? null : tag.id)}
+              onPress={() => pickTag(tagId === tag.id ? null : tag.id)}
             />
           ))}
         </ChipRow>
-      </View>
 
-      <ScrollView contentContainerClassName="gap-2 px-4 pb-8" keyboardShouldPersistTaps="handled">
         {targets.length > 0 && (
           <View className="gap-2 pb-2">
-            <SectionTitle>Zostało w cyklach</SectionTitle>
+            <SectionTitle>Left in cycles</SectionTitle>
             {targets.map((target) => (
               <Row key={target.goalId} onPress={() => pick(target)}>
                 {target.color !== null && <TagDot color={target.color} />}
                 <View className="flex-1">
                   <Text className="text-base text-text">{target.label}</Text>
                   <Text className="text-xs text-muted">
-                    {target.cycleName} · zostało {formatMetric(target.metric, target.remaining)}{' '}
-                    {GOAL_METRIC_LABELS[target.metric].toLowerCase()}
+                    {target.cycleName} · {formatMetric(target.metric, target.remaining)}{' '}
+                    {GOAL_METRIC_LABELS[target.metric].toLowerCase()} left
                   </Text>
                 </View>
               </Row>
@@ -150,11 +162,11 @@ export function PickExerciseScreen({ day }: { day: IsoDate }) {
         {matches.length === 0 ? (
           <View className="gap-4">
             <EmptyState
-              title="Nie ma takiego ćwiczenia"
-              hint="Spróbuj krótszej frazy albo dodaj je do biblioteki — też bez sieci."
+              title="No such exercise"
+              hint="Try a shorter phrase, or add it to the library — that works offline too."
             />
             <Button
-              label="Dodaj ćwiczenie"
+              label="Add exercise"
               onPress={() =>
                 router.push(
                   tagId === null
@@ -165,21 +177,37 @@ export function PickExerciseScreen({ day }: { day: IsoDate }) {
             />
           </View>
         ) : (
-          matches.map((exercise) => (
-            <Row key={exercise.id} onPress={() => router.replace(`/day/${day}/log/${exercise.id}`)}>
-              <TagDot color={exercise.tagColor} />
-              <View className="flex-1">
-                <Text className="text-base text-text">{exercise.name}</Text>
-                <Text className="text-xs text-muted">{describeUsage(exercise)}</Text>
-              </View>
-            </Row>
-          ))
+          matches.map((exercise) => {
+            const extra = extraTagsByExercise.get(exercise.id) ?? [];
+            return (
+              <Row
+                key={exercise.id}
+                onPress={() => router.replace(`/day/${day}/log/${exercise.id}`)}
+              >
+                <TagDot color={exercise.tagColor} />
+                <View className="flex-1">
+                  <Text className="text-base text-text">{exercise.name}</Text>
+                  <Text className="text-xs text-muted">{describeUsage(exercise)}</Text>
+                  {/* Filtr po tagu obejmuje też tagi dodatkowe (patrz
+                      `exerciseLibrary`), więc np. dipy wyskakują pod „Triceps",
+                      choć ich tagiem głównym — tym, co liczy się do cyklu —
+                      jest „Chest". Bez tej linii nie było widać, dlaczego wiersz
+                      w ogóle trafił na przefiltrowaną listę. */}
+                  {extra.length > 0 && (
+                    <Text className="text-xs text-muted">
+                      Also: {extra.map((tag) => tag.name).join(', ')}
+                    </Text>
+                  )}
+                </View>
+              </Row>
+            );
+          })
         )}
 
         {matches.length > 0 && (
           <Button
             variant="secondary"
-            label="Nowe ćwiczenie"
+            label="New exercise"
             onPress={() =>
               router.push(
                 tagId === null
@@ -195,8 +223,10 @@ export function PickExerciseScreen({ day }: { day: IsoDate }) {
 }
 
 function describeUsage(exercise: LibraryRow): string {
-  if (exercise.setCount === 0) return exercise.tagName;
+  const gym = exercise.gym === null ? '' : ` · ${exercise.gym}`;
+  if (exercise.setCount === 0) return `${exercise.tagName}${gym}`;
   const last = exercise.lastPerformedOn;
-  const when = last === null ? '' : ` · ostatnio ${formatDate(last, currentDay())}`;
-  return `${exercise.tagName} · ${String(exercise.setCount)} serii${when}`;
+  const when = last === null ? '' : ` · last ${formatDate(last, currentDay())}`;
+  const sets = exercise.setCount === 1 ? 'set' : 'sets';
+  return `${exercise.tagName} · ${String(exercise.setCount)} ${sets}${when}${gym}`;
 }

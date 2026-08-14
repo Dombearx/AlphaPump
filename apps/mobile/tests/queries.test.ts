@@ -6,13 +6,16 @@
  * ćwiczeń. Dlatego każde z nich jest tu raz uruchamiane.
  */
 
+import { tagId } from '@alphapump/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createSet } from '../src/db/sets';
 import {
+  allAdditionalTags,
   daySetCounts,
   exerciseDetails,
   exerciseHistory,
   exerciseLibrary,
+  groupAdditionalTags,
   localUser,
 } from '../src/db/queries';
 import { filterExercises } from '../src/exercise-search';
@@ -79,7 +82,7 @@ describe('zapytania ekranów', () => {
     const [details] = await exerciseDetails(local.db, EXERCISES.bench!.id);
 
     expect(details).toMatchObject({
-      name: 'Wyciskanie sztangi leżąc',
+      name: 'Barbell bench press',
       loggingType: 'weight_reps',
       authorNickname: 'AlphaPump',
     });
@@ -111,6 +114,25 @@ describe('zapytania ekranów', () => {
   it('konto właściciela urządzenia czyta się z bazy lokalnej', async () => {
     const [row] = await localUser(local.db, TEST_USER.id);
     expect(row?.nickname).toBe(TEST_USER.nickname);
+  });
+
+  it('biblioteka po tagu dodatkowym też znajduje ćwiczenie, ale z tagiem głównym w wierszu', async () => {
+    // „Dips" ma tag główny Chest i dodatkowy Triceps — filtr po Triceps musi je
+    // znaleźć, ale wiersz i tak niesie Chest, bo to on liczy się do cyklu.
+    const rows = await exerciseLibrary(local.db, TEST_USER.id, { tagId: tagId('Triceps') });
+
+    const dips = rows.find((row) => row.id === EXERCISES.dips!.id);
+    expect(dips).toBeDefined();
+    expect(dips?.tagName).toBe('Chest');
+  });
+
+  it('grupuje tagi dodatkowe po ćwiczeniu, w kolejności zapisu', async () => {
+    const rows = await allAdditionalTags(local.db);
+    const grouped = groupAdditionalTags(rows);
+
+    expect(grouped.get(EXERCISES.dips!.id)?.map((tag) => tag.name)).toEqual(['Triceps']);
+    // Ćwiczenie bez tagów dodatkowych po prostu nie ma wpisu w mapie.
+    expect(grouped.get(EXERCISES.bench!.id)).toBeUndefined();
   });
 });
 

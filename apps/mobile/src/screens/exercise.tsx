@@ -38,11 +38,11 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
   if (author === null) return <Loading />;
   if (exercise === undefined) {
     return details.updatedAt === undefined ? (
-      <Loading label="Wczytywanie ćwiczenia…" />
+      <Loading label="Loading exercise…" />
     ) : (
       <SafeAreaView className="flex-1 justify-center gap-4 bg-base p-6">
-        <EmptyState title="Nie ma już takiego ćwiczenia" hint="Zostało usunięte z biblioteki." />
-        <Button label="Wróć do biblioteki" onPress={() => router.replace('/library')} />
+        <EmptyState title="This exercise no longer exists" hint="It was removed from the library." />
+        <Button label="Back to library" onPress={() => router.replace('/library')} />
       </SafeAreaView>
     );
   }
@@ -53,12 +53,12 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
 
   const remove = () => {
     Alert.alert(
-      'Usunąć ćwiczenie?',
-      'Zapisane serie zostaną, ale ćwiczenie zniknie z biblioteki na wszystkich urządzeniach.',
+      'Delete this exercise?',
+      'Logged sets stay, but the exercise disappears from the library on every device.',
       [
-        { text: 'Anuluj', style: 'cancel' },
+        { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Usuń',
+          text: 'Delete',
           style: 'destructive',
           onPress: () => {
             void (async () => {
@@ -86,7 +86,7 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
           <Text className="text-muted">
             {exercise.tagName} · {LOGGING_TYPE_LABELS[exercise.loggingType]}
           </Text>
-          <Text className="text-xs text-muted">Dodał: {exercise.authorNickname}</Text>
+          <Text className="text-xs text-muted">Added by: {exercise.authorNickname}</Text>
 
           {exercise.note !== null && exercise.note.length > 0 && (
             <Text className="text-text">{exercise.note}</Text>
@@ -94,23 +94,29 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
         </Card>
 
         {extraTags.data.length > 0 && (
-          <ChipRow>
-            {extraTags.data.map((tag) => (
-              <Chip
-                key={tag.id}
-                label={tag.name}
-                color={tag.color}
-                onPress={() => router.push('/library')}
-              />
-            ))}
-          </ChipRow>
+          <View className="gap-2">
+            {/* Sam tag główny (wyżej, w opisie ćwiczenia) liczy się do celów
+                cyklu — te dodatkowe tylko mówią, jakich innych partii dotyka
+                to ćwiczenie, i dlatego też trafia na ich przefiltrowane listy. */}
+            <Text className="text-xs text-muted">Also works: (doesn't count toward cycles)</Text>
+            <ChipRow>
+              {extraTags.data.map((tag) => (
+                <Chip
+                  key={tag.id}
+                  label={tag.name}
+                  color={tag.color}
+                  onPress={() => router.push('/library')}
+                />
+              ))}
+            </ChipRow>
+          </View>
         )}
 
         <Text className="text-muted">
           {sets.length === 0
-            ? 'Nie masz jeszcze żadnej serii tego ćwiczenia.'
-            : `Twoje serie: ${String(sets.length)}${
-                lastPerformedOn === null ? '' : ` · ostatnio ${lastPerformedOn}`
+            ? "You don't have any sets of this exercise yet."
+            : `Your sets: ${String(sets.length)}${
+                lastPerformedOn === null ? '' : ` · last ${lastPerformedOn}`
               }`}
         </Text>
 
@@ -120,13 +126,13 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
         <GlobalRecordsCard exerciseId={exerciseId} loggingType={exercise.loggingType} />
 
         <Button
-          label="Zapisz serię dziś"
+          label="Log a set today"
           onPress={() => router.push(`/day/${currentDay()}/log/${exerciseId}`)}
         />
 
         <Button
           variant="secondary"
-          label="Wykresy postępu"
+          label="Progress charts"
           onPress={() => router.push(`/library/${exerciseId}/chart`)}
         />
 
@@ -134,10 +140,10 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
           <View className="gap-2">
             <Button
               variant="secondary"
-              label="Edytuj"
+              label="Edit"
               onPress={() => router.push(`/library/${exerciseId}/edit`)}
             />
-            <Button variant="danger" label="Usuń z biblioteki" onPress={remove} />
+            <Button variant="danger" label="Remove from library" onPress={remove} />
           </View>
         )}
       </ScrollView>

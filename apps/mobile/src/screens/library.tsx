@@ -19,14 +19,21 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSession } from '../auth/client';
 import { db } from '../db/client';
-import { exerciseLibrary, tagLibrary, type LibraryRow, type LibrarySource } from '../db/queries';
+import {
+  allAdditionalTags,
+  exerciseLibrary,
+  groupAdditionalTags,
+  tagLibrary,
+  type LibraryRow,
+  type LibrarySource,
+} from '../db/queries';
 import { filterExercises } from '../exercise-search';
 import { Button, Chip, ChipRow, EmptyState, Field, Loading, Row, TagDot } from '../ui/primitives';
 
 const SOURCES: { value: LibrarySource; label: string }[] = [
-  { value: 'all', label: 'Wszystkie' },
-  { value: 'built-in', label: 'Wbudowane' },
-  { value: 'community', label: 'Dodane' },
+  { value: 'all', label: 'All' },
+  { value: 'built-in', label: 'Built-in' },
+  { value: 'community', label: 'Added' },
 ];
 
 export function LibraryScreen() {
@@ -42,8 +49,13 @@ export function LibraryScreen() {
     tagId,
     source,
   ]);
+  const extraTags = useLiveQuery(allAdditionalTags(db));
 
   const matches = useMemo(() => filterExercises(library.data ?? [], query), [library.data, query]);
+  const extraTagsByExercise = useMemo(
+    () => groupAdditionalTags(extraTags.data ?? []),
+    [extraTags.data],
+  );
 
   if (isPending) return <Loading />;
   if (!session) return <Redirect href="/sign-in" />;
@@ -52,14 +64,14 @@ export function LibraryScreen() {
     <SafeAreaView className="flex-1 bg-base" edges={['bottom']}>
       <Stack.Screen
         options={{
-          title: 'Biblioteka',
+          title: 'Exercises',
           headerRight: () => (
             <Pressable
               accessibilityRole="button"
               className="px-2 py-1 active:opacity-70"
               onPress={() => router.push('/library/new')}
             >
-              <Text className="text-accent">Nowe</Text>
+              <Text className="text-accent">New</Text>
             </Pressable>
           ),
         }}
@@ -67,10 +79,10 @@ export function LibraryScreen() {
 
       <View className="gap-3 p-4 pb-2">
         <Field
-          label="Szukaj"
+          label="Search"
           value={query}
           onChangeText={setQuery}
-          placeholder="nazwa ćwiczenia albo tag"
+          placeholder="exercise name or tag"
           autoCapitalize="none"
           autoCorrect={false}
         />
@@ -85,9 +97,11 @@ export function LibraryScreen() {
             />
           ))}
         </ChipRow>
+      </View>
 
-        <ChipRow>
-          <Chip label="Wszystkie tagi" selected={tagId === null} onPress={() => setTagId(null)} />
+      <ScrollView contentContainerClassName="gap-2 px-4 pb-8" keyboardShouldPersistTaps="handled">
+        <ChipRow wrap>
+          <Chip label="All tags" selected={tagId === null} onPress={() => setTagId(null)} />
           {(tags.data ?? []).map((tag) => (
             <Chip
               key={tag.id}
@@ -98,32 +112,42 @@ export function LibraryScreen() {
             />
           ))}
         </ChipRow>
-      </View>
 
-      <ScrollView contentContainerClassName="gap-2 px-4 pb-8" keyboardShouldPersistTaps="handled">
         {matches.length === 0 ? (
           <View className="gap-4">
             <EmptyState
-              title="Nic tu nie pasuje"
-              hint="Zmień filtr albo dodaj ćwiczenie z tego obszaru — także bez sieci."
+              title="Nothing matches"
+              hint="Change the filter, or add an exercise for this area — also works offline."
             />
             <Button
-              label="Dodaj ćwiczenie"
+              label="Add exercise"
               onPress={() =>
                 router.push(tagId === null ? '/library/new' : `/library/new?tagId=${tagId}`)
               }
             />
           </View>
         ) : (
-          matches.map((exercise) => (
-            <Row key={exercise.id} onPress={() => router.push(`/library/${exercise.id}`)}>
-              <TagDot color={exercise.tagColor} />
-              <View className="flex-1">
-                <Text className="text-base text-text">{exercise.name}</Text>
-                <Text className="text-xs text-muted">{describe(exercise)}</Text>
-              </View>
-            </Row>
-          ))
+          matches.map((exercise) => {
+            const extra = extraTagsByExercise.get(exercise.id) ?? [];
+            return (
+              <Row key={exercise.id} onPress={() => router.push(`/library/${exercise.id}`)}>
+                <TagDot color={exercise.tagColor} />
+                <View className="flex-1">
+                  <Text className="text-base text-text">{exercise.name}</Text>
+                  <Text className="text-xs text-muted">{describe(exercise)}</Text>
+                  {/* Tag główny liczy się do cykli, dodatkowe są tylko etykietą —
+                      bez tej linii dopasowanie po tagu dodatkowym (np. „Triceps"
+                      dla dipów, których głównym tagiem jest „Chest") było
+                      niewytłumaczalne: wiersz pokazywał wyłącznie „Chest". */}
+                  {extra.length > 0 && (
+                    <Text className="text-xs text-muted">
+                      Also: {extra.map((tag) => tag.name).join(', ')}
+                    </Text>
+                  )}
+                </View>
+              </Row>
+            );
+          })
         )}
       </ScrollView>
     </SafeAreaView>
@@ -131,6 +155,8 @@ export function LibraryScreen() {
 }
 
 function describe(exercise: LibraryRow): string {
-  if (exercise.setCount === 0) return exercise.tagName;
-  return `${exercise.tagName} · ${String(exercise.setCount)} serii`;
+  const gym = exercise.gym === null ? '' : ` · ${exercise.gym}`;
+  if (exercise.setCount === 0) return `${exercise.tagName}${gym}`;
+  const sets = exercise.setCount === 1 ? 'set' : 'sets';
+  return `${exercise.tagName} · ${String(exercise.setCount)} ${sets}${gym}`;
 }
