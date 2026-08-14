@@ -125,10 +125,21 @@ export const exercises = sqliteTable(
       .notNull()
       .references(() => tags.id),
     note: text('note'),
+    /**
+     * Opcjonalna siłownia — wchodzi w id ćwiczenia (patrz `ids.ts`), więc to
+     * samo ćwiczenie może mieć osobny wiersz per siłownia. `NULL` liczy się
+     * jako pusty string w unikalności niżej, żeby dwa ćwiczenia bez podanej
+     * siłowni dalej się deduplikowały tak jak przed dodaniem tego pola.
+     */
+    gym: text('gym'),
     ...syncColumns(),
   },
   (table) => [
-    uniqueIndex('exercises_author_slug_unique').on(table.authorId, table.slug),
+    uniqueIndex('exercises_author_slug_gym_unique').on(
+      table.authorId,
+      table.slug,
+      sql`coalesce(${table.gym}, '')`,
+    ),
     index('exercises_primary_tag_idx').on(table.primaryTagId),
     index('exercises_server_seq_idx').on(table.serverSeq),
     check('exercises_logging_type_check', oneOf('logging_type', LOGGING_TYPES)),

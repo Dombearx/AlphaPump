@@ -185,6 +185,7 @@ export function exerciseDetails(db: SqliteDatabase, exerciseId: string) {
       name: exercises.name,
       loggingType: exercises.loggingType,
       note: exercises.note,
+      gym: exercises.gym,
       authorId: exercises.authorId,
       tagId: exercises.primaryTagId,
       tagName: tags.name,
@@ -275,6 +276,7 @@ export function exerciseLibrary(db: SqliteDatabase, userId: string, filter: Libr
       id: exercises.id,
       name: exercises.name,
       loggingType: exercises.loggingType,
+      gym: exercises.gym,
       authorId: exercises.authorId,
       tagId: exercises.primaryTagId,
       tagName: tags.name,
@@ -345,6 +347,42 @@ export function additionalTagsOf(db: SqliteDatabase, exerciseId: string) {
     .innerJoin(tags, eq(tags.id, exerciseTags.tagId))
     .where(eq(exerciseTags.exerciseId, exerciseId))
     .orderBy(asc(exerciseTags.position));
+}
+
+/**
+ * Tagi dodatkowe wszystkich ćwiczeń naraz — do dopisania na listach
+ * (biblioteka, wybór ćwiczenia), gdzie filtr po tagu obejmuje tag główny
+ * **i** dodatkowe (patrz `exerciseLibrary`). Bez tego wiersz przefiltrowany po
+ * „Triceps" pokazywał wyłącznie tag główny („Chest"), a nigdzie nie było
+ * widać, że w ogóle dotyka tricepsów. Jedno zapytanie i grupowanie w JS-ie po
+ * stronie ekranu jest tańsze niż `additionalTagsOf` na każdy wiersz listy.
+ */
+export function allAdditionalTags(db: SqliteDatabase) {
+  return db
+    .select({
+      exerciseId: exerciseTags.exerciseId,
+      tagId: tags.id,
+      tagName: tags.name,
+      tagColor: tags.color,
+    })
+    .from(exerciseTags)
+    .innerJoin(tags, eq(tags.id, exerciseTags.tagId))
+    .orderBy(asc(exerciseTags.position));
+}
+
+export type AdditionalTagRow = Awaited<ReturnType<typeof allAdditionalTags>>[number];
+
+/** Wiersz `allAdditionalTags` pogrupowany po ćwiczeniu, do doklejenia na listach. */
+export function groupAdditionalTags(
+  rows: readonly AdditionalTagRow[],
+): Map<string, { id: string; name: string; color: string }[]> {
+  const byExercise = new Map<string, { id: string; name: string; color: string }[]>();
+  for (const row of rows) {
+    const list = byExercise.get(row.exerciseId) ?? [];
+    list.push({ id: row.tagId, name: row.tagName, color: row.tagColor });
+    byExercise.set(row.exerciseId, list);
+  }
+  return byExercise;
 }
 
 /* --------------------------------------------------------------------- cykle */

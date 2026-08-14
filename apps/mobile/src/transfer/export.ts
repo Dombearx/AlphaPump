@@ -161,6 +161,7 @@ export async function exportLocalArchive(
       primaryTagId: row.primaryTagId,
       additionalTagIds: additionalByExercise.get(row.id) ?? [],
       note: row.note,
+      gym: row.gym,
       createdAt: instant(row.createdAt),
       updatedAt: instant(row.updatedAt),
       deletedAt: null,

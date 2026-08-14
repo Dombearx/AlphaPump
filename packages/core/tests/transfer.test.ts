@@ -60,6 +60,7 @@ function content(): ArchiveContent {
         primaryTagId: plecy,
         additionalTagIds: [],
         note: null,
+        gym: null,
         ...STAMPS,
       },
     ],

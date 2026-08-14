@@ -58,6 +58,7 @@ export function toExerciseDto(row: ExerciseRow, additionalTagIds: string[]): Exe
     primaryTagId: row.primaryTagId,
     additionalTagIds,
     note: row.note,
+    gym: row.gym,
     createdAt: instant(row.createdAt),
     updatedAt: instant(row.updatedAt),
     deletedAt: nullableInstant(row.deletedAt),

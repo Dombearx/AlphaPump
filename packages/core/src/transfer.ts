@@ -373,6 +373,7 @@ export function canonicalArchive(archive: ArchiveContent): unknown {
       primaryTagId: exercise.primaryTagId,
       additionalTagIds: [...exercise.additionalTagIds].sort((a, b) => a.localeCompare(b)),
       note: exercise.note,
+      gym: exercise.gym,
     })),
     sets: byId(archive.sets).map((set) => ({
       id: set.id,

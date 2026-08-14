@@ -80,6 +80,7 @@ export async function buildPushRequest(
         .filter((link) => link.exerciseId === row.id)
         .map((link) => link.tagId),
       note: row.note,
+      gym: row.gym,
       createdAt: instant(row.createdAt),
       updatedAt: instant(row.updatedAt),
       deletedAt: nullableInstant(row.deletedAt),

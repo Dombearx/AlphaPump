@@ -86,6 +86,7 @@ describe('tagi w bazie lokalnej', () => {
       primaryTagId: TAGS.chest,
       additionalTagIds: [biceps.id],
       note: null,
+      gym: null,
     });
 
     const rows = await tagLibrary(local.db);
@@ -121,6 +122,7 @@ describe('ćwiczenia w bazie lokalnej', () => {
       primaryTagId: TAGS.chest,
       additionalTagIds: [],
       note: null,
+      gym: null,
       ...extra,
     });
 
@@ -352,7 +354,7 @@ describe('ćwiczenia w bazie lokalnej', () => {
 
       await expect(
         updateExercise(local.db, { ...AUTHOR, exerciseId: saved.id, name: 'Cokolwiek' }),
-      ).rejects.toThrow(/Nie ma ćwiczenia/);
+      ).rejects.toThrow(/No exercise with ID/);
     });
   });
 

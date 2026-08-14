@@ -205,6 +205,7 @@ async function applyExercise(
     loggingType: row.loggingType,
     primaryTagId: row.primaryTagId,
     note: row.note,
+    gym: row.gym,
     createdAt: instant(row.createdAt),
     updatedAt: instant(row.updatedAt),
     deletedAt: nullableInstant(row.deletedAt),

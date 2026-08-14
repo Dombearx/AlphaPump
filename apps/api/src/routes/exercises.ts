@@ -195,7 +195,7 @@ export function createExerciseRouter(dependencies: AppDependencies) {
     }
     await assertTagsExist(dependencies, [input.primaryTagId, ...input.additionalTagIds]);
 
-    const id = exerciseId(principal.id, input.name);
+    const id = exerciseId(principal.id, input.name, input.gym);
     const existing = await loadOne(id);
     if (existing && existing.row.deletedAt === null) {
       return context.json(toExerciseDto(existing.row, existing.additionalTagIds), 200);
@@ -210,6 +210,7 @@ export function createExerciseRouter(dependencies: AppDependencies) {
       loggingType: input.loggingType,
       primaryTagId: input.primaryTagId,
       note: input.note,
+      gym: input.gym,
       ...stamp,
     };
 
@@ -249,11 +250,20 @@ export function createExerciseRouter(dependencies: AppDependencies) {
 
       const name = input.name ?? existing.row.name;
       const newSlug = slug(name);
-      if (newSlug !== existing.row.slug) {
+      const gym = input.gym === undefined ? existing.row.gym : input.gym;
+      // Id nie zmienia się przy edycji (patrz komentarz niżej), ale wiersz musi
+      // dalej być jedyny w obrębie „nazwa + siłownia" tego autora.
+      if (newSlug !== existing.row.slug || gym !== existing.row.gym) {
         const [collision] = await db
           .select({ id: exercises.id })
           .from(exercises)
-          .where(and(eq(exercises.authorId, existing.row.authorId), eq(exercises.slug, newSlug)))
+          .where(
+            and(
+              eq(exercises.authorId, existing.row.authorId),
+              eq(exercises.slug, newSlug),
+              gym === null ? isNull(exercises.gym) : eq(exercises.gym, gym),
+            ),
+          )
           .limit(1);
         if (collision && collision.id !== id) {
           throw conflict('Autor ma już ćwiczenie o takiej nazwie');
@@ -270,6 +280,7 @@ export function createExerciseRouter(dependencies: AppDependencies) {
           slug: newSlug,
           primaryTagId,
           note: input.note === undefined ? existing.row.note : input.note,
+          gym,
           ...stampWrite(),
         })
         .where(eq(exercises.id, id))

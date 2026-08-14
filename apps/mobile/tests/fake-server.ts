@@ -133,6 +133,7 @@ export class FakeSyncServer implements SyncTransport {
           primaryTagId: incoming.primaryTagId,
           additionalTagIds: incoming.additionalTagIds,
           note: incoming.note,
+          gym: incoming.gym,
           ...revision,
           serverSeq: this.next(),
         });

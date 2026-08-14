@@ -24,6 +24,7 @@ import {
   cycleSchema,
   displayNameSchema,
   exerciseSchema,
+  gymSchema,
   isoDateSchema,
   isoDateTimeSchema,
   loggingTypeSchema,
@@ -199,6 +200,7 @@ export const exercisePushSchema = z.object({
   /** Zestaw tagów dodatkowych jedzie z ćwiczeniem i jest podmieniany w całości. */
   additionalTagIds: z.array(uuidSchema).default([]),
   note: noteSchema.nullable().default(null),
+  gym: gymSchema.nullable().default(null),
 });
 
 export type ExercisePush = z.infer<typeof exercisePushSchema>;

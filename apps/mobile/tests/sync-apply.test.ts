@@ -53,9 +53,10 @@ describe('paczka zmian', () => {
           slug: 'wioslowanie-w-podporze',
           authorId: TEST_USER.id,
           loggingType: 'weight_reps',
-          primaryTagId: tagId('Plecy'),
+          primaryTagId: tagId('Back'),
           additionalTagIds: [tagId('Biceps')],
           note: null,
+          gym: null,
           createdAt: EARLIER,
           updatedAt: EARLIER,
           deletedAt: null,
@@ -171,12 +172,13 @@ describe('paczka zmian', () => {
     const id = EXERCISES.bench!.id;
     const base = {
       id,
-      name: 'Wyciskanie sztangi leżąc',
-      slug: 'wyciskanie-sztangi-lezac',
+      name: 'Barbell bench press',
+      slug: 'barbell-bench-press',
       authorId: '73d7cbab-d3b4-549a-8d8f-9de36dbaae82',
       loggingType: 'weight_reps' as const,
-      primaryTagId: tagId('Klatka piersiowa'),
+      primaryTagId: tagId('Chest'),
       note: null,
+      gym: null,
       createdAt: EARLIER,
       deletedAt: null,
     };
@@ -186,7 +188,7 @@ describe('paczka zmian', () => {
       exercises: [
         {
           ...base,
-          additionalTagIds: [tagId('Triceps'), tagId('Barki')],
+          additionalTagIds: [tagId('Triceps'), tagId('Shoulders')],
           updatedAt: LATER,
           serverSeq: 30,
         },
@@ -198,7 +200,7 @@ describe('paczka zmian', () => {
       exercises: [
         {
           ...base,
-          additionalTagIds: [tagId('Barki')],
+          additionalTagIds: [tagId('Shoulders')],
           updatedAt: '2026-08-03T10:00:00.000Z',
           serverSeq: 31,
         },
@@ -206,22 +208,22 @@ describe('paczka zmian', () => {
     });
 
     const links = await local.db.select().from(exerciseTags).where(eq(exerciseTags.exerciseId, id));
-    expect(links.map((link) => link.tagId)).toEqual([tagId('Barki')]);
+    expect(links.map((link) => link.tagId)).toEqual([tagId('Shoulders')]);
   });
 
   it('zapisuje numer sekwencji także wierszowi, który przegrał rozstrzygnięcie', async () => {
     const [tag] = await local.db
       .select()
       .from(tags)
-      .where(eq(tags.id, tagId('Plecy')));
+      .where(eq(tags.id, tagId('Back')));
 
     await apply(local, {
       ...empty(),
       tags: [
         {
-          id: tagId('Plecy'),
-          name: 'Plecy',
-          slug: 'plecy',
+          id: tagId('Back'),
+          name: 'Back',
+          slug: 'back',
           color: tag?.color ?? '#000000',
           // Wersja starsza niż lokalna — treść zostaje, numer wchodzi.
           createdAt: '2020-01-01T00:00:00.000Z',
@@ -235,7 +237,7 @@ describe('paczka zmian', () => {
     const [after] = await local.db
       .select()
       .from(tags)
-      .where(eq(tags.id, tagId('Plecy')));
+      .where(eq(tags.id, tagId('Back')));
     expect(after?.serverSeq).toBe(40);
     expect(after?.updatedAt.toISOString()).toBe(tag?.updatedAt.toISOString());
   });
@@ -248,13 +250,14 @@ describe('paczka zmian', () => {
       exercises: [
         {
           id: EXERCISES.bench!.id,
-          name: 'Wyciskanie sztangi leżąc',
-          slug: 'wyciskanie-sztangi-lezac',
+          name: 'Barbell bench press',
+          slug: 'barbell-bench-press',
           authorId: '73d7cbab-d3b4-549a-8d8f-9de36dbaae82',
           loggingType: 'weight_reps',
-          primaryTagId: tagId('Klatka piersiowa'),
+          primaryTagId: tagId('Chest'),
           additionalTagIds: [],
           note: null,
+          gym: null,
           createdAt: EARLIER,
           updatedAt: LATER,
           deletedAt: null,

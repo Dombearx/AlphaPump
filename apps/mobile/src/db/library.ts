@@ -36,7 +36,7 @@ import {
   type ExerciseRow,
   type SqliteDatabase,
 } from '@alphapump/db/sqlite';
-import { and, eq, ne } from 'drizzle-orm';
+import { and, eq, isNull, ne } from 'drizzle-orm';
 import { enqueue } from '../sync/outbox';
 import { ExerciseNotFoundError } from './sets';
 import { withTransaction } from './transaction';
@@ -67,14 +67,14 @@ export class NotAllowedError extends Error {
 
 export class NameTakenError extends Error {
   constructor(name: string) {
-    super(`Masz już ćwiczenie o nazwie „${name}"`);
+    super(`You already have an exercise named "${name}"`);
     this.name = 'NameTakenError';
   }
 }
 
 export class TagNotFoundError extends Error {
   constructor(tagId: string) {
-    super(`Nie ma tagu o identyfikatorze ${tagId}`);
+    super(`No tag with ID ${tagId}`);
     this.name = 'TagNotFoundError';
   }
 }
@@ -82,7 +82,7 @@ export class TagNotFoundError extends Error {
 /** Tag główny wśród dodatkowych — ten sam warunek egzekwuje schemat i serwer. */
 export class RepeatedTagError extends Error {
   constructor() {
-    super('Tag główny nie może powtarzać się wśród tagów dodatkowych');
+    super('The primary tag cannot repeat among the additional tags');
     this.name = 'RepeatedTagError';
   }
 }
@@ -90,7 +90,7 @@ export class RepeatedTagError extends Error {
 function assertMayModify(exercise: ExerciseRow, author: LibraryAuthor): void {
   if (author.role === 'admin') return;
   if (exercise.authorId === author.userId) return;
-  throw new NotAllowedError('Ćwiczenie może zmieniać wyłącznie jego autor albo administrator');
+  throw new NotAllowedError('Only its author or an admin can change this exercise');
 }
 
 /* ----------------------------------------------------------------------- tagi */
@@ -151,6 +151,13 @@ export interface ExerciseValues {
   primaryTagId: string;
   additionalTagIds: string[];
   note: string | null;
+  /**
+   * Siłownia — opcjonalna, wchodzi w id **tylko przy tworzeniu** (patrz
+   * `ids.ts`), tak samo jak nazwa. Późniejsza zmiana nie przelicza id, żeby nie
+   * osierocić serii wskazujących na to ćwiczenie — więc przy edycji jest
+   * zwykłym polem, tak jak notatka.
+   */
+  gym: string | null;
 }
 
 export interface CreateExerciseCommand extends LibraryAuthor, ExerciseValues {
@@ -194,12 +201,13 @@ export async function createExercise(
     primaryTagId: command.primaryTagId,
     additionalTagIds: command.additionalTagIds,
     note: command.note,
+    gym: command.gym,
   });
 
   if (input.additionalTagIds.includes(input.primaryTagId)) throw new RepeatedTagError();
   await assertTagsExist(db, [input.primaryTagId, ...input.additionalTagIds]);
 
-  const id = computeExerciseId(command.userId, input.name);
+  const id = computeExerciseId(command.userId, input.name, input.gym);
   const [existing] = await db.select().from(exercises).where(eq(exercises.id, id)).limit(1);
   if (existing && existing.deletedAt === null) return { id, created: false };
 
@@ -211,6 +219,7 @@ export async function createExercise(
     loggingType: input.loggingType,
     primaryTagId: input.primaryTagId,
     note: input.note,
+    gym: input.gym,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
     deletedAt: null,
@@ -256,16 +265,21 @@ export async function updateExercise(
       ? {}
       : { additionalTagIds: command.additionalTagIds }),
     ...(command.note === undefined ? {} : { note: command.note }),
+    ...(command.gym === undefined ? {} : { gym: command.gym }),
   });
 
   const name = input.name ?? existing.name;
   const primaryTagId = input.primaryTagId ?? existing.primaryTagId;
   const additionalTagIds = input.additionalTagIds;
+  const gym = input.gym === undefined ? existing.gym : input.gym;
   if (additionalTagIds?.includes(primaryTagId) === true) throw new RepeatedTagError();
   await assertTagsExist(db, [primaryTagId, ...(additionalTagIds ?? [])]);
 
   const newSlug = slug(name);
-  if (newSlug !== existing.slug) {
+  // Id nie zmienia się przy edycji (patrz komentarz funkcji), ale wiersz musi
+  // dalej być jedyny w obrębie „nazwa + siłownia" tego autora — inaczej
+  // zapis wywróciłby się dopiero na unikalności bazy, zamiast czytelnym błędem.
+  if (newSlug !== existing.slug || gym !== existing.gym) {
     const [collision] = await db
       .select({ id: exercises.id })
       .from(exercises)
@@ -273,6 +287,7 @@ export async function updateExercise(
         and(
           eq(exercises.authorId, existing.authorId),
           eq(exercises.slug, newSlug),
+          gym === null ? isNull(exercises.gym) : eq(exercises.gym, gym),
           ne(exercises.id, existing.id),
         ),
       )
@@ -288,6 +303,7 @@ export async function updateExercise(
         slug: newSlug,
         primaryTagId,
         note: input.note === undefined ? existing.note : input.note,
+        gym,
         updatedAt: now,
         deviceId: command.deviceId,
       })

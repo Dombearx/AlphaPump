@@ -40,18 +40,29 @@ export const NS_TAG = '387d6d24-6bbc-5f2e-8dab-a25f96fb1d2d';
  */
 export const SYSTEM_USER_ID = '73d7cbab-d3b4-549a-8d8f-9de36dbaae82';
 
-/** Klucz, z którego wyliczane jest id ćwiczenia. Wydzielony, bo bywa logowany. */
-export function exerciseIdKey(authorId: string, name: string): string {
-  return `${authorId}/${slug(name)}`;
+/**
+ * Klucz, z którego wyliczane jest id ćwiczenia. Wydzielony, bo bywa logowany.
+ *
+ * Siłownia jest **opcjonalną** częścią klucza — niektóre maszyny są na tyle
+ * specyficzne dla konkretnej siłowni (inny opór, inna kalibracja obciążenia),
+ * że to samo ćwiczenie na dwóch siłowniach ma sens jako dwa osobne wiersze
+ * z osobną historią i rekordami. Pusta/brakująca siłownia daje **dokładnie
+ * ten sam klucz co przed wprowadzeniem tego pola** — istniejące ćwiczenia bez
+ * podanej siłowni nie zmieniają id.
+ */
+export function exerciseIdKey(authorId: string, name: string, gym?: string | null): string {
+  const gymSlug = gym !== undefined && gym !== null && gym.trim().length > 0 ? slug(gym) : null;
+  const base = `${authorId}/${slug(name)}`;
+  return gymSlug === null ? base : `${base}@${gymSlug}`;
 }
 
-export function exerciseId(authorId: string, name: string): string {
-  return uuidv5(exerciseIdKey(authorId, name), NS_EXERCISE);
+export function exerciseId(authorId: string, name: string, gym?: string | null): string {
+  return uuidv5(exerciseIdKey(authorId, name, gym), NS_EXERCISE);
 }
 
 /** Id ćwiczenia wbudowanego — autorem jest konto systemowe. */
-export function builtInExerciseId(name: string): string {
-  return exerciseId(SYSTEM_USER_ID, name);
+export function builtInExerciseId(name: string, gym?: string | null): string {
+  return exerciseId(SYSTEM_USER_ID, name, gym);
 }
 
 export function tagId(name: string): string {

@@ -50,9 +50,10 @@ async function seedOwnData(local: LocalDatabase): Promise<{ exerciseId: string }
     ...AUTHOR,
     name: 'Zwis na jednej ręce',
     loggingType: 'weight_reps',
-    primaryTagId: tagId('Przedramiona'),
+    primaryTagId: tagId('Forearms'),
     additionalTagIds: [],
     note: 'na czas',
+    gym: null,
   });
 
   await createSet(local.db, {
@@ -107,7 +108,7 @@ describe('eksport z bazy lokalnej', () => {
     expect(archive.cycles).toHaveLength(1);
     // Ćwiczenie własne i ćwiczenie wbudowane, którego dotyka druga seria.
     expect(archive.exercises.map((exercise) => exercise.name).sort()).toEqual([
-      'Wyciskanie sztangi leżąc',
+      'Barbell bench press',
       'Zwis na jednej ręce',
     ]);
     // Tagi tych ćwiczeń jadą razem z nimi — bez nich plik byłby bezużyteczny

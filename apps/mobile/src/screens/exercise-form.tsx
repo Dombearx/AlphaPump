@@ -82,6 +82,7 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
   );
   const [additionalTagIds, setAdditionalTagIds] = useState<string[]>([]);
   const [note, setNote] = useState('');
+  const [gym, setGym] = useState('');
   const [newTag, setNewTag] = useState('');
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -100,6 +101,7 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
     setPrimaryTagId(existing.tagId);
     setAdditionalTagIds(editedTags.data.map((tag) => tag.id));
     setNote(existing.note ?? '');
+    setGym(existing.gym ?? '');
     setLoaded(true);
   }, [mode.kind, loaded, existing, editedTags.data]);
 
@@ -118,7 +120,7 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
   if (author === null) return <Loading />;
   if (mode.kind === 'edit' && !loaded) {
     return edited.updatedAt === undefined ? (
-      <Loading label="Wczytywanie ćwiczenia…" />
+      <Loading label="Loading exercise…" />
     ) : (
       <MissingExercise onBack={() => router.replace('/library')} />
     );
@@ -138,7 +140,7 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
       try {
         await action();
       } catch (error) {
-        setProblem(error instanceof Error ? error.message : 'Nie udało się zapisać ćwiczenia');
+        setProblem(error instanceof Error ? error.message : 'Failed to save the exercise');
       } finally {
         setBusy(false);
       }
@@ -157,7 +159,7 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
   const save = () =>
     run(async () => {
       if (primaryTagId === null) {
-        setProblem('Wybierz tag główny — to on decyduje o zaliczaniu serii do cykli.');
+        setProblem('Pick a primary tag — it decides which cycles count the sets.');
         return;
       }
 
@@ -169,6 +171,7 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
           primaryTagId,
           additionalTagIds,
           note: note.trim().length === 0 ? null : note.trim(),
+          gym: gym.trim().length === 0 ? null : gym.trim(),
         });
 
         requestSync();
@@ -183,6 +186,7 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
         primaryTagId,
         additionalTagIds,
         note: note.trim().length === 0 ? null : note.trim(),
+        gym: gym.trim().length === 0 ? null : gym.trim(),
       });
 
       requestSync();
@@ -198,7 +202,7 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
   return (
     <SafeAreaView className="flex-1 bg-base" edges={['bottom']}>
       <Stack.Screen
-        options={{ title: mode.kind === 'create' ? 'Nowe ćwiczenie' : 'Edycja ćwiczenia' }}
+        options={{ title: mode.kind === 'create' ? 'New exercise' : 'Edit exercise' }}
       />
 
       <KeyboardAvoidingView
@@ -208,34 +212,34 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
         <ScrollView contentContainerClassName="gap-4 p-4 pb-10" keyboardShouldPersistTaps="handled">
           <Card className="gap-3">
             <Field
-              label="Nazwa"
+              label="Name"
               value={name}
               onChangeText={setName}
-              placeholder="np. Wyciskanie francuskie"
+              placeholder="e.g. Skull crushers"
               autoFocus={mode.kind === 'create'}
             />
 
             {identical !== undefined && (
               <Text className="text-xs text-muted">
-                Ta nazwa wskazuje na istniejące ćwiczenie „{identical.exercise.name}" — zapis trafi
-                w nie, zamiast tworzyć drugie.
+                This name matches an existing exercise "{identical.exercise.name}" — saving will
+                update it instead of creating a second one.
               </Text>
             )}
 
             {hints.length > 0 && identical === undefined && (
               <View className="gap-1 rounded-2xl border border-border p-3">
-                <SectionTitle>Podobne już są</SectionTitle>
+                <SectionTitle>Similar already exist</SectionTitle>
                 {hints.map((hint) => (
                   <View key={hint.exerciseId}>
                     <Text className="text-sm text-muted">
                       • {hint.name}
-                      {hint.authorNickname === null ? '' : ` (autor: ${hint.authorNickname})`}
+                      {hint.authorNickname === null ? '' : ` (by ${hint.authorNickname})`}
                     </Text>
                     <Text className="ml-3 text-xs text-muted">{describeHint(hint)}</Text>
                   </View>
                 ))}
                 <Text className="text-xs text-muted">
-                  To tylko podpowiedź — możesz zapisać mimo wszystko.
+                  This is just a hint — you can save anyway.
                 </Text>
               </View>
             )}
@@ -243,10 +247,10 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
 
           {mode.kind === 'create' && (
             <View className="gap-2">
-              <SectionTitle>Typ logowania</SectionTitle>
+              <SectionTitle>Logging type</SectionTitle>
               <Text className="text-xs text-muted">
-                Ustawiany raz na zawsze. Zmiana wymagałaby nowego ćwiczenia, bo inaczej historyczne
-                serie przestałyby do niego pasować.
+                Set once and locked in. Changing it would need a new exercise — otherwise
+                historical sets would stop matching it.
               </Text>
               <ChipRow>
                 {LOGGING_TYPES.map((type) => (
@@ -262,9 +266,9 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
           )}
 
           <View className="gap-2">
-            <SectionTitle>Tag główny</SectionTitle>
+            <SectionTitle>Primary tag</SectionTitle>
             <Text className="text-xs text-muted">
-              To on zalicza serie do celów cyklu opartych o partie mięśniowe.
+              This is what counts sets toward cycle goals based on muscle groups.
             </Text>
             <ChipRow>
               {(tags.data ?? []).map((tag) => (
@@ -283,7 +287,7 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
           </View>
 
           <View className="gap-2">
-            <SectionTitle>Tagi dodatkowe</SectionTitle>
+            <SectionTitle>Additional tags</SectionTitle>
             <ChipRow>
               {(tags.data ?? [])
                 .filter((tag) => tag.id !== primaryTagId)
@@ -301,15 +305,15 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
 
           <Card className="gap-3">
             <Field
-              label="Nowy tag"
+              label="New tag"
               value={newTag}
               onChangeText={setNewTag}
-              placeholder="np. Przedramiona"
-              hint="Kolor przydziela system — jest wyliczany z nazwy, więc taki sam na każdym urządzeniu."
+              placeholder="e.g. Forearms"
+              hint="The color is assigned by the system — derived from the name, so it's the same on every device."
             />
             <Button
               variant="secondary"
-              label="Dodaj tag"
+              label="Add tag"
               disabled={newTag.trim().length === 0}
               busy={busy}
               onPress={addTag}
@@ -317,10 +321,18 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
           </Card>
 
           <Field
-            label="Notatka"
+            label="Gym"
+            value={gym}
+            onChangeText={setGym}
+            placeholder="optional — for machines specific to one gym"
+            hint="Same exercise, different gym: give each its own gym here and they'll be tracked as separate entries with separate history."
+          />
+
+          <Field
+            label="Note"
             value={note}
             onChangeText={setNote}
-            placeholder="opcjonalna"
+            placeholder="optional"
             multiline
           />
 
@@ -328,14 +340,14 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
 
           {canModify ? (
             <Button
-              label={mode.kind === 'create' ? 'Zapisz ćwiczenie' : 'Zapisz zmiany'}
+              label={mode.kind === 'create' ? 'Save exercise' : 'Save changes'}
               busy={busy}
               disabled={name.trim().length === 0}
               onPress={save}
             />
           ) : (
             <Text className="text-danger">
-              Ćwiczenie może zmieniać wyłącznie jego autor albo administrator.
+              Only its author or an admin can change this exercise.
             </Text>
           )}
         </ScrollView>
@@ -348,10 +360,10 @@ function MissingExercise({ onBack }: { onBack: () => void }) {
   return (
     <SafeAreaView className="flex-1 justify-center gap-4 bg-base p-6">
       <EmptyState
-        title="Nie ma już takiego ćwiczenia"
-        hint="Zostało usunięte z biblioteki — wybierz inne."
+        title="This exercise no longer exists"
+        hint="It was removed from the library — pick another one."
       />
-      <Button label="Wróć do biblioteki" onPress={onBack} />
+      <Button label="Back to library" onPress={onBack} />
     </SafeAreaView>
   );
 }

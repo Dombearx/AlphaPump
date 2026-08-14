@@ -74,6 +74,7 @@ describe('ćwiczenie', () => {
     primaryTagId: ID_C,
     additionalTagIds: [],
     note: null,
+    gym: null,
     ...sync,
   };
 

@@ -47,6 +47,9 @@ export const displayNameSchema = z
 
 export const noteSchema = z.string().trim().max(1000);
 
+/** Siłownia — opcjonalny doprecyzowujący dopisek, wchodzi też w id ćwiczenia (patrz `ids.ts`). */
+export const gymSchema = z.string().trim().max(80);
+
 /** Pola, po których jedzie synchronizacja. Soft delete jest wszędzie — bez
  *  tombstone'a usunięcie wykonane offline nie miałoby jak dojechać na serwer. */
 export const syncFieldsSchema = z.object({
@@ -111,6 +114,7 @@ export const exerciseSchema = z
     primaryTagId: uuidSchema,
     additionalTagIds: z.array(uuidSchema),
     note: noteSchema.nullable(),
+    gym: gymSchema.nullable(),
   })
   .extend(syncFieldsSchema.shape)
   .refine((exercise) => !exercise.additionalTagIds.includes(exercise.primaryTagId), {
@@ -131,6 +135,7 @@ export const createExerciseInputSchema = z.object({
   primaryTagId: uuidSchema,
   additionalTagIds: z.array(uuidSchema).default([]),
   note: noteSchema.nullable().default(null),
+  gym: gymSchema.nullable().default(null),
 });
 
 export type CreateExerciseInput = z.infer<typeof createExerciseInputSchema>;

@@ -42,7 +42,7 @@ import {
   type SyncResult,
   type SyncRevision,
 } from '@alphapump/core';
-import { and, asc, eq, inArray, ne } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import type { Principal } from '../context.js';
 import type { Database } from '../db.js';
 import { cycleGoals, cycles, exerciseTags, exercises, tags, workoutSets } from '../schema.js';
@@ -278,8 +278,11 @@ export async function applyPush(
     }
 
     const newSlug = slug(incoming.name);
-    if (decision === 'insert' && incoming.id !== deterministicExerciseId(authorId, incoming.name)) {
-      await reject('Identyfikator ćwiczenia nie wynika z pary autor + nazwa');
+    if (
+      decision === 'insert' &&
+      incoming.id !== deterministicExerciseId(authorId, incoming.name, incoming.gym)
+    ) {
+      await reject('Identyfikator ćwiczenia nie wynika z pary autor + nazwa (+ siłownia)');
       continue;
     }
     const [collision] = await db
@@ -289,6 +292,7 @@ export async function applyPush(
         and(
           eq(exercises.authorId, authorId),
           eq(exercises.slug, newSlug),
+          incoming.gym === null ? isNull(exercises.gym) : eq(exercises.gym, incoming.gym),
           ne(exercises.id, incoming.id),
         ),
       )
@@ -307,6 +311,7 @@ export async function applyPush(
       loggingType: existing?.loggingType ?? incoming.loggingType,
       primaryTagId: incoming.primaryTagId,
       note: incoming.note,
+      gym: incoming.gym,
     };
 
     const row = await db.transaction(async (tx) => {
