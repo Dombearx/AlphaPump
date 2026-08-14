@@ -32,7 +32,7 @@ const config = {
   orientation: 'portrait',
   /** Jeden motyw, ciemny — specyfikacja wymaga dark theme, a przełącznika nie. */
   userInterfaceStyle: 'dark',
-  backgroundColor: '#0b0b0f',
+  backgroundColor: '#232327',
   newArchEnabled: true,
 
   ios: {
@@ -56,7 +56,7 @@ const config = {
      * Domyślna jedynka wystarcza przy budowaniu na własnej maszynie.
      */
     versionCode: Number(process.env.ANDROID_VERSION_CODE ?? 1),
-    adaptiveIcon: { backgroundColor: '#0b0b0f' },
+    adaptiveIcon: { backgroundColor: '#232327' },
   },
 
   plugins: [
