@@ -15,6 +15,7 @@
 
 import {
   addDays,
+  differenceInDays,
   isIsoDate,
   type CycleGoalInput,
   type GoalMetric,
@@ -22,8 +23,8 @@ import {
 } from '@alphapump/core';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { Stack, useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../db/client';
 import { createCycle, updateCycle } from '../db/cycles';
@@ -75,9 +76,12 @@ export function CycleFormScreen({ mode }: { mode: CycleFormMode }) {
   const archived = useLiveQuery(cycleList(db, userId, true), [userId]);
   const goalRows = useLiveQuery(cycleGoalList(db, userId), [userId]);
 
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollToEnd = () => scrollRef.current?.scrollToEnd({ animated: true });
+
   const [name, setName] = useState('');
   const [startsOn, setStartsOn] = useState<string>(today);
-  const [endsOn, setEndsOn] = useState<string>(addDays(today, 29));
+  const [durationDays, setDurationDays] = useState<string>('30');
   const [openEnded, setOpenEnded] = useState(false);
   const [goals, setGoals] = useState<GoalDraft[]>([]);
   const [busy, setBusy] = useState(false);
@@ -100,7 +104,9 @@ export function CycleFormScreen({ mode }: { mode: CycleFormMode }) {
     setName(edited.name);
     setStartsOn(edited.startsOn);
     setOpenEnded(edited.endsOn === null);
-    if (edited.endsOn !== null) setEndsOn(edited.endsOn);
+    if (edited.endsOn !== null) {
+      setDurationDays(String(differenceInDays(edited.startsOn, edited.endsOn) + 1));
+    }
     setGoals(
       (goalRows.data ?? [])
         .filter((goal) => goal.cycleId === edited.id)
@@ -109,7 +115,7 @@ export function CycleFormScreen({ mode }: { mode: CycleFormMode }) {
           target: goal.target,
           exerciseId: goal.exerciseId,
           tagId: goal.tagId,
-          label: goal.exerciseName ?? goal.tagName ?? 'Pozycja celu',
+          label: goal.exerciseName ?? goal.tagName ?? 'Goal item',
           color: goal.tagColor,
         })),
     );
@@ -118,17 +124,24 @@ export function CycleFormScreen({ mode }: { mode: CycleFormMode }) {
 
   if (author === null || !loaded) return <Loading />;
 
+  const duration = Number.parseInt(durationDays, 10);
+  const validDuration = Number.isInteger(duration) && duration >= 1;
+  const endsOn = validDuration && isIsoDate(startsOn) ? addDays(startsOn, duration - 1) : null;
   const range = { startsOn, endsOn: openEnded ? null : endsOn };
 
   const save = () => {
     setProblem(null);
 
-    if (!isIsoDate(startsOn) || (!openEnded && !isIsoDate(endsOn))) {
-      setProblem('Daty muszą mieć postać RRRR-MM-DD.');
+    if (!isIsoDate(startsOn)) {
+      setProblem('Start must be in the form YYYY-MM-DD.');
+      return;
+    }
+    if (!openEnded && !validDuration) {
+      setProblem('Duration must be a number of days greater than zero.');
       return;
     }
     if (goals.length === 0) {
-      setProblem('Cykl bez pozycji celu nie ma czego zliczać — dodaj przynajmniej jedną.');
+      setProblem('A cycle with no goal items has nothing to track — add at least one.');
       return;
     }
 
@@ -152,7 +165,7 @@ export function CycleFormScreen({ mode }: { mode: CycleFormMode }) {
           router.back();
         }
       } catch (error) {
-        setProblem(error instanceof Error ? error.message : 'Nie udało się zapisać cyklu');
+        setProblem(error instanceof Error ? error.message : 'Failed to save the cycle');
       } finally {
         setBusy(false);
       }
@@ -161,80 +174,107 @@ export function CycleFormScreen({ mode }: { mode: CycleFormMode }) {
 
   return (
     <SafeAreaView className="flex-1 bg-base" edges={['bottom']}>
-      <Stack.Screen options={{ title: mode.kind === 'create' ? 'Nowy cykl' : 'Edycja cyklu' }} />
+      <Stack.Screen options={{ title: mode.kind === 'create' ? 'New cycle' : 'Edit cycle' }} />
 
       <KeyboardAvoidingView
         className="flex-1"
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <ScrollView contentContainerClassName="gap-4 p-4 pb-10" keyboardShouldPersistTaps="handled">
+        <ScrollView
+          ref={scrollRef}
+          contentContainerClassName="gap-4 p-4 pb-32"
+          keyboardShouldPersistTaps="handled"
+        >
           <Field
-            label="Nazwa"
+            label="Name"
             value={name}
             onChangeText={setName}
-            placeholder="np. Sierpień na biceps"
+            placeholder="e.g. August biceps push"
             autoFocus={mode.kind === 'create'}
           />
 
           <Card className="gap-3">
             <View className="flex-row gap-3">
               <Field
-                label="Początek"
+                grow
+                label="Start"
                 value={startsOn}
                 onChangeText={setStartsOn}
-                placeholder="RRRR-MM-DD"
+                placeholder="YYYY-MM-DD"
                 autoCapitalize="none"
               />
               {!openEnded && (
                 <Field
-                  label="Koniec"
-                  value={endsOn}
-                  onChangeText={setEndsOn}
-                  placeholder="RRRR-MM-DD"
-                  autoCapitalize="none"
+                  grow
+                  label="Days"
+                  value={durationDays}
+                  onChangeText={setDurationDays}
+                  placeholder="30"
+                  keyboardType="number-pad"
+                  unit="days"
                 />
               )}
             </View>
 
-            <ChipRow>
-              <Chip label="Od dziś" onPress={() => setStartsOn(today)} />
+            <ChipRow wrap>
               <Chip
-                label="Tydzień"
-                selected={!openEnded && endsOn === addDays(startsOn, 6)}
+                label="From today"
                 onPress={() => {
-                  setOpenEnded(false);
-                  setEndsOn(addDays(startsOn, 6));
+                  Keyboard.dismiss();
+                  setStartsOn(today);
                 }}
               />
               <Chip
-                label="30 dni"
-                selected={!openEnded && endsOn === addDays(startsOn, 29)}
+                label="One week"
+                selected={!openEnded && duration === 7}
                 onPress={() => {
+                  Keyboard.dismiss();
                   setOpenEnded(false);
-                  setEndsOn(addDays(startsOn, 29));
+                  setDurationDays('7');
                 }}
               />
               <Chip
-                label="Bez końca"
+                label="Two weeks"
+                selected={!openEnded && duration === 14}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setOpenEnded(false);
+                  setDurationDays('14');
+                }}
+              />
+              <Chip
+                label="30 days"
+                selected={!openEnded && duration === 30}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setOpenEnded(false);
+                  setDurationDays('30');
+                }}
+              />
+              <Chip
+                label="No end"
                 selected={openEnded}
-                onPress={() => setOpenEnded(!openEnded)}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setOpenEnded(!openEnded);
+                }}
               />
             </ChipRow>
 
             {openEnded && (
               <Text className="text-xs text-muted">
-                Cykl bez końca trwa, dopóki go nie zarchiwizujesz. Nie ma wtedy poprzednich okresów
-                — nie da się ich wyznaczyć bez długości cyklu.
+                An open-ended cycle runs until you archive it. There are no previous periods then
+                — they can't be worked out without a cycle length.
               </Text>
             )}
           </Card>
 
           <View className="gap-2">
-            <SectionTitle>Pozycje celu</SectionTitle>
+            <SectionTitle>Goal items</SectionTitle>
 
             {goals.length === 0 ? (
               <Text className="text-muted">
-                Na przykład: 12 serii na biceps, 6 serii podciągnięć, 10 km biegu.
+                For example: 12 biceps sets, 6 pull-up sets, 10 km of running.
               </Text>
             ) : (
               goals.map((goal, index) => (
@@ -247,7 +287,7 @@ export function CycleFormScreen({ mode }: { mode: CycleFormMode }) {
                     </Text>
                   </View>
                   <IconButton
-                    label="Usuń pozycję"
+                    label="Remove item"
                     glyph="×"
                     onPress={() =>
                       setGoals((current) => current.filter((_, position) => position !== index))
@@ -262,20 +302,21 @@ export function CycleFormScreen({ mode }: { mode: CycleFormMode }) {
             tags={tags.data ?? []}
             exercises={library.data ?? []}
             onAdd={(goal) => setGoals((current) => [...current, goal])}
+            onFocusTarget={scrollToEnd}
           />
 
           {problem !== null && <Text className="text-danger">{problem}</Text>}
 
           <Button
-            label={mode.kind === 'create' ? 'Zapisz cykl' : 'Zapisz zmiany'}
+            label={mode.kind === 'create' ? 'Save cycle' : 'Save changes'}
             busy={busy}
             disabled={name.trim().length === 0}
             onPress={save}
           />
 
           <Text className="text-xs text-muted">
-            Zakres: {range.startsOn} – {range.endsOn ?? 'bez końca'}. Serie zaliczają się do
-            wszystkich pasujących cykli automatycznie — nie trzeba ich nigdzie przypisywać.
+            Range: {range.startsOn} – {range.endsOn ?? 'no end'}. Sets count toward every matching
+            cycle automatically — there's nowhere to assign them.
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -294,10 +335,13 @@ function GoalComposer({
   tags,
   exercises,
   onAdd,
+  onFocusTarget,
 }: {
   tags: { id: string; name: string; color: string }[];
   exercises: { id: string; name: string; tagName: string; tagColor: string }[];
   onAdd: (goal: GoalDraft) => void;
+  /** Klawiatura zasłania przyciski pod polem „Cel" — przewiń je w widok przy fokusie. */
+  onFocusTarget: () => void;
 }) {
   const [metric, setMetric] = useState<GoalMetric>('sets');
   const [scope, setScope] = useState<'tag' | 'exercise'>('tag');
@@ -348,7 +392,7 @@ function GoalComposer({
 
   return (
     <Card className="gap-3">
-      <SectionTitle>Dodaj pozycję</SectionTitle>
+      <SectionTitle>Add item</SectionTitle>
 
       <ChipRow>
         {METRICS.map((option) => (
@@ -371,7 +415,7 @@ function GoalComposer({
           }}
         />
         <Chip
-          label="Ćwiczenie"
+          label="Exercise"
           selected={scope === 'exercise'}
           onPress={() => {
             setScope('exercise');
@@ -381,7 +425,7 @@ function GoalComposer({
       </ChipRow>
 
       {scope === 'tag' ? (
-        <ChipRow>
+        <ChipRow wrap>
           {tags.map((tag) => (
             <Chip
               key={tag.id}
@@ -395,10 +439,10 @@ function GoalComposer({
       ) : (
         <View className="gap-2">
           <Field
-            label="Ćwiczenie"
+            label="Exercise"
             value={query}
             onChangeText={setQuery}
-            placeholder="szukaj w bibliotece"
+            placeholder="search the library"
             autoCapitalize="none"
           />
           {matches.map((exercise) => (
@@ -415,20 +459,21 @@ function GoalComposer({
       )}
 
       <Field
-        label="Cel"
+        label="Target"
         value={target}
         onChangeText={setTarget}
         unit={metricUnit(metric)}
         placeholder={metricPlaceholder(metric)}
         keyboardType={metric === 'duration' ? 'numbers-and-punctuation' : 'numeric'}
+        onFocus={onFocusTarget}
       />
 
-      <Button variant="secondary" label="Dodaj pozycję" disabled={!ready} onPress={add} />
+      <Button variant="secondary" label="Add item" disabled={!ready} onPress={add} />
 
       {scope === 'tag' && (
         <Text className="text-xs text-muted">
-          Cel tagowy liczy wyłącznie tag główny ćwiczenia. Tagi dodatkowe są etykietami do
-          przeglądania biblioteki i serii nie zaliczają.
+          A tag goal only counts an exercise's primary tag. Additional tags are labels for
+          browsing the library and don't count sets.
         </Text>
       )}
     </Card>

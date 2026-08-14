@@ -11,7 +11,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { COLORS } from '../theme';
 
 /* ------------------------------------------------------------------ przyciski */
@@ -102,11 +102,19 @@ export type FieldProps = {
   /** Jednostka pokazana po prawej stronie pola — „kg", „×", „m". */
   unit?: string;
   hint?: string;
+  /**
+   * Pole dzieli szerokość wiersza z sąsiadem (`flex-row`) i ma się z nim
+   * równo rozciągnąć. **Tylko** do tego kontekstu — w kolumnie `flex-1` na
+   * elemencie bez rodzica o ustalonej wysokości zapada się w Yodze do ~0 px
+   * (flexBasis 0%, a nie ma przestrzeni do wzrostu), co dawało niewidoczne,
+   * jednopikselowe pole szukania.
+   */
+  grow?: boolean;
 } & React.ComponentProps<typeof TextInput>;
 
-export function Field({ label, unit, hint, ...input }: FieldProps) {
+export function Field({ label, unit, hint, grow = false, ...input }: FieldProps) {
   return (
-    <View className="flex-1 gap-1">
+    <View className={`gap-1 ${grow ? 'flex-1' : ''}`}>
       <SectionTitle>{label}</SectionTitle>
       <View className="flex-row items-center rounded-2xl border border-border bg-surface px-4">
         <TextInput
@@ -186,8 +194,20 @@ export function Chip({
   );
 }
 
-/** Rząd chipsów przewijany w poziomie — filtrów bywa więcej niż szerokości. */
-export function ChipRow({ children }: { children: ReactNode }) {
+/**
+ * Rząd chipsów.
+ *
+ * Domyślnie przewijany w poziomie — dobre dla krótkich, stałych zbiorów
+ * (metryka celu, typ logowania), które mieszczą się w jednej linii albo
+ * blisko niej. Dla list, które potrafią urosnąć do kilkunastu-kilkudziesięciu
+ * pozycji (tagi), jedna przewijana linia jest niewygodna — `wrap` łamie
+ * chipsy do siatki, żeby wszystkie były widoczne bez przewijania w bok.
+ */
+export function ChipRow({ children, wrap = false }: { children: ReactNode; wrap?: boolean }) {
+  if (wrap) {
+    return <View className="flex-row flex-wrap gap-2">{children}</View>;
+  }
+
   return (
     <ScrollView
       horizontal
@@ -222,17 +242,57 @@ export function TagDot({ color }: { color: string }) {
   return <View className="h-3 w-3 rounded-full" style={{ backgroundColor: color }} />;
 }
 
+/**
+ * Awatar użytkownika. Bez zdjęcia (konto bez Google albo brak `image` w sesji)
+ * pokazuje domyślny krążek z pierwszą literą nicku — nigdy pusty placeholder.
+ */
+export function Avatar({
+  uri,
+  label,
+  size = 32,
+}: {
+  uri?: string | null;
+  /** Nick albo e-mail — z niego bierze się litera domyślnego awatara. */
+  label: string;
+  size?: number;
+}) {
+  if (uri !== undefined && uri !== null && uri.length > 0) {
+    return (
+      <Image
+        source={{ uri }}
+        style={{ width: size, height: size, borderRadius: size / 2 }}
+      />
+    );
+  }
+
+  const initial = label.trim().charAt(0).toUpperCase() || '?';
+
+  return (
+    <View
+      className="items-center justify-center rounded-full bg-accent"
+      style={{ width: size, height: size }}
+    >
+      <Text className="font-semibold" style={{ color: COLORS.base, fontSize: size * 0.45 }}>
+        {initial}
+      </Text>
+    </View>
+  );
+}
+
 /** Mały przycisk ikonowy — strzałki zmiany kolejności, zamknięcie. */
 export function IconButton({
   label,
   glyph,
   onPress,
   disabled = false,
+  size = 40,
 }: {
   label: string;
   glyph: string;
   onPress: () => void;
   disabled?: boolean;
+  /** Bok kwadratu w px — domyślnie 40 (`h-10 w-10`). Większy dla łatwiejszego trafienia. */
+  size?: number;
 }) {
   return (
     <Pressable
@@ -240,7 +300,8 @@ export function IconButton({
       accessibilityLabel={label}
       disabled={disabled}
       onPress={onPress}
-      className={`h-10 w-10 items-center justify-center rounded-xl border border-border ${
+      style={{ width: size, height: size }}
+      className={`items-center justify-center rounded-xl border border-border ${
         disabled ? 'opacity-30' : 'active:opacity-70'
       }`}
     >
