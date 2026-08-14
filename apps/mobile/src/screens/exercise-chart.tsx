@@ -21,7 +21,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { chartSummary, metricsFor, recentPoints, type ChartMetric } from '../chart-data';
 import { db } from '../db/client';
 import { exerciseDetails, exerciseHistory } from '../db/queries';
-import { formatDate, today as currentDay } from '../day-labels';
+import { formatDate, formatShortDate, today as currentDay } from '../day-labels';
 import { useLocalAuthor } from '../hooks';
 import { formatDistance, formatDuration, formatWeight, LOGGING_TYPE_LABELS } from '../measurements';
 import { BarChart } from '../ui/chart';
@@ -60,11 +60,11 @@ export function ExerciseChartScreen({ exerciseId }: { exerciseId: string }) {
   if (author === null) return <Loading />;
   if (exercise === undefined || metric === undefined || summary === null) {
     return details.updatedAt === undefined ? (
-      <Loading label="Wczytywanie ćwiczenia…" />
+      <Loading label="Loading exercise…" />
     ) : (
       <SafeAreaView className="flex-1 justify-center gap-4 bg-base p-6">
-        <EmptyState title="Nie ma już takiego ćwiczenia" hint="Zostało usunięte z biblioteki." />
-        <Button label="Wróć do biblioteki" onPress={() => router.replace('/library')} />
+        <EmptyState title="This exercise no longer exists" hint="It was removed from the library." />
+        <Button label="Back to library" onPress={() => router.replace('/library')} />
       </SafeAreaView>
     );
   }
@@ -92,8 +92,8 @@ export function ExerciseChartScreen({ exerciseId }: { exerciseId: string }) {
 
         {points.length === 0 ? (
           <EmptyState
-            title="Nie ma jeszcze czego pokazać"
-            hint="Wykres pojawi się po zapisaniu pierwszej serii tego ćwiczenia."
+            title="Nothing to show yet"
+            hint="The chart will appear once you log the first set of this exercise."
           />
         ) : (
           <Card className="gap-3">
@@ -102,12 +102,12 @@ export function ExerciseChartScreen({ exerciseId }: { exerciseId: string }) {
               points={points}
               max={summary.max}
               format={format}
-              labelOf={(point) => point.day.slice(8, 10)}
+              labelOf={(point) => formatShortDate(point.day)}
             />
             <Text className="text-xs text-muted">
               {summary.points.length > points.length
-                ? `Ostatnie dni treningowe: ${String(points.length)} z ${String(summary.points.length)}`
-                : `Dni treningowe: ${String(points.length)}`}
+                ? `Recent training days: ${String(points.length)} of ${String(summary.points.length)}`
+                : `Training days: ${String(points.length)}`}
             </Text>
           </Card>
         )}
@@ -115,12 +115,12 @@ export function ExerciseChartScreen({ exerciseId }: { exerciseId: string }) {
         {summary.best !== null && summary.latest !== null && (
           <View className="gap-2">
             <Highlight
-              label="Najlepszy dzień"
+              label="Best day"
               value={format(summary.best.value)}
               day={formatDate(summary.best.day, today)}
             />
             <Highlight
-              label="Ostatni trening"
+              label="Last workout"
               value={format(summary.latest.value)}
               day={formatDate(summary.latest.day, today)}
             />
@@ -129,7 +129,7 @@ export function ExerciseChartScreen({ exerciseId }: { exerciseId: string }) {
 
         <Button
           variant="secondary"
-          label="Wróć do ćwiczenia"
+          label="Back to exercise"
           onPress={() => router.push(`/library/${exerciseId}`)}
         />
       </ScrollView>

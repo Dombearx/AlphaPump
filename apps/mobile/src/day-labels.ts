@@ -12,29 +12,28 @@
 import { addDays, parseIsoDate, toIsoDate, type IsoDate } from '@alphapump/core';
 
 const WEEKDAYS = [
-  'niedziela',
-  'poniedziałek',
-  'wtorek',
-  'środa',
-  'czwartek',
-  'piątek',
-  'sobota',
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
 ] as const;
 
-/** Dopełniacz — „11 sierpnia", a nie „11 sierpień". */
 const MONTHS = [
-  'stycznia',
-  'lutego',
-  'marca',
-  'kwietnia',
-  'maja',
-  'czerwca',
-  'lipca',
-  'sierpnia',
-  'września',
-  'października',
-  'listopada',
-  'grudnia',
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
 ] as const;
 
 function weekdayOf(day: IsoDate): string {
@@ -55,15 +54,25 @@ export function formatDate(day: IsoDate, reference: IsoDate): string {
  * to one padają w rozmowie o treningu.
  */
 export function formatDayTitle(day: IsoDate, today: IsoDate): string {
-  if (day === today) return 'Dziś';
-  if (day === addDays(today, -1)) return 'Wczoraj';
-  if (day === addDays(today, 1)) return 'Jutro';
+  if (day === today) return 'Today';
+  if (day === addDays(today, -1)) return 'Yesterday';
+  if (day === addDays(today, 1)) return 'Tomorrow';
   return `${capitalize(weekdayOf(day))}, ${formatDate(day, today)}`;
 }
 
 /** Podtytuł — pełna data także wtedy, gdy tytuł mówi „Dziś". */
 export function formatDaySubtitle(day: IsoDate, today: IsoDate): string {
   return `${capitalize(weekdayOf(day))}, ${formatDate(day, today)}`;
+}
+
+/**
+ * „13.08" — podpis pod słupkiem wykresu. Same cyfry dnia miesiąca („13") w
+ * wąskiej kolumnie obok liczby wyglądały jak kolejna wartość, nie jak data —
+ * kropka i miesiąc jednoznacznie mówią, że to dzień.
+ */
+export function formatShortDate(day: IsoDate): string {
+  const { month, day: date } = parseIsoDate(day);
+  return `${String(date).padStart(2, '0')}.${String(month).padStart(2, '0')}`;
 }
 
 export function today(now: Date = new Date()): IsoDate {
@@ -74,14 +83,7 @@ export function capitalize(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-/**
- * Odmiana słowa „seria" przez liczbę — po polsku zależy od dwóch ostatnich cyfr,
- * a nie od samej ostatniej. Stoi tu raz, bo licznik serii pokazuje i widok dnia,
- * i kalendarz.
- */
+/** Singular/plural of "set" — used by both the day view and the calendar. */
 export function setsPlural(count: number): string {
-  const tens = count % 100;
-  const ones = count % 10;
-  if (count === 1) return 'seria';
-  return ones >= 2 && ones <= 4 && !(tens >= 12 && tens <= 14) ? 'serie' : 'serii';
+  return count === 1 ? 'set' : 'sets';
 }

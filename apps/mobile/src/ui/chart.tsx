@@ -18,6 +18,9 @@ import type { ChartPoint } from '../chart-data';
 /** Wysokość rysunku; słupki skalują się do najwyższej wartości w zestawie. */
 const CHART_HEIGHT = 160;
 
+/** Miejsce nad najwyższym słupkiem na liczbę — inaczej etykieta by się ucinała. */
+const VALUE_LABEL_SPACE = 18;
+
 /** Najniższy widoczny słupek — zero pikseli wyglądałoby jak brak danych. */
 const MINIMUM_BAR = 0.04;
 
@@ -43,10 +46,16 @@ export function BarChart({ points, max, format, labelOf }: BarChartProps) {
 
           return (
             <View key={point.day} className="flex-1 items-center justify-end gap-1">
+              <Text
+                numberOfLines={1}
+                className={`text-[10px] font-semibold ${highest ? 'text-success' : 'text-text'}`}
+              >
+                {format(point.value)}
+              </Text>
               <View
                 accessibilityLabel={`${point.day}: ${format(point.value)}`}
                 className={`w-full rounded-t-md ${highest ? 'bg-success' : 'bg-accent'}`}
-                style={{ height: Math.round(ratio * (CHART_HEIGHT - 16)) }}
+                style={{ height: Math.round(ratio * (CHART_HEIGHT - VALUE_LABEL_SPACE)) }}
               />
             </View>
           );
@@ -56,7 +65,11 @@ export function BarChart({ points, max, format, labelOf }: BarChartProps) {
       {/* Podpisy stoją poza rzędem słupków, żeby nie zmieniały ich wysokości. */}
       <View className="flex-row gap-1">
         {points.map((point) => (
-          <Text key={point.day} className="flex-1 text-center text-[10px] text-muted">
+          <Text
+            key={point.day}
+            numberOfLines={1}
+            className="flex-1 text-center text-[9px] text-muted"
+          >
             {labelOf(point)}
           </Text>
         ))}
