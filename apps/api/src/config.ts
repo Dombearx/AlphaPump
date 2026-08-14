@@ -30,6 +30,14 @@ const environmentSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
 
+  /**
+   * Gdzie lądują zgłoszenia zwrotne z aplikacji (tekst, nick, data i ostatnie
+   * logi telefonu) — na dysku, nie w bazie. To jest świadomie prosta,
+   * doraźna skrzynka wsparcia: jeden plik na zgłoszenie, czytelny `cat`-em na
+   * minipc, bez migracji dla czegoś, co nie jest encją produktu.
+   */
+  FEEDBACK_DIR: nonEmpty.default('./data/feedback'),
+
   /* ------------------------------------------- warstwa semantyczna (etap 12) */
 
   /**
@@ -101,6 +109,8 @@ export interface AppConfig {
    * tworzenie ćwiczeń działa bez zmian.
    */
   llm: LlmConfig | null;
+  /** Katalog na zgłoszenia zwrotne — patrz `FEEDBACK_DIR`. */
+  feedbackDir: string;
 }
 
 export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -150,5 +160,6 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
     trustedOrigins: [environmentVariables.BETTER_AUTH_URL, ...trustedOrigins],
     google,
     llm,
+    feedbackDir: environmentVariables.FEEDBACK_DIR,
   };
 }

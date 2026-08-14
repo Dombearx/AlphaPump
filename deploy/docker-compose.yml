@@ -60,9 +60,17 @@ services:
       RERANKER_MODEL: ${RERANKER_MODEL:-google/gemini-2.5-flash}
       RERANKER_ENABLED: ${RERANKER_ENABLED:-true}
       LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-8000}
+      # Ścieżka w kontenerze jest stała — host decyduje, co się pod nią kryje,
+      # przez wolumin niżej. Aplikacja nie musi znać żadnej z tych decyzji.
+      FEEDBACK_DIR: /data/feedback
     # Brak `ports:` również tutaj: do API wchodzi się przez Caddy'ego, żeby panel
     # i API miały jedno pochodzenie. Kopie zapasowe wołają CLI przez
     # `docker compose exec`, więc też nie potrzebują portu.
+    volumes:
+      # Zgłoszenia zwrotne z aplikacji — jeden plik JSON na zgłoszenie, czytelny
+      # `cat`-em na minipc. Ten sam wzorzec co `APK_DIR` u `web` niżej: katalog
+      # gospodarza wchodzi z `deploy/.env`, żeby przetrwał `docker compose down`.
+      - ${FEEDBACK_DIR:-./feedback}:/data/feedback
     healthcheck:
       # Obraz jest oparty na `node:alpine` i nie ma `curl`-a ani `wget`-a
       # z HTTP-em — a Node ma `fetch` w standardzie. `/health` odpytuje bazę,

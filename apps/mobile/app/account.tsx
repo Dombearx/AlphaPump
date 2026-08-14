@@ -32,11 +32,11 @@ export default function AccountRoute() {
 
   return (
     <SafeAreaView className="flex-1 bg-base" edges={['bottom']}>
-      <Stack.Screen options={{ title: 'Konto' }} />
+      <Stack.Screen options={{ title: 'Account' }} />
 
       <ScrollView contentContainerClassName="gap-4 p-4">
         <Card>
-          <SectionTitle>Zalogowano jako</SectionTitle>
+          <SectionTitle>Signed in as</SectionTitle>
           {/* Nick czytany z bazy lokalnej, a nie z sesji — to on dowodzi, że
               zapis wykonany przy logowaniu przerysował ekran bez odświeżania. */}
           <Text className="mt-1 text-2xl font-semibold text-text">
@@ -46,48 +46,58 @@ export default function AccountRoute() {
         </Card>
 
         <Card className="gap-2">
-          <SectionTitle>Synchronizacja</SectionTitle>
+          <SectionTitle>Sync</SectionTitle>
           <Text className="text-lg text-text">{description.label}</Text>
           <Text className="text-muted">{description.detail}</Text>
           <View className="mt-2">
             <Button
               variant="secondary"
-              label="Synchronizuj teraz"
+              label="Sync now"
               onPress={() => void engine?.syncNow()}
             />
           </View>
         </Card>
 
         <Card className="gap-2">
-          <SectionTitle>Dane</SectionTitle>
+          <SectionTitle>Data</SectionTitle>
           <Text className="text-muted">
-            Eksport i import w JSON-ie. Działa bez internetu — dane są na tym urządzeniu.
+            Export and import as JSON. Works offline — the data lives on this device.
           </Text>
           <View className="mt-1">
             <Button
               variant="secondary"
-              label="Eksport i import"
+              label="Export and import"
               onPress={() => router.push('/transfer')}
             />
           </View>
         </Card>
 
         <Card className="gap-2">
-          <SectionTitle>Tokeny API</SectionTitle>
+          <SectionTitle>API tokens</SectionTitle>
           <Text className="text-muted">
-            Dla narzędzi poza aplikacją — na przykład bota zapisującego serie. Możesz mieć ich
-            wiele.
+            For tools outside the app — for example a bot that logs sets. You can have several.
           </Text>
           <View className="mt-1">
             <Button
               variant="secondary"
-              label="Zarządzaj tokenami"
+              label="Manage tokens"
               onPress={() => router.push('/api-keys')}
             />
           </View>
         </Card>
 
-        <Button variant="danger" label="Wyloguj" onPress={() => void signOut()} />
+        <Card className="gap-2">
+          <SectionTitle>Feedback</SectionTitle>
+          <Text className="text-muted">
+            Found a bug or missing something? Send a note — the app attaches its
+            recent log entries automatically, so it's easier to track down.
+          </Text>
+          <View className="mt-1">
+            <Button variant="secondary" label="Send feedback" onPress={() => router.push('/feedback')} />
+          </View>
+        </Card>
+
+        <Button variant="danger" label="Sign out" onPress={() => void signOut()} />
       </ScrollView>
     </SafeAreaView>
   );

@@ -24,6 +24,7 @@ import { createAdminRouter, adminRoutes } from './routes/admin.js';
 import { createCycleRouter, cycleRoutes } from './routes/cycles.js';
 import { createDuplicateRouter, duplicateRoutes } from './routes/duplicates.js';
 import { createExerciseRouter, exerciseRoutes } from './routes/exercises.js';
+import { createFeedbackRouter, feedbackRoutes } from './routes/feedback.js';
 import { createHealthRouter, healthRoutes } from './routes/health.js';
 import { createMeRouter, meRoutes } from './routes/me.js';
 import { createRankingRouter, rankingRoutes } from './routes/rankings.js';
@@ -53,6 +54,7 @@ export const documentedRoutes: RouteSpec[] = [
   ...syncRoutes,
   ...transferRoutes,
   ...adminRoutes,
+  ...feedbackRoutes,
 ];
 
 export function createApp(dependencies: AppDependencies, config: AppConfig) {
@@ -119,6 +121,7 @@ export function createApp(dependencies: AppDependencies, config: AppConfig) {
   secured.route('/', createSyncRouter(resolved));
   secured.route('/', createTransferRouter(resolved));
   secured.route('/', createAdminRouter(resolved));
+  secured.route('/', createFeedbackRouter(config.feedbackDir));
 
   app.route('/', secured);
 

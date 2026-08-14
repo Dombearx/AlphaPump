@@ -27,3 +27,10 @@ apps/mobile/ios/
 # Wydany plik aplikacji leży poza repozytorium — patrz deploy/apk/.gitkeep.
 deploy/apk/*
 !deploy/apk/.gitkeep
+
+# Zgłoszenia zwrotne z aplikacji — dane użytkowników, nie kod. Patrz deploy/feedback/.gitkeep.
+deploy/feedback/*
+!deploy/feedback/.gitkeep
+
+# To samo lokalnie: domyślny FEEDBACK_DIR poza deploy/, gdy API chodzi z `pnpm start`.
+apps/api/data/

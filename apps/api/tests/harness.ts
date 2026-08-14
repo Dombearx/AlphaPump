@@ -8,6 +8,10 @@
  * a nie zakładane.
  */
 
+import { mkdtempSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import { vector } from '@electric-sql/pglite-pgvector';
@@ -37,6 +41,10 @@ export const TEST_CONFIG: AppConfig = {
   // podstawionymi atrapami — CI nie może zależeć od cudzego serwisu ani od
   // klucza w sekretach.
   llm: null,
+  // Nadpisywane per-uruchomienie przez `createHarness` własnym katalogiem
+  // tymczasowym — testy zgłoszeń piszą naprawdę na dysk i nie mogą dzielić
+  // katalogu między sobą.
+  feedbackDir: './data/feedback',
 };
 
 export interface TestUser {
@@ -59,6 +67,8 @@ export interface HarnessOptions {
 
 export interface Harness {
   db: Database;
+  /** Katalog na zgłoszenia zwrotne tego uruchomienia — świeży, tylko jego. */
+  feedbackDir: string;
   request: (path: string, init?: RequestInit) => Promise<Response>;
   /** Żądanie JSON-owe z podanymi nagłówkami uwierzytelnienia. */
   json: <T = unknown>(
@@ -83,10 +93,13 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
   await migrate(drizzle(client), { migrationsFolder: pgMigrationsFolder });
   await seedPostgres(db);
 
-  const auth = createAuth(db, TEST_CONFIG);
+  const feedbackDir = mkdtempSync(path.join(tmpdir(), 'alphapump-feedback-'));
+  const config = { ...TEST_CONFIG, feedbackDir };
+
+  const auth = createAuth(db, config);
   const app = createApp(
     { db, auth, derived: options.derived, duplicates: options.duplicates },
-    TEST_CONFIG,
+    config,
   );
 
   const request = async (path: string, init: RequestInit = {}) =>
@@ -163,12 +176,16 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 
   return {
     db,
+    feedbackDir,
     request,
     json,
     signUp,
     signIn,
     createApiKey,
     promoteToAdmin,
-    close: () => client.close(),
+    close: async () => {
+      await rm(feedbackDir, { recursive: true, force: true });
+      await client.close();
+    },
   };
 }

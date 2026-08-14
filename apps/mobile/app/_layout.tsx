@@ -19,11 +19,16 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { installConsoleCapture } from '../src/app-log';
 import { configureGoogleSignIn } from '../src/auth/google';
 import { appConfig, isGoogleSignInConfigured } from '../src/config/index';
 import { DatabaseProvider } from '../src/db/provider';
 import { SyncProvider } from '../src/sync/provider';
 import { COLORS } from '../src/theme';
+
+// Jak najwcześniej, żeby żaden log wystrzelony podczas startu (importy,
+// pierwszy render) nie ominął bufora zgłoszeń zwrotnych — patrz `app-log.ts`.
+installConsoleCapture();
 
 export default function RootLayout() {
   useEffect(() => {
@@ -49,7 +54,7 @@ export default function RootLayout() {
                 animation: 'fade',
               }}
             >
-              <Stack.Screen name="index" options={{ title: 'Dziś' }} />
+              <Stack.Screen name="index" options={{ title: 'Today' }} />
               <Stack.Screen name="sign-in" options={{ title: 'Logowanie', headerShown: false }} />
             </Stack>
           </SyncProvider>
