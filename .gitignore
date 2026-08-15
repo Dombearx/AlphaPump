@@ -34,3 +34,7 @@ deploy/feedback/*
 
 # To samo lokalnie: domyślny FEEDBACK_DIR poza deploy/, gdy API chodzi z `pnpm start`.
 apps/api/data/
+
+# Robocze pliki graficzne (źródła do ręcznego przycinania ikon itp.) — nie wchodzą
+# do repo, ostateczne assety trzymamy w apps/mobile/assets/.
+images/

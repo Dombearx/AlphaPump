@@ -34,6 +34,7 @@ const config = {
   userInterfaceStyle: 'dark',
   backgroundColor: '#232327',
   newArchEnabled: true,
+  icon: './assets/icon.png',
 
   ios: {
     bundleIdentifier: 'app.alphapump.mobile',
@@ -56,7 +57,7 @@ const config = {
      * Domyślna jedynka wystarcza przy budowaniu na własnej maszynie.
      */
     versionCode: Number(process.env.ANDROID_VERSION_CODE ?? 1),
-    adaptiveIcon: { backgroundColor: '#232327' },
+    adaptiveIcon: { backgroundColor: '#232327', foregroundImage: './assets/icon.png' },
   },
 
   plugins: [
