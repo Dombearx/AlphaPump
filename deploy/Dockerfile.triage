@@ -1,0 +1,50 @@
+# syntax=docker/dockerfile:1
+#
+# Obraz usługi segregacji zgłoszeń zwrotnych (`services/triage`).
+#
+# Jeden etap, w odróżnieniu od `Dockerfile.api`. Powód jest prosty: tu nie ma
+# nic do zbudowania. Zależności to trzy czyste paczki pythonowe (klient Discorda,
+# klient HTTP, planista), a kod jedzie w takiej postaci, w jakiej leży w repo —
+# rozdzielanie etapu budowania od uruchomieniowego nie zaoszczędziłoby ani
+# megabajta, a dołożyłoby kopiowanie środowiska wirtualnego między warstwami.
+#
+# Kontekstem budowania jest katalog główny repozytorium, tak samo jak przy API.
+
+FROM python:3.13-slim
+
+# `PYTHONUNBUFFERED` sprawia, że log leci do `docker logs` na bieżąco, a nie
+# porcjami po zapełnieniu bufora — przy usłudze, która odzywa się raz na dobę,
+# bufor potrafiłby przetrzymać komunikat o błędzie do następnego przebiegu.
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /app
+
+# Manifest osobno od kodu: instalacja zależności nie zależy od treści `src/`,
+# więc poprawka w prompcie nie unieważnia warstwy z pobranymi paczkami.
+COPY services/triage/pyproject.toml ./
+RUN pip install --no-cache-dir \
+    "discord.py>=2.4,<3" "httpx>=0.27,<1" "apscheduler>=3.10,<4"
+
+COPY services/triage/src ./src
+RUN pip install --no-cache-dir --no-deps .
+
+# Użytkownik bez uprawnień i katalog na stan założony **w obrazie**. To drugie
+# jest istotne: Docker przenosi właściciela katalogu z obrazu do świeżo
+# utworzonego woluminu nazwanego, więc bez tego kroku wolumin byłby własnością
+# roota i usługa nie miałaby gdzie zapisać bazy stanu.
+RUN useradd --system --create-home --uid 10001 triage \
+    && mkdir -p /data/state \
+    && chown -R triage:triage /data
+USER triage
+
+ENV TRIAGE_FEEDBACK_DIR=/data/feedback \
+    TRIAGE_STATE_DB=/data/state/triage.sqlite3
+
+# Brak `HEALTHCHECK` jest świadomy. Usługa nie wystawia żadnego portu, a jej
+# „zdrowie" to utrzymane połączenie z Discordem — czego z zewnątrz procesu nie
+# widać inaczej niż przez zapytanie do API Discorda, czyli kosztem limitu zapytań
+# co kilkanaście sekund. Zerwane połączenie klient odtwarza sam, a upadek procesu
+# łapie `restart: unless-stopped`.
+CMD ["python", "-m", "alphapump_triage"]

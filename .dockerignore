@@ -30,3 +30,11 @@ apps/mobile/ios
 
 *.log
 .DS_Store
+
+# Środowisko i pamięci podręczne Pythona z `services/triage`. Obraz instaluje
+# zależności sam; lokalne `.venv` waży dziesiątki megabajtów i jest zbudowane
+# pod inną wersję Pythona niż ta w obrazie.
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache

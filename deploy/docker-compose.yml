@@ -120,5 +120,56 @@ services:
       timeout: 5s
       retries: 6
 
+  triage:
+    # Segregacja zgłoszeń zwrotnych — patrz `services/triage`. Nie jest częścią
+    # aplikacji: nie dotyka bazy, nie wystawia portu i nie obsługuje żadnego
+    # żądania od telefonu. Stoi tu, bo tu leżą zgłoszenia, a katalog z nimi jest
+    # na dysku minipc, nie w bazie.
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.triage
+    image: alphapump/triage:local
+    restart: unless-stopped
+    # Brak `depends_on: api`: usługa czyta pliki, a nie API. Awaria backendu ma
+    # wstrzymać nowe zgłoszenia, a nie przegląd tych, które już przyszły.
+    environment:
+      # Ścieżki wewnątrz kontenera są stałe; o to, co się pod nimi kryje, dbają
+      # woluminy niżej — ten sam wzorzec co przy `FEEDBACK_DIR` w `api`.
+      TRIAGE_FEEDBACK_DIR: /data/feedback
+      TRIAGE_STATE_DB: /data/state/triage.sqlite3
+      TRIAGE_DAILY_AT: ${TRIAGE_DAILY_AT:-03:17}
+      TRIAGE_TIMEZONE: ${TRIAGE_TIMEZONE:-Europe/Warsaw}
+      TRIAGE_PR_POLL_SECONDS: ${TRIAGE_PR_POLL_SECONDS:-120}
+      TRIAGE_LOG_LEVEL: ${TRIAGE_LOG_LEVEL:-INFO}
+      # Tryb próbny: wszystko się liczy, nic nie powstaje. Przydatny przy
+      # pierwszym uruchomieniu, żeby zobaczyć klasyfikację bez zakładania issue.
+      TRIAGE_DRY_RUN: ${TRIAGE_DRY_RUN:-false}
+      # Cztery wartości niżej są wymagane, ale **nie** przez `${X:?…}`, jak reszta
+      # sekretów w tym pliku. Compose interpoluje cały dokument przy wczytaniu,
+      # niezależnie od tego, które usługi się uruchamia — zapis z `:?` blokowałby
+      # więc także `docker compose build db` i przebieg CI, który stawia stos bez
+      # Discorda. Sprawdzenie jest zamiast tego w samej usłudze: przy starcie
+      # kończy proces i wypisuje w logu nazwę brakującej zmiennej.
+      # Ten sam klucz, którego używa API — jedno konto, jeden rachunek.
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      TRIAGE_CLASSIFIER_MODEL: ${TRIAGE_CLASSIFIER_MODEL:-openai/gpt-5.6-terra}
+      TRIAGE_WRITER_MODEL: ${TRIAGE_WRITER_MODEL:-anthropic/claude-sonnet-5}
+      TRIAGE_GITHUB_TOKEN: ${TRIAGE_GITHUB_TOKEN:-}
+      TRIAGE_GITHUB_REPO: ${TRIAGE_GITHUB_REPO:-Dombearx/AlphaPump}
+      TRIAGE_LABEL_TRIGGER: ${TRIAGE_LABEL_TRIGGER:-ai-triage}
+      TRIAGE_LABEL_BUG: ${TRIAGE_LABEL_BUG:-bug}
+      TRIAGE_LABEL_FEATURE: ${TRIAGE_LABEL_FEATURE:-enhancement}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+      DISCORD_CHANNEL_ID: ${DISCORD_CHANNEL_ID:-}
+    volumes:
+      # Zgłoszenia **tylko do odczytu**. Usługa nie ma powodu kasować plików,
+      # a stan „co już przejrzane" trzyma we własnej bazie — pomyłka w kodzie nie
+      # może zabrać jedynej kopii tego, co napisali użytkownicy.
+      - ${FEEDBACK_DIR:-./feedback}:/data/feedback:ro
+      # Wolumin nazwany, nie katalog gospodarza: to jest stan wewnętrzny usługi,
+      # nieczytelny bez `sqlite3` i nieprzeznaczony do zaglądania.
+      - triage-state:/data/state
+
 volumes:
   pgdata:
+  triage-state:
