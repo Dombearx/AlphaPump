@@ -12,6 +12,7 @@ w tle.
 | [`docs/specyfikacja_biznesowa.md`](docs/specyfikacja_biznesowa.md) | Co budujemy — zakres, model domenowy, reguły biznesowe, kryteria akceptacyjne |
 | [`docs/stack_technologiczny.md`](docs/stack_technologiczny.md) | Czym i jak — stack, architektura, decyzje projektowe i ich uzasadnienia |
 | [`docs/plan_implementacji.md`](docs/plan_implementacji.md) | W jakiej kolejności — etapy realizacji wraz z kryteriami ukończenia |
+| [`docs/uruchomienie.md`](docs/uruchomienie.md) | Od zera do działającej aplikacji na telefonie — sama kolejność kroków, bez uzasadnień |
 
 Przy rozbieżności między dokumentami rozstrzyga specyfikacja biznesowa dla
 wymagań i dokument stacku dla rozwiązań technicznych.
