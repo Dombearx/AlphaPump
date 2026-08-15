@@ -20,6 +20,7 @@ on:
       - 'apps/api/**'
       - 'apps/admin/**'
       - 'packages/**'
+      - 'services/**'
       - 'pnpm-lock.yaml'
   push:
     branches: [main]
@@ -63,13 +64,23 @@ jobs:
           HTTP_PORT=${HTTP_PORT}
           EOF
 
+      # Budowane są **wszystkie** obrazy, łącznie z segregacją zgłoszeń: błąd
+      # w `Dockerfile.triage` ma odbić się tutaj, a nie przy aktualizacji minipc.
       - name: Zbuduj obrazy
         run: docker compose -f deploy/docker-compose.yml build
 
       # `--wait` czeka na healthchecki, a nie na sam start kontenerów: „gotowe"
       # znaczy tu „API odpowiada i widzi bazę", czyli po wykonaniu migracji.
+      #
+      # Usługi są wymienione z nazwy, bo `triage` do działania potrzebuje tokenu
+      # Discorda i klucza OpenRoutera. Sekretów tu nie ma i mieć nie powinno —
+      # a bez nich usługa kończy start celowo, co zablokowałoby `--wait`. To, co
+      # da się o niej sprawdzić bez sekretów, sprawdza krok budowania wyżej
+      # i zadanie `triage` w `ci.yml` (testy i lint).
       - name: Uruchom stos
-        run: docker compose -f deploy/docker-compose.yml up --detach --wait --wait-timeout 300
+        run: |
+          docker compose -f deploy/docker-compose.yml up --detach --wait --wait-timeout 300 \
+            db api web
 
       - name: Sprawdzenie z zewnątrz
         run: deploy/smoke.sh "${BASE_URL}"

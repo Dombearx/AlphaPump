@@ -1,0 +1,135 @@
+# Claude Code na issue założonym przez segregację zgłoszeń.
+#
+# Wyzwalaczem jest **nadanie etykiety** `ai-triage`, nie otwarcie issue. To nie
+# jest szczegół: GitHub przy założeniu issue z etykietami wysyła zarówno
+# `opened`, jak i `labeled`, więc nasłuch na obu uruchamiałby agenta dwa razy na
+# to samo zgłoszenie — i kończył się dwiema PR-kami do jednego problemu.
+#
+# Model zależy od drugiej etykiety, którą nadaje usługa segregacji:
+#   `bug`         → Sonnet 5, bo zadanie jest domknięte: odtworzyć i naprawić,
+#   `enhancement` → Opus 5, bo zadanie wymaga projektowania, a treść issue jest
+#                   streszczeniem dyskusji, nie gotową specyfikacją.
+#
+# Powstała PR-ka nie musi nikogo powiadamiać: bot na Discordzie sam ją zauważy,
+# odpytując GitHuba (minipc stoi za VPN-em, więc webhook by tam nie dotarł).
+
+name: Agent na issue
+
+on:
+  issues:
+    types: [labeled]
+  # Ręczne uruchomienie na dowolnym issue — do powtórki po nieudanym przebiegu
+  # bez zdejmowania i nadawania etykiety z powrotem.
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: Numer issue, którym ma się zająć agent
+        required: true
+        type: string
+
+concurrency:
+  # Jedno issue naraz. Bez anulowania: przebieg, który już coś zbudował, ma
+  # dojechać do PR-ki, a nie zostać ubity przez powtórne nadanie etykiety.
+  group: agent-issue-${{ github.event.issue.number || inputs.issue_number }}
+  cancel-in-progress: false
+
+jobs:
+  agent:
+    name: Claude Code
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'ai-triage'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Pełna historia: agent czyta `git log`, żeby dopasować się do
+          # konwencji commitów, a płytka kopia pokazuje mu jeden commit.
+          fetch-depth: 0
+
+      - name: Ustal issue i model
+        id: zadanie
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NUMER: ${{ github.event.issue.number || inputs.issue_number }}
+        run: |
+          set -euo pipefail
+          etykiety=$(gh issue view "$NUMER" --repo "$GITHUB_REPOSITORY" --json labels \
+            --jq '[.labels[].name] | join(",")')
+          stan=$(gh issue view "$NUMER" --repo "$GITHUB_REPOSITORY" --json state --jq .state)
+          echo "issue #$NUMER, stan: $stan, etykiety: $etykiety"
+
+          # Zamknięte issue bywa zamknięte dlatego, że ktoś je już rozpatrzył
+          # ręcznie. Nadanie etykiety takiemu issue nie ma budzić agenta.
+          if [ "$stan" != "OPEN" ]; then
+            echo "pomijam: issue nie jest otwarte"
+            echo "uruchamiac=nie" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if printf '%s' "$etykiety" | grep -q '\bbug\b'; then
+            echo "model=claude-sonnet-5" >> "$GITHUB_OUTPUT"
+            echo "rodzaj=błąd do naprawienia" >> "$GITHUB_OUTPUT"
+          else
+            echo "model=claude-opus-5" >> "$GITHUB_OUTPUT"
+            echo "rodzaj=zmiana do zaprojektowania i zbudowania" >> "$GITHUB_OUTPUT"
+          fi
+          echo "numer=$NUMER" >> "$GITHUB_OUTPUT"
+          echo "uruchamiac=tak" >> "$GITHUB_OUTPUT"
+
+      - uses: pnpm/action-setup@v4
+        if: steps.zadanie.outputs.uruchamiac == 'tak'
+
+      - uses: actions/setup-node@v4
+        if: steps.zadanie.outputs.uruchamiac == 'tak'
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Zależności
+        if: steps.zadanie.outputs.uruchamiac == 'tak'
+        run: pnpm install --frozen-lockfile
+
+      - name: Claude Code
+        if: steps.zadanie.outputs.uruchamiac == 'tak'
+        uses: anthropics/claude-code-action@v1
+        with:
+          # Token z subskrypcji, generowany lokalnie przez `claude setup-token`.
+          # Nie jest kluczem API i nie obciąża rachunku za API.
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: --model ${{ steps.zadanie.outputs.model }}
+          prompt: |
+            Zajmij się zgłoszeniem #${{ steps.zadanie.outputs.numer }}
+            w repozytorium ${{ github.repository }}. Rodzaj zgłoszenia:
+            ${{ steps.zadanie.outputs.rodzaj }}.
+
+            Zgłoszenie powstało automatycznie z opinii użytkownika aplikacji
+            (jego oryginalna treść jest w stopce issue, w zwijanym bloku).
+            Przeczytaj je w całości, razem z komentarzami — kolejne zgłoszenia
+            tej samej sprawy są dopisywane właśnie jako komentarze.
+
+            Jak pracować:
+            1. Zacznij od `README.md` (oraz `CLAUDE.md`, jeśli istnieje) —
+               opisują strukturę repozytorium, konwencje i sposób uruchamiania.
+            2. Znajdź miejsce w kodzie, którego dotyczy zgłoszenie. Jeśli
+               zgłoszenie jest zbyt ogólne, żeby je zlokalizować, napisz o tym
+               w komentarzu do issue i nie zgaduj.
+            3. Wprowadź najmniejszą zmianę, która rozwiązuje sprawę. Trzymaj się
+               stylu i języka komentarzy z sąsiedniego kodu (komentarze w tym
+               repozytorium są po polsku).
+            4. Dopisz test, który bez tej zmiany nie przechodzi.
+            5. Uruchom `pnpm lint`, `pnpm typecheck` i `pnpm test`. Wszystkie
+               muszą przejść, zanim otworzysz PR-kę.
+            6. Otwórz pull requesta na nowej gałęzi. W opisie umieść linię
+               `Fixes #${{ steps.zadanie.outputs.numer }}` — po tym powiązaniu
+               bot na Discordzie znajduje PR-kę i podlinkuje ją w wątku
+               z dyskusją o tym zgłoszeniu.
+
+            Czego nie robić: nie zmieniaj wersji zależności, nie zmieniaj
+            schematu bazy ani plików w `deploy/`, jeśli zgłoszenie tego wprost
+            nie wymaga, i nie rozszerzaj zakresu poza to, co opisuje issue.

@@ -29,9 +29,15 @@ packages/
   core/         logika domenowa, bez I/O      — etapy 1 ✔, 4 ✔, 8 ✔, 9 ✔, 11 ✔, 12 ✔, 13 ✔ i 14 ✔
   db/           schematy Drizzle: PG + SQLite — etapy 2 ✔, 11 ✔ i 12 ✔
   api-client/   typowany klient (Hono RPC)    — nieużywany: patrz „Panel administracyjny"
+services/
+  triage/       segregacja zgłoszeń zwrotnych (Python) — patrz sekcja niżej
 deploy/         obrazy, Compose, Caddy        — etap 15 ✔
 scripts/        kopie zapasowe i próba odtworzenia — etap 14 ✔
 ```
+
+`services/` stoi celowo poza `apps/`: to, co tam leży, nie jest częścią produktu
+i nie wchodzi do workspace pnpm — ma własny język, własne zależności i własne
+zadanie w CI.
 
 `packages/core` jest sercem projektu: front Pareto, cykle, podpowiedzi,
 identyfikatory i schematy Zod. Nie ma tam żadnego I/O, bo dokładnie ten sam kod
@@ -850,3 +856,132 @@ i wyłapują to, co przy pracy wyłącznie na Androidzie psuje się niezauważen
 golden (`packages/core/tests/golden/identifiers.ts`). Ich zmiana przepisuje
 identyfikatory istniejących wierszy, więc czerwony test golden nie jest testem
 do poprawienia — to sygnał, że zmiana wymaga świadomej decyzji i migracji.
+
+### Segregacja zgłoszeń zwrotnych
+
+Osobna usługa w Pythonie (`services/triage`), poza workspace pnpm i poza logiką
+produktu. Raz na dobę czyta zgłoszenia zapisane przez `POST /feedback`,
+klasyfikuje je modelem językowym i prowadzi dalej dwiema różnymi ścieżkami:
+
+```
+zgłoszenie z aplikacji  →  klasyfikacja (OpenRouter)
+                              │
+        ┌─────────────────────┴─────────────────────┐
+      błąd                                    prośba o zmianę
+        │                                            │
+  issue na GitHubie                        wiadomość + wątek na Discordzie
+  (ai-triage + bug)                                  │
+        │                                    dyskusja o zakresie
+  wiadomość + wątek                                  │
+  na Discordzie                            ktoś oznacza bota w wątku
+        │                                            │
+        │                                  issue na GitHubie
+        │                                  (ai-triage + enhancement)
+        └──────────────┬─────────────────────────────┘
+                       │
+        etykieta `ai-triage` uruchamia Claude Code w Akcjach
+                       │
+                  pull request
+                       │
+        bot dokleja link do PR-ki w wątku tego zgłoszenia
+```
+
+Podział na dwie ścieżki jest sednem: błąd ma jedno poprawne rozwiązanie i nie
+wymaga niczyjej decyzji, więc idzie prosto do naprawy. Prośba o zmianę wymaga
+ustalenia zakresu — a zakres ustala zespół w wątku, nie model na podstawie
+jednego zdania od użytkownika.
+
+**Wykrywanie duplikatów.** Przed założeniem issue usługa pokazuje modelowi
+otwarte zgłoszenia z etykietą `ai-triage` i pyta, czy to ta sama sprawa. Duplikat
+błędu ląduje jako komentarz do istniejącego issue, duplikat prośby o zmianę —
+jako wpis w trwającym wątku. Przy wątpliwości model ma odpowiadać „nie":
+dwa issue scala się jednym kliknięciem, a zgubione zgłoszenie nie wraca.
+
+**Skąd bot wie o pull requeście.** Odpytuje GitHuba co dwie minuty, zamiast
+czekać na webhooka. Minipc stoi za VPN-em i GitHub nie ma jak się do niego dobić.
+Skutek uboczny wychodzi na plus: PR-ka otwarta ręcznie zostanie zauważona tak
+samo jak ta z Akcji, bo liczy się powiązanie po stronie GitHuba (`Fixes #N`),
+a nie to, kto ją otworzył.
+
+**Modele.** Klasyfikacja idzie na `openai/gpt-5.6-terra` (decyzja binarna na
+krótkim tekście), pisanie treści issue na `anthropic/claude-sonnet-5` — bo tę
+treść czyta potem agent, który ma zgłoszenie naprawić. W Akcjach model zależy od
+etykiety: `bug` → Sonnet 5, `enhancement` → Opus 5.
+
+#### Konfiguracja
+
+Sekrety wchodzą przez `deploy/.env` (wzór w `deploy/.env.example`):
+
+| Zmienna               | Skąd wziąć                                                                                   |
+| --------------------- | -------------------------------------------------------------------------------------------- |
+| `DISCORD_BOT_TOKEN`   | https://discord.com/developers/applications → Bot → Reset Token                                |
+| `DISCORD_CHANNEL_ID`  | tryb dewelopera w Discordzie → PPM na kanale → Kopiuj ID kanału                                |
+| `TRIAGE_GITHUB_TOKEN` | token fine-grained do tego repozytorium: Issues R/W, Pull requests R, Contents R              |
+| `OPENROUTER_API_KEY`  | ten sam klucz, którego używa API                                                               |
+
+Bot na Discordzie musi mieć **włączoną intencję „MESSAGE CONTENT"** (Bot →
+Privileged Gateway Intents). Bez niej treść wiadomości przychodzi pusta i issue
+z dyskusji powstałoby na podstawie samych pustych wypowiedzi. Uprawnienia na
+kanale: wysyłanie wiadomości, tworzenie wątków publicznych, wysyłanie w wątkach,
+czytanie historii wiadomości.
+
+Po stronie GitHuba potrzebne są jeszcze dwie rzeczy:
+
+```bash
+# 1. Etykiety — GitHub odrzuca żądanie z nieznaną etykietą, więc bez tego
+#    pierwszy przebieg wywala się na każdym zgłoszeniu.
+scripts/triage-labels.sh Dombearx/AlphaPump
+
+# 2. Token subskrypcji Claude Code dla Akcji — generowany lokalnie, nie jest
+#    kluczem API i nie obciąża rachunku za API.
+claude setup-token
+gh secret set CLAUDE_CODE_OAUTH_TOKEN --repo Dombearx/AlphaPump
+```
+
+#### Uruchomienie
+
+Usługa wstaje razem z resztą stosu (`docker compose up -d --build`) jako czwarty
+kontener. Katalog ze zgłoszeniami montuje **tylko do odczytu** — stan „co już
+przejrzane" trzyma we własnej bazie SQLite na osobnym woluminie, więc pomyłka
+w kodzie nie może zabrać jedynej kopii tego, co napisali użytkownicy.
+
+Brak sekretu nie zatrzymuje tu całego wdrożenia, inaczej niż przy haśle bazy czy
+`BETTER_AUTH_SECRET`. Powód jest techniczny: Compose interpoluje cały plik przy
+wczytaniu, więc zapis `${X:?…}` blokowałby także polecenia dotyczące pozostałych
+usług i przebieg CI, który stawia stos bez Discorda. Sprawdzenie siedzi zamiast
+tego w samej usłudze — przy starcie kończy proces i wypisuje nazwę brakującej
+zmiennej. Objawem jest kontener `triage` w pętli restartów, z powodem
+w `docker compose logs triage`.
+
+```bash
+# Podgląd pracy
+docker compose logs -f triage
+
+# Przegląd na żądanie, bez czekania na 3:17. Na czas tego polecenia do Discorda
+# zalogowane są dwie sesje tego samego bota (usługa i to wywołanie), więc nie
+# oznaczaj go w wątku, dopóki polecenie nie skończy pracy.
+docker compose exec triage python -m alphapump_triage once
+
+# Próba na sucho: klasyfikacja i duplikaty liczą się naprawdę, ale nic nie
+# powstaje — stan idzie do pamięci, więc zgłoszenia nie zostaną odhaczone.
+TRIAGE_DRY_RUN=true docker compose up triage
+```
+
+Zgłoszenie, którego nie udało się przetworzyć (awaria OpenRoutera, GitHuba),
+wraca w kolejnym przebiegu — do trzech podejść, potem zostaje odłożone na bok
+z powodem zapisanym w bazie stanu. Uszkodzony plik JSON odpada od razu: jutro
+nie będzie bardziej poprawny.
+
+#### Rozwój
+
+```bash
+cd services/triage
+uv sync --extra dev
+uv run pytest
+uv run ruff check . && uv run ruff format .
+```
+
+Logika siedzi w `service.py` i nie wie nic o HTTP, SQL-u ani o Discordzie —
+dostaje trzy porty (`Llm`, `IssueTracker`, `Chat`) w konstruktorze. Dlatego testy
+podstawiają atrapy zamiast udawać serwer, a wymiana Discorda na cokolwiek innego
+jest jednym plikiem.

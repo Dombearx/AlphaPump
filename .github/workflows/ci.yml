@@ -42,3 +42,31 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+  triage:
+    # Usługa segregacji zgłoszeń stoi poza workspace pnpm i ma własny zestaw
+    # narzędzi, więc idzie osobnym zadaniem — równolegle, bo nie zależy od
+    # niczego, co powstaje wyżej.
+    name: Segregacja zgłoszeń (Python)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: services/triage
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Lint
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Test
+        run: uv run pytest
