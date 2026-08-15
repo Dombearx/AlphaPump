@@ -67,6 +67,12 @@ jobs:
       # (Settings → Variables), bo ani tag, ani push nie mają jak go przekazać.
       EXPO_PUBLIC_API_URL: ${{ inputs.api_url || vars.EXPO_PUBLIC_API_URL }}
       EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ vars.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID }}
+      # Logowanie Google jest domyślnie wyłączone i wymaga **dwóch** zgód:
+      # tej zmiennej tutaj i `GOOGLE_SIGN_IN_ENABLED` w `deploy/.env`. Włączenie
+      # samego wydania dałoby przycisk, którego serwer nie obsłuży. Pamiętaj też
+      # o odcisku SHA-1 klucza podpisującego w Google Cloud — bez niego natywny
+      # Sign-In kończy się `DEVELOPER_ERROR` dopiero na telefonie.
+      EXPO_PUBLIC_GOOGLE_SIGN_IN_ENABLED: ${{ vars.EXPO_PUBLIC_GOOGLE_SIGN_IN_ENABLED || 'false' }}
       # Numer wydania widziany przez system Android. Musi rosnąć między
       # wydaniami, inaczej telefon odmówi aktualizacji. To także numer, po
       # którym aplikacja rozpoznaje, że `latest.json` opisuje coś nowszego.

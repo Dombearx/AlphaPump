@@ -41,6 +41,16 @@ export const appConfigSchema = z.object({
   googleWebClientId: nullableClientId,
   googleIosClientId: nullableClientId,
   /**
+   * Wyłącznik logowania i rejestracji przez Google — odpowiednik
+   * `GOOGLE_SIGN_IN_ENABLED` po stronie serwera i wyłączony tak samo domyślnie.
+   *
+   * Musi być osobnym polem, a nie wnioskiem z obecności `googleWebClientId`:
+   * identyfikator klienta bywa ustawiony „na zapas", a wtedy przycisk pojawiłby
+   * się w aplikacji, mimo że serwer metody nie przyjmuje. Rozjazd tych dwóch
+   * stron kończy się przyciskiem, który wygląda normalnie i zawsze zwraca błąd.
+   */
+  googleSignInEnabled: z.stringbool().default(false),
+  /**
    * Katalog z wydaniami na minipc — stąd bierze się `latest.json` i sam plik
    * `.apk`. Pominięty wylicza się z `apiUrl`, bo w praktyce zawsze jest to ten
    * sam host: Caddy oddaje `/alphapump/download` z woluminu obok API. Pole istnieje
@@ -82,7 +92,14 @@ function trimTrailingSlash(url: string): string {
   return url.replace(/\/+$/, '');
 }
 
-/** Czy logowanie przez Google jest skonfigurowane na tej platformie. */
+/**
+ * Czy pokazać „Continue with Google".
+ *
+ * Dwa warunki, nie jeden: metoda ma być **włączona** i mieć czym działać.
+ * Sam identyfikator klienta nie wystarcza, bo bywa ustawiony przed
+ * uruchomieniem metody; sama flaga też nie, bo bez identyfikatora natywny
+ * Sign-In nie ma jak poprosić Google o token.
+ */
 export function isGoogleSignInConfigured(config: AppConfig): boolean {
-  return config.googleWebClientId !== null;
+  return config.googleSignInEnabled && config.googleWebClientId !== null;
 }

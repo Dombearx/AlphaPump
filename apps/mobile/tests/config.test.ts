@@ -12,6 +12,7 @@ describe('konfiguracja aplikacji', () => {
   it('przyjmuje komplet i ucina końcowy ukośnik adresu', () => {
     const config = parseAppConfig({
       apiUrl: 'http://alphapump.local:3000/',
+      googleSignInEnabled: 'true',
       googleWebClientId: 'web.apps.googleusercontent.com',
       googleIosClientId: null,
     });
@@ -23,6 +24,32 @@ describe('konfiguracja aplikacji', () => {
   it('działa bez konfiguracji Google', () => {
     // Brak jednej metody logowania nie może zablokować uruchomienia aplikacji.
     const config = parseAppConfig({ apiUrl: 'http://alphapump.local:3000' });
+    expect(isGoogleSignInConfigured(config)).toBe(false);
+  });
+
+  it('trzyma Google wyłączone, dopóki nikt go nie włączy', () => {
+    // Wydanie bez `EXPO_PUBLIC_GOOGLE_SIGN_IN_ENABLED` nie pokazuje przycisku.
+    const config = parseAppConfig({ apiUrl: 'http://alphapump.local:3000' });
+    expect(config.googleSignInEnabled).toBe(false);
+  });
+
+  it('nie pokazuje przycisku Google na sam identyfikator klienta', () => {
+    // Identyfikator bywa ustawiony „na zapas". Przycisk pojawiłby się wtedy
+    // w aplikacji, mimo że serwer metody nie przyjmuje — a taki przycisk
+    // wygląda normalnie i zawsze kończy się błędem.
+    const config = parseAppConfig({
+      apiUrl: 'http://alphapump.local:3000',
+      googleWebClientId: 'web.apps.googleusercontent.com',
+    });
+    expect(isGoogleSignInConfigured(config)).toBe(false);
+  });
+
+  it('nie pokazuje przycisku Google na samą flagę', () => {
+    // Bez identyfikatora natywny Sign-In nie ma jak poprosić Google o token.
+    const config = parseAppConfig({
+      apiUrl: 'http://alphapump.local:3000',
+      googleSignInEnabled: 'true',
+    });
     expect(isGoogleSignInConfigured(config)).toBe(false);
   });
 

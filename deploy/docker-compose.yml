@@ -49,6 +49,9 @@ services:
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?ustaw BETTER_AUTH_SECRET w deploy/.env}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:?ustaw BETTER_AUTH_URL — adres, pod którym stos widać w VPN}
       TRUSTED_ORIGINS: ${TRUSTED_ORIGINS:-alphapump://}
+      # Logowanie Google jest wyłączone jawną flagą, nie brakiem poświadczeń —
+      # dzięki temu wklejenie ich z powrotem do `.env` samo metody nie włącza.
+      GOOGLE_SIGN_IN_ENABLED: ${GOOGLE_SIGN_IN_ENABLED:-false}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       # Wartości domyślne są tu powtórzone za `apps/api/src/config.ts`, bo Compose

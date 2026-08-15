@@ -109,6 +109,12 @@ const config = {
     updateBaseUrl: UPDATE_BASE_URL,
     googleWebClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? null,
     googleIosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? null,
+    /**
+     * Logowanie i rejestracja przez Google — domyślnie wyłączone, tak jak
+     * `GOOGLE_SIGN_IN_ENABLED` po stronie serwera. Obie strony trzeba włączyć
+     * razem: przycisk bez zgody serwera zawsze kończy się błędem.
+     */
+    googleSignInEnabled: process.env.EXPO_PUBLIC_GOOGLE_SIGN_IN_ENABLED ?? 'false',
   },
 };
 

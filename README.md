@@ -93,6 +93,7 @@ wyłączona, a serwer wstaje i mówi o tym w logu.
 | `BETTER_AUTH_SECRET` | **tak** | własny sekret, min. 32 znaki: `openssl rand -base64 48` |
 | `BETTER_AUTH_URL` | nie (`http://localhost:3000`) | publiczny adres API — wchodzi do adresów zwrotnych OAuth i do OpenAPI |
 | `TRUSTED_ORIGINS` | nie | lista po przecinku: schemat aplikacji (`alphapump://`) i adres panelu |
+| `GOOGLE_SIGN_IN_ENABLED` | nie (`false`) | wyłącznik logowania i rejestracji przez Google — **domyślnie wyłączone** |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | nie | Google Cloud Console → *APIs & Services* → *Credentials* → OAuth client ID typu **Web application** |
 | `OPENROUTER_API_KEY` | nie | [openrouter.ai](https://openrouter.ai) → *Keys* |
 | `LLM_ENABLED`, `RERANKER_ENABLED` | nie (`true`) | wyłączniki warstw wykrywania duplikatów |
@@ -103,8 +104,12 @@ Wymagane są dokładnie dwie zmienne. `loadConfig` wypisuje **komplet** braków
 naraz i przerywa start — literówka w adresie bazy ma wywalić proces od razu,
 a nie przy pierwszym logowaniu.
 
-Brak kompletu obu wartości Google wyłącza logowanie Google; e-mail z hasłem
-działa dalej. Brak `OPENROUTER_API_KEY` (albo `LLM_ENABLED=false`) sprowadza
+Logowanie przez Google jest **domyślnie wyłączone** i wymaga `GOOGLE_SIGN_IN_ENABLED=true`
+**oraz** kompletu poświadczeń — sama flaga nie ma czym rozmawiać z Google, a same
+poświadczenia znaczą „przygotowane, jeszcze nieużywane". Rozdzielenie jest celowe:
+gdyby metodę wyłączało wyczyszczenie `GOOGLE_CLIENT_ID`, wróciłaby w chwili, w której
+ktoś wkleiłby poświadczenia z powrotem. E-mail z hasłem działa niezależnie.
+Brak `OPENROUTER_API_KEY` (albo `LLM_ENABLED=false`) sprowadza
 wykrywanie duplikatów do warstwy leksykalnej — tworzenie ćwiczeń nie zmienia się
 w żaden sposób. Żadne z tych dwóch nie jest błędem konfiguracji.
 
@@ -131,6 +136,7 @@ produkcji wymaga ponownego `vite build`, a nie restartu.
 | Zmienna | Wymagana | Skąd wziąć |
 | ------- | -------- | ---------- |
 | `EXPO_PUBLIC_API_URL` | nie (`http://localhost:3000`) | adres API **widoczny z telefonu**: IP w LAN lub w NetBirdzie; emulator Androida widzi hosta pod `10.0.2.2` |
+| `EXPO_PUBLIC_GOOGLE_SIGN_IN_ENABLED` | nie (`false`) | pokazuje przycisk „Continue with Google" — musi iść w parze z `GOOGLE_SIGN_IN_ENABLED` po stronie serwera |
 | `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` | nie | ten sam projekt Google Cloud, client ID typu **Web** — także na Androidzie, bo to on jest odbiorcą `idToken`, który weryfikuje serwer |
 | `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` | nie | client ID typu **iOS** |
 
@@ -138,6 +144,12 @@ Natywne logowanie na Androidzie wymaga dodatkowo klienta OAuth typu **Android**
 w tym samym projekcie Google Cloud (pakiet `app.alphapump.mobile` i odcisk SHA-1
 klucza podpisującego). Do `.env` on nie wchodzi, ale bez niego Sign-In kończy się
 błędem po stronie Google.
+
+Ma to konsekwencję łatwą do przeoczenia: **odcisk dotyczy klucza, którym podpisano
+wydanie**, więc wygenerowanie własnego keystore'a (a jest wymagane — patrz
+„Aplikacja na Androida") jest jednocześnie zmianą po stronie Google. Nowy odcisk
+bierze się z `keytool -list -v -keystore alphapump.keystore -alias alphapump`.
+Dopóki logowanie Google jest wyłączone, nic z tego nie jest potrzebne.
 
 Adres API jest wkompilowany w bundle i **z niego wyliczają się** wyjątki od
 szyfrowania ruchu (ATS na iOS, `network_security_config` na Androidzie), więc po

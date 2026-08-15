@@ -27,6 +27,22 @@ const environmentSchema = z.object({
   BETTER_AUTH_URL: z.url().default('http://localhost:3000'),
   /** Lista po przecinkach; puste znaczy „tylko `BETTER_AUTH_URL`". */
   TRUSTED_ORIGINS: z.string().default(''),
+  /**
+   * Wyłącznik logowania i rejestracji przez Google — jedno i drugie, bo to ten
+   * sam przepływ: konto zakłada się pierwszym udanym logowaniem.
+   *
+   * Jawna flaga, a nie samo „nie ustawiaj poświadczeń", i to jest decyzja.
+   * Wyłączenie przez wyczyszczenie `GOOGLE_CLIENT_ID` znaczyłoby, że metoda
+   * wraca w chwili, w której ktoś wklei poświadczenia z powrotem do
+   * `deploy/.env` — a wracać ma wtedy, gdy ktoś tego chce. Ten sam wzorzec co
+   * `LLM_ENABLED` obok klucza OpenRoutera.
+   *
+   * Domyślnie **wyłączone**: natywny Sign-In wymaga odcisku SHA-1 klucza
+   * podpisującego wydanie w Google Cloud, więc każda zmiana klucza jest zmianą
+   * po stronie Google. Dopóki metoda nie jest potrzebna, jest to koszt bez
+   * pożytku. Logowanie e-mailem działa niezależnie.
+   */
+  GOOGLE_SIGN_IN_ENABLED: z.stringbool().default(false),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
 
@@ -127,8 +143,13 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
     .map((origin) => origin.trim())
     .filter((origin) => origin.length > 0);
 
+  // Flaga **i** komplet poświadczeń. Sama flaga bez poświadczeń nie ma czym
+  // włączyć metody, a same poświadczenia bez flagi znaczą „przygotowane, ale
+  // jeszcze nie używane" — stan, który przy poprzednim zapisie nie istniał.
   const google =
-    environmentVariables.GOOGLE_CLIENT_ID && environmentVariables.GOOGLE_CLIENT_SECRET
+    environmentVariables.GOOGLE_SIGN_IN_ENABLED &&
+    environmentVariables.GOOGLE_CLIENT_ID &&
+    environmentVariables.GOOGLE_CLIENT_SECRET
       ? {
           clientId: environmentVariables.GOOGLE_CLIENT_ID,
           clientSecret: environmentVariables.GOOGLE_CLIENT_SECRET,
