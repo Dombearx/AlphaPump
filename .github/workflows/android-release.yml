@@ -256,6 +256,20 @@ jobs:
             [ "$i" -lt 30 ] || { echo "::error::Serwer aktualizacji nie odpowiedział przez 5 minut"; exit 1; }
           done
 
+          # Czy serwer w ogóle zna trasę, na którą zaraz wyślemy plik.
+          #
+          # `/update` robi `git pull`, ale **nie przeładowuje samego siebie**:
+          # usługa systemd trzyma w pamięci kod sprzed aktualizacji repozytorium.
+          # Po wdrożeniu, które dokłada nową trasę, serwer odpowiada więc na
+          # `/health` jak gdyby nigdy nic i zwraca 404 na `POST /apk` — a to
+          # wygląda na błąd wydania, nie na nieodświeżony proces. Pytamy zatem
+          # o opis API, gdzie 404 nieistniejącej trasy odróżnia się od 404
+          # „jeszcze nie ma wydania".
+          if ! curl -fsS --max-time 20 "${base}/openapi.json" | jq -e '.paths."/apk".post' >/dev/null; then
+            echo "::error::Serwer aktualizacji nie zna trasy POST /apk — chodzi na kodzie sprzed wdrożenia. Na minipc: sudo systemctl restart alphapump-update-server"
+            exit 1
+          fi
+
           # `-F "pole=<plik"` wysyła **zawartość** pliku jako wartość pola,
           # `-F "pole=@plik"` — sam plik jako załącznik. Manifest jedzie więc
           # pierwszym zapisem, a APK drugim.

@@ -548,6 +548,36 @@ Kod: `apps/mobile/src/update/` (`manifest.ts` — kształt i porównanie wersji,
 i `src/ui/update-prompt.tsx`. Trasa `/alphapump/download/*` nie wymaga zmian w
 `Caddyfile`: wpada do `file_server`, tak jak wszystko spoza listy `@api`.
 
+##### Pierwsze uruchomienie, po kolei
+
+1. **Klucz podpisujący do sekretów repozytorium** — bez niego zadanie wydania
+   przerywa się celowo (szczegóły niżej).
+2. **Zmienna repozytorium `EXPO_PUBLIC_API_URL`** = adres stosu w VPN.
+3. **Merge do `main`.** `deploy.yml` woła `/update`, więc stos wstaje z nowym
+   `Caddyfile` i nowym woluminem `/srv/alphapump/download`.
+4. **Restart serwera aktualizacji na minipc:**
+
+   ```bash
+   sudo systemctl restart alphapump-update-server
+   ```
+
+   Tego kroku **nie da się pominąć przy tym jednym wdrożeniu**. `/update` robi
+   `git pull` i przestawia kontenery, ale nie przeładowuje samego siebie —
+   usługa systemd trzyma w pamięci kod sprzed aktualizacji repozytorium, więc
+   trasy `POST /apk` jeszcze nie zna. Restart wciąga też nową zależność
+   (`python-multipart`), bo `uv run` czyta deklarację z nagłówka skryptu.
+   Zadanie wydania sprawdza to przed wysłaniem pliku i mówi wprost, co zrobić,
+   zamiast zwrócić niejasne 404.
+5. **Pierwsza instalacja ręcznie** — z telefonu w VPN wejdź na
+   `http://<adres-w-vpn>/alphapump/download/` i pobierz `.apk` z listy.
+   Aktualizuje się aplikacja, która już umie się aktualizować; do wersji sprzed
+   tej zmiany nie ma się co dobijać.
+
+Od tego momentu każdy merge do `main` daje wydanie, które telefony **proponują**
+przy najbliższym otwarciu. Instalacja nie jest cicha i nie będzie: użytkownik
+potwierdza ją w oknie aplikacji, a potem system pyta o zgodę na podmianę
+pakietu. Androida nie da się o to nie zapytać i nie jest to nasza decyzja.
+
 ##### Rzeczy, które trzeba ogarnąć raz
 
 - **Klucz podpisujący jest na zawsze — i jest wymagany.** Bez sekretu
