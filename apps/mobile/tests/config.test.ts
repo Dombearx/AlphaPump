@@ -34,6 +34,22 @@ describe('konfiguracja aplikacji', () => {
     expect(() => parseAppConfig({ apiUrl: 'minipc:3000' })).toThrow(/Invalid app configuration/);
   });
 
+  it('wylicza katalog wydań z adresu API', () => {
+    // Wydania leżą pod tym samym hostem co API: Caddy oddaje `/pobierz`
+    // z woluminu obok niego. Jeden adres w konfiguracji zamiast dwóch, które
+    // dałoby się rozjechać.
+    const config = parseAppConfig({ apiUrl: 'http://alphapump.local:3000/' });
+    expect(config.updateBaseUrl).toBe('http://alphapump.local:3000/pobierz');
+  });
+
+  it('pozwala rozdzielić katalog wydań od API', () => {
+    const config = parseAppConfig({
+      apiUrl: 'http://alphapump.local:3000',
+      updateBaseUrl: 'http://wydania.local/apk/',
+    });
+    expect(config.updateBaseUrl).toBe('http://wydania.local/apk');
+  });
+
   it('traktuje puste obiekty z manifestu Expo Go jak brak konfiguracji Google', () => {
     // Klasyczny protokół manifestu Expo Go serializuje `null` w `extra` jako `{}`.
     const config = parseAppConfig({

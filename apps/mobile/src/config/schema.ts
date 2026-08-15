@@ -40,9 +40,24 @@ export const appConfigSchema = z.object({
    */
   googleWebClientId: nullableClientId,
   googleIosClientId: nullableClientId,
+  /**
+   * Katalog z wydaniami na minipc — stąd bierze się `latest.json` i sam plik
+   * `.apk`. Pominięty wylicza się z `apiUrl`, bo w praktyce zawsze jest to ten
+   * sam host: Caddy oddaje `/pobierz` z woluminu obok API. Pole istnieje
+   * wyłącznie po to, żeby dało się rozdzielić te dwie rzeczy bez przepisywania
+   * kodu, gdyby wydania kiedyś pojechały gdzie indziej.
+   */
+  updateBaseUrl: httpUrlSchema.optional(),
 });
 
-export type AppConfig = z.infer<typeof appConfigSchema>;
+/**
+ * `updateBaseUrl` jest w schemacie opcjonalny, ale po `parseAppConfig` już nie:
+ * pominięty wylicza się z `apiUrl`. Kod aplikacji nie ma więc gałęzi „a jeśli
+ * nie ustawiono", bo nie ma takiego stanu.
+ */
+export type AppConfig = Omit<z.infer<typeof appConfigSchema>, 'updateBaseUrl'> & {
+  updateBaseUrl: string;
+};
 
 export function parseAppConfig(extra: unknown): AppConfig {
   const parsed = appConfigSchema.safeParse(extra);
@@ -52,7 +67,19 @@ export function parseAppConfig(extra: unknown): AppConfig {
       .join('\n  ');
     throw new Error(`Invalid app configuration:\n  ${problems}`);
   }
-  return { ...parsed.data, apiUrl: parsed.data.apiUrl.replace(/\/+$/, '') };
+  const apiUrl = trimTrailingSlash(parsed.data.apiUrl);
+  return {
+    ...parsed.data,
+    apiUrl,
+    updateBaseUrl:
+      parsed.data.updateBaseUrl === undefined
+        ? `${apiUrl}/pobierz`
+        : trimTrailingSlash(parsed.data.updateBaseUrl),
+  };
+}
+
+function trimTrailingSlash(url: string): string {
+  return url.replace(/\/+$/, '');
 }
 
 /** Czy logowanie przez Google jest skonfigurowane na tej platformie. */

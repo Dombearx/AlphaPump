@@ -73,7 +73,7 @@ złapać nie może:
 | `ios-simulator.yml` | PR dotykający aplikacji | że projekt na iOS wciąż się buduje, mimo że wydanie idzie na Androida |
 | `backup-restore.yml` | co miesiąc i przy zmianie kodu kopii | że kopia daje się odtworzyć, a dane po odtworzeniu zgadzają się z oryginałem |
 | `deploy-stack.yml` | PR dotykający wdrożenia, backendu lub panelu | że stos z `deploy/` wstaje na czystej bazie i odpowiada przez Caddy'ego |
-| `android-release.yml` | ręcznie i przy tagu `v*` | wydanie pliku `.apk` dla grupy |
+| `android-release.yml` | każdy merge do `main`, tag `v*` i ręcznie | zbudowanie `.apk` i położenie go na minipc, skąd telefony biorą aktualizację |
 
 ### Konfiguracja: pliki `.env` i klucze API
 
@@ -280,7 +280,8 @@ Wszystko, co potrzebne, leży w `deploy/`:
 | `.env.example` | wzór konfiguracji stosu |
 | `backup.env.example`, `crontab.example` | wzory dla crona kopii zapasowych |
 | `smoke.sh` | sprawdzenie działającego stosu z zewnątrz |
-| `update_server.py`, `alphapump-update-server.service` | automatyczne wdrożenie po mergu do `main` — patrz „Serwer aktualizacji" niżej |
+| `update_server.py`, `alphapump-update-server.service` | automatyczne wdrożenie po mergu do `main` i przyjmowanie wydań aplikacji — patrz „Serwer aktualizacji" niżej |
+| `apk/` | wydania na Androida: pliki `.apk` i manifest `latest.json`, oddawane pod `/pobierz` |
 
 Kontenery są trzy, nie cztery: panel to zbiór plików statycznych, a nie proces,
 więc jest wpieczony w obraz Caddy'ego. Osobny kontener musiałby albo uruchomić
@@ -379,17 +380,28 @@ która później pozwala powiedzieć, *co* dokładnie stoi na minipc.
 #### Serwer aktualizacji
 
 Powyższe kroki da się też wywołać zdalnie, zamiast wpisywać je ręcznie po SSH.
-`deploy/update_server.py` wystawia `GET /update` na porcie 40002, który robi
-`git pull`, a potem
-`docker compose -f deploy/docker-compose.yml up -d --build --force-recreate`,
-oraz `GET /health`, które tylko potwierdza, że serwer żyje, bez wdrażania
-niczego.
+`deploy/update_server.py` wystawia na porcie 40002 cztery trasy:
+
+| Trasa | Co robi |
+| ----- | ------- |
+| `GET /health` | potwierdza, że serwer żyje, bez wdrażania czegokolwiek |
+| `GET /update` | `git pull`, a potem `docker compose -f deploy/docker-compose.yml up -d --build --force-recreate` |
+| `POST /apk` | przyjmuje wydanie aplikacji: plik `.apk` i manifest, kładzie oba w katalogu `/pobierz` |
+| `GET /apk` | oddaje manifest wydania, które telefony widzą w tej chwili |
+
+`POST /apk` woła `android-release.yml` po zbudowaniu pliku. Nazwa pliku
+z manifestu jest sprawdzana wzorcem, a nie tylko oczyszczana — staje się
+ścieżką w katalogu wydań, więc traktujemy ją jak dane z sieci, którymi jest.
+Plik ląduje pod nazwą tymczasową i dopiero gotowy jest przenoszony na miejsce,
+a `latest.json` powstaje **po** nim: telefon nie ma jak zobaczyć manifestu
+wskazującego na plik, którego jeszcze nie ma, ani pobrać połówki pakietu.
+Starsze wydania są usuwane, zostają trzy ostatnie.
 
 Stoi bezpośrednio na gospodarzu, nie w kontenerze, żeby móc wołać `git`
 i `docker` bez montowania gniazda Dockera do środka. To samodzielny skrypt
-z zależnościami zadeklarowanymi inline (PEP 723 — `fastapi`, `uvicorn`), więc
-`uv run deploy/update_server.py` instaluje tylko te dwie paczki do osobnego
-środowiska, bez dotykania `pnpm`/Turborepo, których nie potrzebuje.
+z zależnościami zadeklarowanymi inline (PEP 723 — `fastapi`, `uvicorn`,
+`python-multipart`), więc `uv run deploy/update_server.py` instaluje tylko je do
+osobnego środowiska, bez dotykania `pnpm`/Turborepo, których nie potrzebuje.
 
 Instalacja jako usługa systemd, żeby przeżyła restart i awarię. Jednostka
 zakłada checkout w `/opt/alphapump` — inna ścieżka wymaga zmiany
@@ -405,13 +417,20 @@ sudo systemctl enable --now alphapump-update-server
 `journalctl -u alphapump-update-server -f` śledzi logi. Użytkownik, na którym
 stoi usługa, musi należeć do grupy `docker`.
 
-Endpoint nie ma własnego uwierzytelnienia — ma być osiągalny wyłącznie przez
+Trasy nie mają własnego uwierzytelnienia — mają być osiągalne wyłącznie przez
 prywatną sieć (NetBird), tak jak z `.github/workflows/deploy.yml`, który woła
-go po każdym mergu do `main`. Ten workflow potrzebuje trzech sekretów
+serwer po każdym mergu do `main`. Ten workflow potrzebuje trzech sekretów
 w ustawieniach repozytorium: `NETBIRD_ACCESS_KEY`, `NETBIRD_MANAGEMENT_URL`
 (te same wartości, których używa analogiczny mechanizm w LivingBotFramework)
 oraz `ALPHAPUMP_UPDATE_SERVER_URL` — adres serwera aktualizacji w sieci
-NetBird, z `/update` na końcu, np. `http://100.64.0.1:40002/update`.
+NetBird, z `/update` na końcu, np. `http://100.64.0.1:40002/update`. Wydanie
+aplikacji korzysta z tych samych trzech; pozostałe trasy wylicza sobie z adresu.
+
+Przy `POST /apk` brak uwierzytelnienia jest **drugą** linią, a nie jedyną.
+Pierwszą jest podpis pakietu: Android odmawia podmiany zainstalowanej aplikacji
+na plik podpisany innym kluczem, więc APK wgrany tu przez kogokolwiek poza
+wydaniem z CI po prostu się nie zainstaluje. Dlatego własny klucz podpisujący
+jest wymagany — patrz niżej.
 
 #### Kopie zapasowe
 
@@ -474,43 +493,109 @@ bundla, a z adresu wyliczają się jeszcze wyjątek ATS (iOS) i
 `network_security_config` (Android). Zmiana adresu to więc nowe wydanie, a nie
 przestawienie czegoś w aplikacji.
 
-Wydanie z CI (`.github/workflows/android-release.yml`) — ręcznie z polem
-`api_url` albo tagiem `v*`, wtedy adres bierze się ze zmiennej repozytorium
-`EXPO_PUBLIC_API_URL`. Zadanie oddaje plik `.apk` razem z sumą kontrolną.
-Lokalnie to samo robi:
+##### Skąd biorą się wydania
+
+Wydanie robi `.github/workflows/android-release.yml` przy **każdym mergu do
+`main`**, przy tagu `v*` i na żądanie. Adres API bierze się ze zmiennej
+repozytorium `EXPO_PUBLIC_API_URL` (przy uruchomieniu ręcznym — z pola
+`api_url`). Zadanie buduje `.apk`, opisuje go plikiem `latest.json`, wchodzi do
+NetBirda i wysyła oba na `POST /apk` serwera aktualizacji, który kładzie je
+w katalogu oddawanym pod `/pobierz`. Nic nie trzeba kopiować ręcznie i nikt nie
+potrzebuje konta w GitHubie.
+
+Ta sama droga co wdrożenie backendu (`deploy.yml`), więc żaden nowy kanał ani
+sekret nie przybywa. Ręcznie, gdyby zaszła potrzeba, wygląda to tak:
 
 ```
-EXPO_PUBLIC_API_URL=http://100.64.0.1 pnpm --filter @alphapump/mobile run prebuild
+EXPO_PUBLIC_API_URL=http://domin-server.iron.sq ANDROID_VERSION_CODE=99 \
+  pnpm --filter @alphapump/mobile run prebuild
 cd apps/mobile/android && ./gradlew assembleRelease
+scp .../app-release.apk minipc:/opt/alphapump/deploy/apk/alphapump-99.apk
 ```
 
-Rozdanie grupie idzie przez minipc, a nie przez GitHuba — nikt nie musi mieć
-konta ani dostępu do repozytorium:
+— przy czym plik dołożony `scp`-em jest do pobrania pod
+`/pobierz/alphapump-99.apk`, ale **nie zostanie zaproponowany jako
+aktualizacja**, dopóki nie opisze go `latest.json`. Manifest liczy się razem
+z plikiem właśnie po to, żeby te dwie rzeczy nie mogły się rozjechać.
 
+##### Jak telefon dowiaduje się o aktualizacji
+
+Katalog `/pobierz` zawiera, obok plików `.apk`, manifest `latest.json`:
+
+```json
+{
+  "versionCode": 57,
+  "versionName": "0.1.0",
+  "file": "alphapump-57.apk",
+  "size": 62443008,
+  "md5": "…",
+  "sha256": "…",
+  "releasedAt": "2026-08-15T09:12:44Z",
+  "notes": "Poprawki synchronizacji"
+}
 ```
-scp alphapump-12.apk minipc:/opt/alphapump/deploy/apk/alphapump.apk
-```
 
-i telefony pobierają go pod `http://<adres-w-vpn>/pobierz/alphapump.apk`. Caddy
-serwuje ten katalog zwykłym `file_server`, więc nie ma tu żadnej dodatkowej
-usługi do utrzymania. Instalacja wymaga zgody na „nieznane źródła" — normalna
-przy dystrybucji poza sklepem.
+Aplikacja pyta o niego przy starcie i przy każdym powrocie na wierzch (nie
+częściej niż raz na kwadrans), porównuje `versionCode` z własnym i przy nowszym
+pokazuje okno „Wersja X — zainstaluj / nie teraz". „Nie teraz" wycisza **to
+jedno** wydanie; kolejne pyta od nowa. Po zgodzie plik pobiera się w aplikacji
+z paskiem postępu, sprawdzana jest suma MD5 i dopiero wtedy plik idzie do
+instalatora systemu. Nieudane sprawdzenie manifestu nie pokazuje niczego —
+minipc bywa poza zasięgiem częściej, niż jest w nim.
 
-Dwie rzeczy, które łatwo przeoczyć, a boli obie dopiero później:
+Kod: `apps/mobile/src/update/` (`manifest.ts` — kształt i porównanie wersji,
+`install.ts` — przebieg, `expo.ts` — jedyna warstwa dotykająca systemu)
+i `src/ui/update-prompt.tsx`. Trasa `/pobierz/*` nie wymaga zmian w
+`Caddyfile`: wpada do `file_server`, tak jak wszystko spoza listy `@api`.
 
-- **`versionCode` musi rosnąć** między wydaniami, bo Android odmawia instalacji
-  pakietu o niższym numerze. W CI podstawia się numer przebiegu; przy budowaniu
-  lokalnym ustaw `ANDROID_VERSION_CODE` sam.
-- **Klucz podpisujący jest na zawsze.** Bez sekretu `ANDROID_KEYSTORE_BASE64`
-  gradle podpisuje wydanie kluczem deweloperskim z szablonu. To działa, ale późniejsze
-  przejście na własny klucz wymaga odinstalowania aplikacji na *każdym* telefonie
-  — system nie pozwala podmienić pakietu podpisanego innym kluczem. Własny klucz
-  (`keytool -genkeypair`, potem `base64` do sekretów repozytorium) warto wstawić
-  przed pierwszym rozdaniem, a nie po nim.
+##### Rzeczy, które trzeba ogarnąć raz
+
+- **Klucz podpisujący jest na zawsze — i jest wymagany.** Bez sekretu
+  `ANDROID_KEYSTORE_BASE64` zadanie **przerywa się z błędem**, zamiast po cichu
+  podpisać wydanie kluczem deweloperskim z szablonu React Native. Ten klucz ma
+  publicznie znaną część prywatną i ten sam odcisk we wszystkich projektach na
+  świecie, więc przy aktualizacji pobieranej po HTTP byłby otwartą furtką:
+  dowolny plik podpisany tak samo zainstalowałby się *na miejsce* aplikacji.
+  Drugi powód jest praktyczny — podpisu nie da się później zmienić bez
+  odinstalowania aplikacji na *każdym* telefonie.
+
+  ```
+  keytool -genkeypair -v -keystore alphapump.keystore -alias alphapump \
+    -keyalg RSA -keysize 4096 -validity 10000
+  base64 -w0 alphapump.keystore     # → sekret ANDROID_KEYSTORE_BASE64
+  ```
+
+  Do sekretów repozytorium wchodzą jeszcze `ANDROID_KEYSTORE_PASSWORD`,
+  `ANDROID_KEY_ALIAS` i `ANDROID_KEY_PASSWORD`. Sam plik `.keystore` trzeba
+  zachować poza repozytorium — razem z kluczem `age` od kopii zapasowych.
+
+- **Zgoda na „nieznane źródła" jest jednorazowa.** Przy pierwszej instalacji
+  Android zapyta o nią dla aplikacji, która plik podaje (przy pierwszym
+  rozdaniu — przeglądarki; potem AlphaPumpa, bo od tej wersji podmienia się
+  sam). Sama aplikacja deklaruje w tym celu `REQUEST_INSTALL_PACKAGES`; to
+  uprawnienie **nie** daje cichej instalacji — system i tak pyta o każdą
+  podmianę.
+
+- **`versionCode` musi rosnąć.** W CI to numer przebiegu; przy budowaniu
+  lokalnym ustaw `ANDROID_VERSION_CODE` sam, i to wyżej niż ostatni z CI —
+  inaczej telefon odmówi instalacji, a komunikat mówi o niezgodności, nie
+  o numerze.
+
+- **Pierwsze wydanie trzeba zainstalować ręcznie.** Aktualizuje się aplikacja,
+  która już umie się aktualizować — do wersji sprzed tej zmiany trzeba wejść
+  z przeglądarki na `http://domin-server.iron.sq/pobierz/` i pobrać plik.
+
+- **Telefon musi rozwiązywać nazwę serwera.** `domin-server.iron.sq` idzie
+  z DNS-u NetBirda; jeśli aplikacja łączy się z API, pobieranie też zadziała,
+  bo to ten sam host i ten sam wyjątek cleartext (`config/network.js`).
+
+- **iOS tą drogą nie pojedzie.** Sideload z własnego serwera wymaga certyfikatu
+  enterprise albo TestFlighta. Aplikacja rozpoznaje to sama i poza Androidem
+  nawet nie pyta o manifest. iOS wchodzi w etapie 16, razem z kontem Apple
+  Developer.
 
 Konfiguracji EAS repozytorium nie zawiera — wydanie idzie z projektu natywnego
-generowanego przez `prebuild`. iOS wchodzi w etapie 16, razem z kontem Apple
-Developer.
+generowanego przez `prebuild`.
 
 #### Sprawdzanie stanu
 

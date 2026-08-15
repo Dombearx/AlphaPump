@@ -25,6 +25,7 @@ import { appConfig, isGoogleSignInConfigured } from '../src/config/index';
 import { DatabaseProvider } from '../src/db/provider';
 import { SyncProvider } from '../src/sync/provider';
 import { COLORS } from '../src/theme';
+import { UpdatePrompt } from '../src/ui/update-prompt';
 
 // Jak najwcześniej, żeby żaden log wystrzelony podczas startu (importy,
 // pierwszy render) nie ominął bufora zgłoszeń zwrotnych — patrz `app-log.ts`.
@@ -39,6 +40,11 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: COLORS.base }}>
       <SafeAreaProvider>
         <StatusBar style="light" />
+        {/* Nad bazą i nad synchronizacją, bo nie zależy od żadnej z nich:
+            aktualizacja ma się proponować także wtedy, gdy migracje padły albo
+            nikt nie jest zalogowany — czyli dokładnie wtedy, gdy nowsze wydanie
+            bywa lekarstwem. */}
+        <UpdatePrompt />
         <DatabaseProvider>
           {/* Silnik synchronizacji stoi **wewnątrz** bazy, a nie obok niej:
               wymiana danych pisze do tych samych tabel, więc nie ma prawa

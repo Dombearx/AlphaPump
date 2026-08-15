@@ -51,6 +51,49 @@
 		}
 	}
 
+	# Manifest wydania aplikacji na Androida — jedyny plik w tym stosie, który
+	# **nie może** wyjść z pamięci podręcznej klienta.
+	#
+	# `file_server` oddaje pliki statyczne z `Last-Modified`, ale bez
+	# `Cache-Control`. Dla klienta HTTP jest to zaproszenie do cache'owania
+	# heurystycznego (RFC 9111 §4.2.2): świeżość liczy się wtedy jako ułamek
+	# wieku pliku, więc manifest leżący od dziesięciu godzin bywa uznawany za
+	# aktualny przez następną godzinę — bez pytania serwera. OkHttp pod
+	# `fetch`-em Androida robi dokładnie to. Efekt: wydanie jest na minipc,
+	# a telefon dowiaduje się o nim godzinę później i nie da się tego
+	# odtworzyć na żądanie. Sama aplikacja prosi o `no-store`, ale zgadywanie,
+	# czy klient tę prośbę uszanuje, jest gorsze niż powiedzenie tego wprost.
+	#
+	# Plików `.apk` to nie dotyczy: ich nazwa zawiera numer wydania, więc treść
+	# pod danym adresem nigdy się nie zmienia.
+	@manifest path /pobierz/latest.json
+	header @manifest Cache-Control "no-store"
+
+	# Wydania aplikacji na Androida — katalog `deploy/apk/` gospodarza, wpięty
+	# wolumenem w `docker-compose.yml`.
+	#
+	# Osobny `handle`, choć `file_server` panelu oddałby te pliki i tak. Powód
+	# jest ten sam, który uzasadnia listę `@api` wyżej: bez tego brakujący plik
+	# nie daje 404, tylko `index.html` ze statusem 200. Aplikacja pobierałaby
+	# wtedy stronę HTML zamiast pakietu — a że nazwa pliku w manifeście jest
+	# jedynym miejscem, w którym da się o literówkę, jest to dokładnie ta
+	# pomyłka, którą trzeba zobaczyć od razu. (Sumę kontrolną aplikacja i tak
+	# sprawdza, więc takiego „pakietu" nie zainstaluje — ale komunikat o
+	# niezgodnej sumie prowadzi w złą stronę.)
+	#
+	# `browse` daje listę plików pod `/pobierz/`. Stąd bierze się **pierwszą**
+	# instalację: aplikacja, której jeszcze nie ma na telefonie, nie ma jak
+	# zaproponować własnej aktualizacji.
+	# Dwa wzorce, bo `handle` przyjmuje tylko jeden argument — a samo `/pobierz`,
+	# bez ukośnika, ma trafić tu, a nie do panelu (`file_server` przekieruje je
+	# wtedy na `/pobierz/` i pokaże listę).
+	@wydania path /pobierz /pobierz/*
+
+	handle @wydania {
+		root * /srv
+		file_server browse
+	}
+
 	# Wszystko pozostałe to panel: pliki statyczne, a dla ścieżek routera
 	# (`/users`, `/library`, `/data`) `index.html`, bo SPA obsługuje je po
 	# stronie przeglądarki.
