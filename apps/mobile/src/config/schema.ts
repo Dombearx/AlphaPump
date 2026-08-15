@@ -40,9 +40,34 @@ export const appConfigSchema = z.object({
    */
   googleWebClientId: nullableClientId,
   googleIosClientId: nullableClientId,
+  /**
+   * Wyłącznik logowania i rejestracji przez Google — odpowiednik
+   * `GOOGLE_SIGN_IN_ENABLED` po stronie serwera i wyłączony tak samo domyślnie.
+   *
+   * Musi być osobnym polem, a nie wnioskiem z obecności `googleWebClientId`:
+   * identyfikator klienta bywa ustawiony „na zapas", a wtedy przycisk pojawiłby
+   * się w aplikacji, mimo że serwer metody nie przyjmuje. Rozjazd tych dwóch
+   * stron kończy się przyciskiem, który wygląda normalnie i zawsze zwraca błąd.
+   */
+  googleSignInEnabled: z.stringbool().default(false),
+  /**
+   * Katalog z wydaniami na minipc — stąd bierze się `latest.json` i sam plik
+   * `.apk`. Pominięty wylicza się z `apiUrl`, bo w praktyce zawsze jest to ten
+   * sam host: Caddy oddaje `/alphapump/download` z woluminu obok API. Pole istnieje
+   * wyłącznie po to, żeby dało się rozdzielić te dwie rzeczy bez przepisywania
+   * kodu, gdyby wydania kiedyś pojechały gdzie indziej.
+   */
+  updateBaseUrl: httpUrlSchema.optional(),
 });
 
-export type AppConfig = z.infer<typeof appConfigSchema>;
+/**
+ * `updateBaseUrl` jest w schemacie opcjonalny, ale po `parseAppConfig` już nie:
+ * pominięty wylicza się z `apiUrl`. Kod aplikacji nie ma więc gałęzi „a jeśli
+ * nie ustawiono", bo nie ma takiego stanu.
+ */
+export type AppConfig = Omit<z.infer<typeof appConfigSchema>, 'updateBaseUrl'> & {
+  updateBaseUrl: string;
+};
 
 export function parseAppConfig(extra: unknown): AppConfig {
   const parsed = appConfigSchema.safeParse(extra);
@@ -52,10 +77,29 @@ export function parseAppConfig(extra: unknown): AppConfig {
       .join('\n  ');
     throw new Error(`Invalid app configuration:\n  ${problems}`);
   }
-  return { ...parsed.data, apiUrl: parsed.data.apiUrl.replace(/\/+$/, '') };
+  const apiUrl = trimTrailingSlash(parsed.data.apiUrl);
+  return {
+    ...parsed.data,
+    apiUrl,
+    updateBaseUrl:
+      parsed.data.updateBaseUrl === undefined
+        ? `${apiUrl}/alphapump/download`
+        : trimTrailingSlash(parsed.data.updateBaseUrl),
+  };
 }
 
-/** Czy logowanie przez Google jest skonfigurowane na tej platformie. */
+function trimTrailingSlash(url: string): string {
+  return url.replace(/\/+$/, '');
+}
+
+/**
+ * Czy pokazać „Continue with Google".
+ *
+ * Dwa warunki, nie jeden: metoda ma być **włączona** i mieć czym działać.
+ * Sam identyfikator klienta nie wystarcza, bo bywa ustawiony przed
+ * uruchomieniem metody; sama flaga też nie, bo bez identyfikatora natywny
+ * Sign-In nie ma jak poprosić Google o token.
+ */
 export function isGoogleSignInConfigured(config: AppConfig): boolean {
-  return config.googleWebClientId !== null;
+  return config.googleSignInEnabled && config.googleWebClientId !== null;
 }

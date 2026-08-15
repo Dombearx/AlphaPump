@@ -49,6 +49,9 @@ services:
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?ustaw BETTER_AUTH_SECRET w deploy/.env}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:?ustaw BETTER_AUTH_URL — adres, pod którym stos widać w VPN}
       TRUSTED_ORIGINS: ${TRUSTED_ORIGINS:-alphapump://}
+      # Logowanie Google jest wyłączone jawną flagą, nie brakiem poświadczeń —
+      # dzięki temu wklejenie ich z powrotem do `.env` samo metody nie włącza.
+      GOOGLE_SIGN_IN_ENABLED: ${GOOGLE_SIGN_IN_ENABLED:-false}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       # Wartości domyślne są tu powtórzone za `apps/api/src/config.ts`, bo Compose
@@ -105,11 +108,11 @@ services:
       - '${BIND_ADDRESS:-0.0.0.0}:${HTTP_PORT:-80}:80'
     volumes:
       # Dystrybucja aplikacji na Androida. Plik `.apk` położony w tym katalogu
-      # jest do pobrania pod `/pobierz/<nazwa>` — czyli tam, gdzie telefony i tak
+      # jest do pobrania pod `/alphapump/download/<nazwa>` — czyli tam, gdzie telefony i tak
       # sięgają po API, bez zakładania nikomu konta w GitHubie i bez wystawiania
       # czegokolwiek poza VPN. Caddy serwuje go zwykłym `file_server`, więc żadna
       # zmiana w `Caddyfile` nie jest do tego potrzebna.
-      - ${APK_DIR:-./apk}:/srv/pobierz:ro
+      - ${APK_DIR:-./apk}:/srv/alphapump/download:ro
     healthcheck:
       # `wget -q -O -` zamiast `--spider`: obraz Caddy'ego stoi na Alpine,
       # a wget z busyboksa ma krótkie flagi zawsze, długie zależnie od budowy.

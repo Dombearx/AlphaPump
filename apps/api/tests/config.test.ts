@@ -38,10 +38,37 @@ describe('konfiguracja', () => {
     );
   });
 
-  it('włącza Google dopiero przy komplecie poświadczeń', () => {
-    expect(loadConfig({ ...MINIMAL, GOOGLE_CLIENT_ID: 'samo-id' }).google).toBeNull();
+  it('trzyma Google wyłączone, dopóki nikt go nie włączy', () => {
+    // Wyłączone **domyślnie**, a nie „wyłączone, bo zapomniano poświadczeń".
+    expect(loadConfig(MINIMAL).google).toBeNull();
+  });
+
+  it('nie włącza Google samymi poświadczeniami', () => {
+    // To jest cały powód istnienia flagi: wklejenie poświadczeń z powrotem do
+    // `deploy/.env` nie może po cichu przywrócić metody logowania.
     expect(
       loadConfig({ ...MINIMAL, GOOGLE_CLIENT_ID: 'id', GOOGLE_CLIENT_SECRET: 'sekret' }).google,
+    ).toBeNull();
+  });
+
+  it('nie włącza Google samą flagą', () => {
+    // Włączona metoda bez poświadczeń nie ma czym rozmawiać z Google, a
+    // better-auth dostałby pustego klienta.
+    expect(loadConfig({ ...MINIMAL, GOOGLE_SIGN_IN_ENABLED: 'true' }).google).toBeNull();
+    expect(
+      loadConfig({ ...MINIMAL, GOOGLE_SIGN_IN_ENABLED: 'true', GOOGLE_CLIENT_ID: 'samo-id' })
+        .google,
+    ).toBeNull();
+  });
+
+  it('włącza Google przy fladze i komplecie poświadczeń', () => {
+    expect(
+      loadConfig({
+        ...MINIMAL,
+        GOOGLE_SIGN_IN_ENABLED: 'true',
+        GOOGLE_CLIENT_ID: 'id',
+        GOOGLE_CLIENT_SECRET: 'sekret',
+      }).google,
     ).toEqual({ clientId: 'id', clientSecret: 'sekret' });
   });
 

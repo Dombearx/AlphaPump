@@ -24,10 +24,12 @@ import {
   tagSchema,
   type AdminUser,
   type Archive,
+  type CreateExerciseInput,
   type Exercise,
   type ImportReport,
   type SystemStats,
   type Tag,
+  type UpdateExerciseInput,
   type UpdateUserInput,
   userSchema,
 } from '@alphapump/core';
@@ -177,16 +179,43 @@ export const listExercises = (fetchImpl?: typeof fetch): Promise<Exercise[]> =>
 export const listTags = (fetchImpl?: typeof fetch): Promise<Tag[]> =>
   request('/tags', z.array(tagSchema), { fetchImpl });
 
-export const renameExercise = (
-  id: string,
-  name: string,
+/**
+ * Utworzenie ćwiczenia. Kształt wejścia jest **rdzeniowy** (`CreateExerciseInput`),
+ * a nie własny dla panelu: to ten sam kontrakt, który waliduje serwer i którego
+ * używa aplikacja, więc pole dołożone w rdzeniu nie może się tu po cichu zgubić.
+ */
+export const createExercise = (
+  input: CreateExerciseInput,
   fetchImpl?: typeof fetch,
 ): Promise<Exercise> =>
-  request(`/exercises/${id}`, exerciseSchema, { method: 'PATCH', body: { name }, fetchImpl });
+  request('/exercises', exerciseSchema, { method: 'POST', body: input, fetchImpl });
+
+/**
+ * Zmiana ćwiczenia. Przyjmuje **łatkę**, a nie samą nazwę: `PATCH /exercises/:id`
+ * obsługuje też tagi, notatkę i siłownię, a osobna funkcja na każde pole
+ * znaczyłaby tyle żądań, ile zmienionych pól — i tyle wpisów w outboksie
+ * synchronizacji.
+ *
+ * Typu logowania nie ma w `UpdateExerciseInput` i nie jest to przeoczenie:
+ * jego zmiana unieważniłaby zapisane serie.
+ */
+export const updateExercise = (
+  id: string,
+  patch: UpdateExerciseInput,
+  fetchImpl?: typeof fetch,
+): Promise<Exercise> =>
+  request(`/exercises/${id}`, exerciseSchema, { method: 'PATCH', body: patch, fetchImpl });
 
 export const deleteExercise = async (id: string, fetchImpl?: typeof fetch): Promise<void> => {
   await request(`/exercises/${id}`, z.null(), { method: 'DELETE', fetchImpl });
 };
+
+/**
+ * Utworzenie tagu. Koloru nie podajemy — serwer wylicza go z nazwy, żeby tag
+ * utworzony offline miał od razu finalny kolor, identyczny na każdym urządzeniu.
+ */
+export const createTag = (name: string, fetchImpl?: typeof fetch): Promise<Tag> =>
+  request('/tags', tagSchema, { method: 'POST', body: { name }, fetchImpl });
 
 export const renameTag = (id: string, name: string, fetchImpl?: typeof fetch): Promise<Tag> =>
   request(`/tags/${id}`, tagSchema, { method: 'PATCH', body: { name }, fetchImpl });

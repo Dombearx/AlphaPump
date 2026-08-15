@@ -13,7 +13,15 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { ApiError, listUsers, pruneTombstones, renameExercise, request } from '../src/lib/api';
+import {
+  ApiError,
+  createExercise,
+  createTag,
+  listUsers,
+  pruneTombstones,
+  request,
+  updateExercise,
+} from '../src/lib/api';
 import { z } from 'zod';
 
 interface Call {
@@ -105,7 +113,7 @@ describe('request', () => {
 });
 
 describe('mutacje', () => {
-  it('zmiana nazwy ćwiczenia idzie PATCH-em z ciałem JSON', async () => {
+  it('zmiana ćwiczenia idzie PATCH-em z samą łatką', async () => {
     const fake = fakeFetch(200, {
       id: '22222222-2222-4222-8222-222222222222',
       name: 'Zwis jednoręczny',
@@ -121,11 +129,67 @@ describe('mutacje', () => {
       deletedAt: null,
     });
 
-    await renameExercise('22222222-2222-4222-8222-222222222222', 'Zwis jednoręczny', fake.impl);
+    await updateExercise(
+      '22222222-2222-4222-8222-222222222222',
+      { name: 'Zwis jednoręczny' },
+      fake.impl,
+    );
 
     const call = fake.calls[0];
     expect(call?.init.method).toBe('PATCH');
     expect(call?.init.body).toBe(JSON.stringify({ name: 'Zwis jednoręczny' }));
+  });
+
+  it('utworzenie ćwiczenia idzie POST-em z kompletem pól', async () => {
+    const fake = fakeFetch(201, {
+      id: '22222222-2222-4222-8222-222222222222',
+      name: 'Zwis jednoręczny',
+      slug: 'zwis-jednoreczny',
+      authorId: USER.id,
+      loggingType: 'bodyweight_time',
+      primaryTagId: '33333333-3333-4333-8333-333333333333',
+      additionalTagIds: [],
+      note: null,
+      gym: null,
+      createdAt: USER.createdAt,
+      updatedAt: USER.updatedAt,
+      deletedAt: null,
+    });
+
+    await createExercise(
+      {
+        name: 'Zwis jednoręczny',
+        loggingType: 'bodyweight_time',
+        primaryTagId: '33333333-3333-4333-8333-333333333333',
+        additionalTagIds: [],
+        note: null,
+        gym: null,
+      },
+      fake.impl,
+    );
+
+    const call = fake.calls[0];
+    expect(call?.url).toMatch(/\/exercises$/);
+    expect(call?.init.method).toBe('POST');
+  });
+
+  it('utworzenie tagu nie podaje koloru — wylicza go serwer', async () => {
+    // Kolor jest funkcją nazwy, żeby tag utworzony offline miał od razu
+    // finalny kolor. Panel, który by go wysyłał, byłby drugim źródłem prawdy.
+    const fake = fakeFetch(201, {
+      id: '33333333-3333-4333-8333-333333333333',
+      name: 'Plecy',
+      slug: 'plecy',
+      color: '#4ade80',
+      createdAt: USER.createdAt,
+      updatedAt: USER.updatedAt,
+      deletedAt: null,
+    });
+
+    await createTag('Plecy', fake.impl);
+
+    expect(fake.calls[0]?.init.method).toBe('POST');
+    expect(fake.calls[0]?.init.body).toBe(JSON.stringify({ name: 'Plecy' }));
   });
 
   it('porządkowanie tombstone’ów nie narzuca okna retencji — to wie serwer', async () => {

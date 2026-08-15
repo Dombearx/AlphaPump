@@ -1,26 +1,54 @@
 name: Wydanie na Androida
 
-# Buduje plik `.apk` gotowy do rozdania grupie.
+# Buduje plik `.apk` i kładzie go na minipc, skąd biorą go telefony.
 #
 # Adres API jest **wkompilowany w wydanie**, a nie ustawiany po instalacji:
 # zmienne `EXPO_PUBLIC_*` wchodzą do bundla, a z adresu wyliczają się jeszcze
-# wyjątek ATS (iOS) i `networkSecurityConfig` (Android). Dlatego jest wejściem
-# zadania, a nie wartością domyślną — pomyłka tutaj daje aplikację, która wygląda
-# poprawnie i nie łączy się z niczym.
+# wyjątek ATS (iOS) i `networkSecurityConfig` (Android). Dlatego przy ręcznym
+# uruchomieniu jest wejściem zadania — pomyłka tutaj daje aplikację, która
+# wygląda poprawnie i nie łączy się z niczym.
+#
+# Po zbudowaniu zadanie wchodzi do NetBirda i wysyła plik na `POST /apk`
+# serwera aktualizacji (`deploy/update_server.py`), który kładzie go w katalogu
+# oddawanym przez Caddy'ego pod `/alphapump/download` razem z `latest.json`. Telefony
+# widzą nowe wydanie przy najbliższym otwarciu aplikacji. Tą samą drogą chodzi
+# wdrożenie backendu (`deploy.yml`), więc nie przybywa tu ani jeden nowy kanał.
 
 on:
+  # Każde wejście na `main` daje nowe wydanie — inaczej „aktualizuje się samo"
+  # znaczyłoby „samo, ale po ręcznym kliknięciu".
+  #
+  # Bez zawężenia `paths`, choć kusi: zmiana w panelu albo w segregacji zgłoszeń
+  # nie potrzebuje nowego APK-a. Filtr ścieżek obejmuje jednak **każdy** push,
+  # także ten z tagiem — a tag postawiony na commicie, który ruszył wyłącznie
+  # `deploy/`, przestałby wtedy wydawać cokolwiek. Cicho pominięte wydanie jest
+  # droższe niż kilkanaście minut gradle'a.
+  push:
+    branches: [main]
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       api_url:
-        description: 'Adres API w VPN, np. http://100.64.0.1'
+        description: 'Adres API w VPN, np. http://domin-server.iron.sq'
         required: true
         type: string
-  push:
-    tags: ['v*']
+      opublikuj:
+        description: 'Wysłać wydanie na minipc po zbudowaniu'
+        required: false
+        default: true
+        type: boolean
+      bez_podpisu:
+        description: 'Zbuduj mimo braku klucza podpisującego (plik NIE nadaje się do rozdania)'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: android-release-${{ github.ref }}
-  cancel-in-progress: false
+  # Przy serii wejść na `main` liczy się wyłącznie ostatnie — wcześniejsze i tak
+  # zostałyby natychmiast zastąpione. Wydania z tagu nie przerywamy: ono ma
+  # trafić do wydania w GitHubie, a nie zniknąć, bo ktoś zdążył wypchnąć commit.
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 # Wydanie z tagu dokleja plik do wydania w GitHubie; poza tagiem zadanie niczego
 # w repozytorium nie zmienia.
@@ -35,13 +63,25 @@ jobs:
     timeout-minutes: 90
 
     env:
-      # Przy wydaniu z tagu adres bierze się ze zmiennej repozytorium
-      # (Settings → Variables), bo tag nie ma jak go przekazać.
+      # Poza ręcznym uruchomieniem adres bierze się ze zmiennej repozytorium
+      # (Settings → Variables), bo ani tag, ani push nie mają jak go przekazać.
       EXPO_PUBLIC_API_URL: ${{ inputs.api_url || vars.EXPO_PUBLIC_API_URL }}
       EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ vars.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID }}
+      # Logowanie Google jest domyślnie wyłączone i wymaga **dwóch** zgód:
+      # tej zmiennej tutaj i `GOOGLE_SIGN_IN_ENABLED` w `deploy/.env`. Włączenie
+      # samego wydania dałoby przycisk, którego serwer nie obsłuży. Pamiętaj też
+      # o odcisku SHA-1 klucza podpisującego w Google Cloud — bez niego natywny
+      # Sign-In kończy się `DEVELOPER_ERROR` dopiero na telefonie.
+      EXPO_PUBLIC_GOOGLE_SIGN_IN_ENABLED: ${{ vars.EXPO_PUBLIC_GOOGLE_SIGN_IN_ENABLED || 'false' }}
       # Numer wydania widziany przez system Android. Musi rosnąć między
-      # wydaniami, inaczej telefon odmówi aktualizacji.
+      # wydaniami, inaczej telefon odmówi aktualizacji. To także numer, po
+      # którym aplikacja rozpoznaje, że `latest.json` opisuje coś nowszego.
       ANDROID_VERSION_CODE: ${{ github.run_number }}
+      # Ręczne uruchomienie może chcieć samego pliku, bez rozdawania go grupie.
+      # Zapis przez `github.event_name` jest celowy: dla `push` `inputs.*` jest
+      # pustym napisem, a ten w porównaniu z wartością logiczną wychodzi na
+      # fałsz — czyli publikacja po cichu by nie zadziałała.
+      PUBLIKUJ: ${{ github.event_name != 'workflow_dispatch' || inputs.opublikuj }}
       TURBO_TELEMETRY_DISABLED: 1
       DO_NOT_TRACK: 1
 
@@ -49,12 +89,52 @@ jobs:
       - name: Sprawdź adres API
         run: |
           [ -n "${EXPO_PUBLIC_API_URL}" ] || {
-            echo "Brak adresu API. Uruchom zadanie ręcznie z polem api_url albo ustaw zmienną repozytorium EXPO_PUBLIC_API_URL." >&2
+            echo "::error::Brak adresu API. Uruchom zadanie ręcznie z polem api_url albo ustaw zmienną repozytorium EXPO_PUBLIC_API_URL." >&2
             exit 1
           }
           echo "Buduję wydanie wskazujące na ${EXPO_PUBLIC_API_URL}"
 
+      # Klucz podpisujący jest wymagany, a nie zalecany, i to jest zmiana
+      # świadoma. Bez sekretu gradle podpisuje wydanie kluczem deweloperskim
+      # z szablonu React Native — jego klucz prywatny jest publicznie znany,
+      # a odcisk (`FA:C6:17:45…`) ten sam we wszystkich projektach na świecie.
+      # Dopóki APK się rozdawało ręcznie, było to brzydkie; przy aktualizacji
+      # pobieranej po HTTP jest to otwarta furtka: dowolny plik podpisany tym
+      # samym publicznym kluczem zainstaluje się **na miejsce** aplikacji.
+      # Drugi powód jest praktyczny — podpisu nie da się później zmienić bez
+      # odinstalowania aplikacji na każdym telefonie.
+      - name: Sprawdź klucz podpisujący
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 == '' && inputs.bez_podpisu != true }}
+        run: |
+          cat >&2 <<'KONIEC'
+          ::error::Brak sekretu ANDROID_KEYSTORE_BASE64 — wydanie zostałoby podpisane publicznie znanym kluczem deweloperskim.
+
+          Klucz robi się raz i zostaje na zawsze:
+
+            keytool -genkeypair -v -keystore alphapump.keystore -alias alphapump \
+              -keyalg RSA -keysize 4096 -validity 10000
+
+            base64 -w0 alphapump.keystore    # → sekret ANDROID_KEYSTORE_BASE64
+
+          Do sekretów repozytorium wchodzą jeszcze ANDROID_KEYSTORE_PASSWORD,
+          ANDROID_KEY_ALIAS i ANDROID_KEY_PASSWORD. Sam plik .keystore trzeba
+          zachować poza repozytorium — bez niego nie da się wydać aktualizacji
+          do już zainstalowanej aplikacji.
+
+          Do zbudowania pliku wyłącznie na próbę: uruchom zadanie ręcznie
+          z zaznaczonym `bez_podpisu`.
+          KONIEC
+          exit 1
+
       - uses: actions/checkout@v4
+
+      # Wersja dla człowieka. Poza tagiem zostaje ta z `app.config.js`, a
+      # rozróżnia wydania numer `versionCode` pokazywany obok niej — zmienna
+      # jest więc ustawiana tylko wtedy, gdy naprawdę ma co powiedzieć.
+      # Pusta wartość byłaby gorsza od braku: `??` w konfiguracji jej nie łapie.
+      - name: Ustal wersję dla człowieka
+        if: ${{ github.ref_type == 'tag' }}
+        run: echo "APP_VERSION_NAME=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
       - uses: actions/setup-java@v4
         with:
@@ -88,10 +168,11 @@ jobs:
         working-directory: apps/mobile/android
         run: ./gradlew assembleRelease --no-daemon
 
-      # Podpis. Bez sekretu w repozytorium gradle podpisuje wydanie kluczem
-      # deweloperskim z szablonu — do rozdania w grupie to wystarcza, ale klucz
-      # jest publicznie znany, a późniejsza zmiana na własny wymusza odinstalowanie
-      # aplikacji na każdym telefonie. Dlatego własny klucz warto wstawić od razu.
+      # Podpis zakładamy `apksigner`-em **po** gradle'u, zamiast wstrzykiwać
+      # konfigurację podpisu do wygenerowanego `build.gradle`. Plik ten powstaje
+      # na nowo przy każdym `prebuild`, więc każda jego modyfikacja w CI byłaby
+      # łataniem wyniku generatora. `apksigner` zastępuje podpis istniejący, co
+      # jest dokładnie tym, czego tu potrzeba.
       - name: Podpisz własnym kluczem
         if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
         env:
@@ -104,11 +185,6 @@ jobs:
           keystore="${RUNNER_TEMP}/release.keystore"
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
 
-          # Podpisujemy `apksigner`-em **po** gradle'u, zamiast wstrzykiwać
-          # konfigurację podpisu do wygenerowanego `build.gradle`. Plik ten
-          # powstaje na nowo przy każdym `prebuild`, więc każda jego modyfikacja
-          # w CI byłaby łataniem wyniku generatora. `apksigner` zastępuje podpis
-          # istniejący, co jest dokładnie tym, czego tu potrzeba.
           build_tools="$(ls -d "${ANDROID_HOME}/build-tools"/* | sort -V | tail -1)"
           "${build_tools}/apksigner" sign \
             --ks "$keystore" \
@@ -119,16 +195,37 @@ jobs:
           "${build_tools}/apksigner" verify --print-certs \
             apps/mobile/android/app/build/outputs/apk/release/app-release.apk
 
-      - name: Nazwij plik wydania
+      # `latest.json` powstaje **tu**, obok pliku, który opisuje. Liczony gdzie
+      # indziej rozjechałby się z nim przy pierwszej pomyłce — a rozjazd widać
+      # dopiero na telefonie, jako aktualizację, której nie da się pobrać.
+      - name: Opisz wydanie
         id: plik
         run: |
           set -euo pipefail
           mkdir -p wydanie
           nazwa="alphapump-${ANDROID_VERSION_CODE}.apk"
           cp apps/mobile/android/app/build/outputs/apk/release/app-release.apk "wydanie/${nazwa}"
+          cd wydanie
+
           # Suma kontrolna jedzie razem z plikiem: telefony pobierają go po HTTP
           # wewnątrz VPN i to jedyny sposób sprawdzenia, że doszedł w całości.
-          (cd wydanie && sha256sum "${nazwa}" > "${nazwa}.sha256")
+          # SHA-256 sprawdza minipc przy przyjmowaniu pliku, MD5 — aplikacja po
+          # pobraniu, bo tę sumę `expo-file-system` liczy natywnie.
+          sha256sum "${nazwa}" > "${nazwa}.sha256"
+
+          jq -n \
+            --argjson versionCode "${ANDROID_VERSION_CODE}" \
+            --arg versionName "${APP_VERSION_NAME:-$(jq -r .version ../apps/mobile/package.json)}" \
+            --arg file "${nazwa}" \
+            --argjson size "$(stat -c%s "${nazwa}")" \
+            --arg md5 "$(md5sum "${nazwa}" | cut -d' ' -f1)" \
+            --arg sha256 "$(cut -d' ' -f1 "${nazwa}.sha256")" \
+            --arg releasedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg notes "$(git -C .. log -1 --pretty=%s)" \
+            '{versionCode:$versionCode, versionName:$versionName, file:$file, size:$size, md5:$md5, sha256:$sha256, releasedAt:$releasedAt, notes:$notes}' \
+            > latest.json
+
+          cat latest.json
           echo "nazwa=${nazwa}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
@@ -137,10 +234,61 @@ jobs:
           path: wydanie/
           retention-days: 30
 
+      # ---------------------------------------------------------- na minipc
+
+      - name: Wejdź do sieci NetBird
+        if: ${{ env.PUBLIKUJ == 'true' }}
+        uses: hackiron/public-actions/netbird-connect@main
+        with:
+          setup-key: ${{ secrets.NETBIRD_ACCESS_KEY }}
+          hostname: github-actions-release-alphapump
+          management-url: ${{ secrets.NETBIRD_MANAGEMENT_URL }}
+
+      - name: Wyślij wydanie na minipc
+        if: ${{ env.PUBLIKUJ == 'true' }}
+        env:
+          ALPHAPUMP_UPDATE_SERVER_URL: ${{ secrets.ALPHAPUMP_UPDATE_SERVER_URL }}
+          NAZWA: ${{ steps.plik.outputs.nazwa }}
+        run: |
+          set -euo pipefail
+          # Sekret trzyma pełny adres z `/update` na końcu — pozostałe trasy
+          # tego samego serwera wyliczamy z niego, żeby nie mnożyć sekretów.
+          base="${ALPHAPUMP_UPDATE_SERVER_URL%/update}"
+
+          for i in $(seq 1 30); do
+            curl -fsS -o /dev/null "${base}/health" && break
+            echo "Czekam na serwer aktualizacji..."
+            sleep 10
+            [ "$i" -lt 30 ] || { echo "::error::Serwer aktualizacji nie odpowiedział przez 5 minut"; exit 1; }
+          done
+
+          # Czy serwer w ogóle zna trasę, na którą zaraz wyślemy plik.
+          #
+          # `/update` robi `git pull`, ale **nie przeładowuje samego siebie**:
+          # usługa systemd trzyma w pamięci kod sprzed aktualizacji repozytorium.
+          # Po wdrożeniu, które dokłada nową trasę, serwer odpowiada więc na
+          # `/health` jak gdyby nigdy nic i zwraca 404 na `POST /apk` — a to
+          # wygląda na błąd wydania, nie na nieodświeżony proces. Pytamy zatem
+          # o opis API, gdzie 404 nieistniejącej trasy odróżnia się od 404
+          # „jeszcze nie ma wydania".
+          if ! curl -fsS --max-time 20 "${base}/openapi.json" | jq -e '.paths."/apk".post' >/dev/null; then
+            echo "::error::Serwer aktualizacji nie zna trasy POST /apk — chodzi na kodzie sprzed wdrożenia. Na minipc: sudo systemctl restart alphapump-update-server"
+            exit 1
+          fi
+
+          # `-F "pole=<plik"` wysyła **zawartość** pliku jako wartość pola,
+          # `-F "pole=@plik"` — sam plik jako załącznik. Manifest jedzie więc
+          # pierwszym zapisem, a APK drugim.
+          curl -fsS --max-time 600 \
+            -F "manifest=<wydanie/latest.json" \
+            -F "apk=@wydanie/${NAZWA};type=application/vnd.android.package-archive" \
+            "${base}/apk"
+
       # Wydanie z tagu dostaje plik doklejony do wydania w GitHubie — żeby dało
-      # się do niego wrócić po wygaśnięciu artefaktu.
+      # się do niego wrócić po wygaśnięciu artefaktu i po tym, jak minipc
+      # wyrzuci starsze pliki, robiąc miejsce nowszym.
       - name: Dołącz do wydania
-        if: startsWith(github.ref, 'refs/tags/')
+        if: ${{ github.ref_type == 'tag' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -157,8 +305,10 @@ jobs:
             echo
             echo "- adres API: \`${EXPO_PUBLIC_API_URL}\`"
             echo "- versionCode: \`${ANDROID_VERSION_CODE}\`"
-            echo "- podpis: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && 'własny klucz' || 'klucz deweloperski z szablonu' }}"
-            echo
-            echo "Rozdanie grupie: pobierz artefakt, przenieś plik do \`deploy/apk/\` na minipc"
-            echo "i podaj adres \`${EXPO_PUBLIC_API_URL}/pobierz/${{ steps.plik.outputs.nazwa }}\`."
+            echo "- podpis: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && 'własny klucz' || '⚠️ klucz deweloperski — pliku nie rozdawaj' }}"
+            if [ "${PUBLIKUJ}" = "true" ]; then
+              echo "- na minipc: wysłane, telefony zobaczą je przy najbliższym otwarciu aplikacji"
+            else
+              echo "- na minipc: pominięte (artefakt zadania trzeba wgrać ręcznie)"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"

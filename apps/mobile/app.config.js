@@ -23,12 +23,32 @@ const withCleartextHost = require('./config/with-cleartext-host');
 /** Adres API. Domyślny wskazuje na serwer uruchomiony lokalnie. */
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
+/**
+ * Katalog z wydaniami — stamtąd aplikacja bierze `latest.json` i plik `.apk`.
+ * Domyślnie ten sam host co API, bo Caddy oddaje `/alphapump/download` z woluminu obok
+ * niego (`deploy/docker-compose.yml`). Zmienna istnieje na wypadek, gdyby
+ * wydania kiedyś pojechały gdzie indziej niż API.
+ */
+const UPDATE_BASE_URL =
+  process.env.EXPO_PUBLIC_UPDATE_BASE_URL ?? `${API_URL.replace(/\/+$/, '')}/alphapump/download`;
+
+/**
+ * Wersja dla człowieka — ta, którą widać w oknie „jest nowa wersja" i w
+ * ustawieniach systemu. Przy wydaniu z tagu podstawia ją
+ * `android-release.yml`; poza nim bierze się z `package.json`, żeby ten sam
+ * numer trafił do aplikacji i do `latest.json` opisującego wydanie. Wpisany tu
+ * na sztywno byłby drugim źródłem prawdy dla jednej liczby.
+ *
+ * Wydania rozróżnia i tak `versionCode` niżej — `versionName` jest etykietą.
+ */
+const VERSION_NAME = process.env.APP_VERSION_NAME ?? require('./package.json').version;
+
 /** @type {import('expo/config').ExpoConfig} */
 const config = {
   name: 'AlphaPump',
   slug: 'alphapump',
   scheme: 'alphapump',
-  version: '0.1.0',
+  version: VERSION_NAME,
   orientation: 'portrait',
   /** Jeden motyw, ciemny — specyfikacja wymaga dark theme, a przełącznika nie. */
   userInterfaceStyle: 'dark',
@@ -58,6 +78,18 @@ const config = {
      */
     versionCode: Number(process.env.ANDROID_VERSION_CODE ?? 1),
     adaptiveIcon: { backgroundColor: '#232327', foregroundImage: './assets/icon.png' },
+    /**
+     * Aplikacja sama podmienia się na nowszą: pobiera `.apk` z minipc i oddaje
+     * go instalatorowi systemu. Bez tego uprawnienia instalator odrzuca zamiar,
+     * zanim w ogóle pokaże okno.
+     *
+     * Uprawnienie **nie** daje cichej instalacji — Android i tak pyta
+     * użytkownika o zgodę dla naszego pakietu (raz, w „instalowanie nieznanych
+     * aplikacji"), a potem o samą podmianę przy każdym wydaniu. Zasady Google
+     * Play mocno je ograniczają, ale ta aplikacja nie idzie przez Play i iść
+     * nie ma; rozdanie jest wewnątrz VPN-u.
+     */
+    permissions: ['android.permission.REQUEST_INSTALL_PACKAGES'],
   },
 
   plugins: [
@@ -74,8 +106,15 @@ const config = {
 
   extra: {
     apiUrl: API_URL,
+    updateBaseUrl: UPDATE_BASE_URL,
     googleWebClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? null,
     googleIosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? null,
+    /**
+     * Logowanie i rejestracja przez Google — domyślnie wyłączone, tak jak
+     * `GOOGLE_SIGN_IN_ENABLED` po stronie serwera. Obie strony trzeba włączyć
+     * razem: przycisk bez zgody serwera zawsze kończy się błędem.
+     */
+    googleSignInEnabled: process.env.EXPO_PUBLIC_GOOGLE_SIGN_IN_ENABLED ?? 'false',
   },
 };
 
