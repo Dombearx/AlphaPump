@@ -379,7 +379,7 @@ która później pozwala powiedzieć, *co* dokładnie stoi na minipc.
 #### Serwer aktualizacji
 
 Powyższe kroki da się też wywołać zdalnie, zamiast wpisywać je ręcznie po SSH.
-`deploy/update_server.py` wystawia `GET /update` na porcie 40001, który robi
+`deploy/update_server.py` wystawia `GET /update` na porcie 40002, który robi
 `git pull`, a potem
 `docker compose -f deploy/docker-compose.yml up -d --build --force-recreate`,
 oraz `GET /health`, które tylko potwierdza, że serwer żyje, bez wdrażania
@@ -411,7 +411,7 @@ go po każdym mergu do `main`. Ten workflow potrzebuje trzech sekretów
 w ustawieniach repozytorium: `NETBIRD_ACCESS_KEY`, `NETBIRD_MANAGEMENT_URL`
 (te same wartości, których używa analogiczny mechanizm w LivingBotFramework)
 oraz `ALPHAPUMP_UPDATE_SERVER_URL` — adres serwera aktualizacji w sieci
-NetBird, z `/update` na końcu, np. `http://100.64.0.1:40001/update`.
+NetBird, z `/update` na końcu, np. `http://100.64.0.1:40002/update`.
 
 #### Kopie zapasowe
 

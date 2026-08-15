@@ -27,7 +27,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 UPDATE_SERVER_HOST = "0.0.0.0"
-DEFAULT_UPDATE_SERVER_PORT = 40001
+DEFAULT_UPDATE_SERVER_PORT = 40002
 COMPOSE_FILE = "deploy/docker-compose.yml"
 
 app = FastAPI()
