@@ -25,7 +25,8 @@ const httpUrlSchema = z.url().regex(/^https?:\/\//i, {
  * przed właściwą walidacją stringa.
  */
 const nullableClientId = z.preprocess(
-  (value) => (typeof value === 'object' && value !== null && Object.keys(value).length === 0 ? null : value),
+  (value) =>
+    typeof value === 'object' && value !== null && Object.keys(value).length === 0 ? null : value,
   z.string().min(1).nullable().default(null),
 );
 

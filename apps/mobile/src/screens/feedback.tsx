@@ -89,7 +89,7 @@ export function FeedbackScreen() {
           />
           <Text className="text-xs text-muted">
             {logs.length === 0
-              ? "No app log entries this session — just the text above goes."
+              ? 'No app log entries this session — just the text above goes.'
               : `The last ${String(logs.length)} app log ${logs.length === 1 ? 'entry' : 'entries'} from this session go along with it, so a crash or a silent error is easier to track down.`}
           </Text>
 

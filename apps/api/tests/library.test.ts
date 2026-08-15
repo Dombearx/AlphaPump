@@ -123,9 +123,7 @@ describe('biblioteka', () => {
         headers: author.headers,
       });
       expect(response.status).toBe(200);
-      expect(response.body.map((exercise) => exercise.id)).toContain(
-        builtInExerciseId('Deadlift'),
-      );
+      expect(response.body.map((exercise) => exercise.id)).toContain(builtInExerciseId('Deadlift'));
     });
 
     it('filtruje po tagu głównym', async () => {

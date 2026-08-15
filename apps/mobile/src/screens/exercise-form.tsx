@@ -249,8 +249,8 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
             <View className="gap-2">
               <SectionTitle>Logging type</SectionTitle>
               <Text className="text-xs text-muted">
-                Set once and locked in. Changing it would need a new exercise — otherwise
-                historical sets would stop matching it.
+                Set once and locked in. Changing it would need a new exercise — otherwise historical
+                sets would stop matching it.
               </Text>
               <ChipRow>
                 {LOGGING_TYPES.map((type) => (

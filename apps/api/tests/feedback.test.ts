@@ -52,7 +52,9 @@ describe('POST /feedback', () => {
         message: 'Wykres nie pokazuje wartości nad słupkami.',
         // Serwer ma zignorować podszywanie się pod kogoś innego.
         nickname: 'ktoś-inny',
-        logs: [{ level: 'error', message: 'TypeError: x is undefined', at: '2026-08-15T10:00:00.000Z' }],
+        logs: [
+          { level: 'error', message: 'TypeError: x is undefined', at: '2026-08-15T10:00:00.000Z' },
+        ],
       },
     });
 

@@ -117,7 +117,9 @@ export function normalizeApiKeyName(input: string): string {
  * w chwili, w której trzeba unieważnić dokładnie jeden.
  */
 export function apiKeyNameProblem(input: string): string | null {
-  return normalizeApiKeyName(input).length === 0 ? "Give it a name — that's how you'll recognize the token" : null;
+  return normalizeApiKeyName(input).length === 0
+    ? "Give it a name — that's how you'll recognize the token"
+    : null;
 }
 
 /**

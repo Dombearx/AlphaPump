@@ -148,8 +148,8 @@ export function TransferScreen() {
           {report !== null && (
             <View className="gap-1">
               <Text className="text-success">
-                Imported: {String(report.imported.sets)} sets,{' '}
-                {String(report.imported.exercises)} exercises, {String(report.imported.cycles)} cycles.
+                Imported: {String(report.imported.sets)} sets, {String(report.imported.exercises)}{' '}
+                exercises, {String(report.imported.cycles)} cycles.
               </Text>
               {report.remappedExercises > 0 && (
                 <Text className="text-xs text-muted">
