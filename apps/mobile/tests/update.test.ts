@@ -66,14 +66,14 @@ describe('manifest wydania', () => {
   });
 
   it('składa adres pliku z katalogu wydań', () => {
-    expect(apkUrl('http://minipc/pobierz', MANIFEST)).toBe(
-      'http://minipc/pobierz/alphapump-42.apk',
+    expect(apkUrl('http://minipc/alphapump/download', MANIFEST)).toBe(
+      'http://minipc/alphapump/download/alphapump-42.apk',
     );
   });
 
   it('nie gubi ukośnika, gdy katalog wydań ma go na końcu', () => {
-    expect(apkUrl('http://minipc/pobierz/', MANIFEST)).toBe(
-      'http://minipc/pobierz/alphapump-42.apk',
+    expect(apkUrl('http://minipc/alphapump/download/', MANIFEST)).toBe(
+      'http://minipc/alphapump/download/alphapump-42.apk',
     );
   });
 });
@@ -84,10 +84,10 @@ describe('pobranie manifestu', () => {
     // zależy nam na świeżej — Caddy oddaje pliki statyczne z `ETag`.
     const fetchImpl = vi.fn(async () => jsonResponse(MANIFEST));
 
-    await fetchUpdateManifest({ baseUrl: 'http://minipc/pobierz', fetchImpl });
+    await fetchUpdateManifest({ baseUrl: 'http://minipc/alphapump/download', fetchImpl });
 
     expect(fetchImpl).toHaveBeenCalledWith(
-      'http://minipc/pobierz/latest.json',
+      'http://minipc/alphapump/download/latest.json',
       expect.objectContaining({ cache: 'no-store' }),
     );
   });
@@ -97,7 +97,7 @@ describe('pobranie manifestu', () => {
     const fetchImpl = vi.fn(async () => jsonResponse({}, 404));
 
     await expect(
-      fetchUpdateManifest({ baseUrl: 'http://minipc/pobierz', fetchImpl }),
+      fetchUpdateManifest({ baseUrl: 'http://minipc/alphapump/download', fetchImpl }),
     ).rejects.toBeInstanceOf(UpdateCheckError);
   });
 
@@ -107,7 +107,7 @@ describe('pobranie manifestu', () => {
     });
 
     await expect(
-      fetchUpdateManifest({ baseUrl: 'http://minipc/pobierz', fetchImpl }),
+      fetchUpdateManifest({ baseUrl: 'http://minipc/alphapump/download', fetchImpl }),
     ).rejects.toBeInstanceOf(UpdateCheckError);
   });
 
@@ -117,7 +117,7 @@ describe('pobranie manifestu', () => {
     const fetchImpl = vi.fn(async () => new Response('<!doctype html>', { status: 200 }));
 
     await expect(
-      fetchUpdateManifest({ baseUrl: 'http://minipc/pobierz', fetchImpl }),
+      fetchUpdateManifest({ baseUrl: 'http://minipc/alphapump/download', fetchImpl }),
     ).rejects.toBeInstanceOf(UpdateCheckError);
   });
 });
@@ -164,10 +164,14 @@ describe('instalacja', () => {
   it('pobiera plik z katalogu wydań i oddaje go instalatorowi', async () => {
     const { installer, installed } = installerSpy();
 
-    await installUpdate({ manifest: MANIFEST, baseUrl: 'http://minipc/pobierz', installer });
+    await installUpdate({
+      manifest: MANIFEST,
+      baseUrl: 'http://minipc/alphapump/download',
+      installer,
+    });
 
     expect(installer.download).toHaveBeenCalledWith(
-      'http://minipc/pobierz/alphapump-42.apk',
+      'http://minipc/alphapump/download/alphapump-42.apk',
       expect.anything(),
     );
     expect(installed).toEqual([
@@ -181,7 +185,7 @@ describe('instalacja', () => {
     const { installer } = installerSpy({ md5: 'ffffffffffffffffffffffffffffffff' });
 
     await expect(
-      installUpdate({ manifest: MANIFEST, baseUrl: 'http://minipc/pobierz', installer }),
+      installUpdate({ manifest: MANIFEST, baseUrl: 'http://minipc/alphapump/download', installer }),
     ).rejects.toMatchObject({ reason: 'checksum' });
     expect(installer.install).not.toHaveBeenCalled();
   });
@@ -190,7 +194,7 @@ describe('instalacja', () => {
     const { installer } = installerSpy({ md5: null });
 
     await expect(
-      installUpdate({ manifest: MANIFEST, baseUrl: 'http://minipc/pobierz', installer }),
+      installUpdate({ manifest: MANIFEST, baseUrl: 'http://minipc/alphapump/download', installer }),
     ).resolves.toBeUndefined();
     expect(installer.install).toHaveBeenCalled();
   });
@@ -199,7 +203,7 @@ describe('instalacja', () => {
     const { installer } = installerSpy({ contentUri: null });
 
     await expect(
-      installUpdate({ manifest: MANIFEST, baseUrl: 'http://minipc/pobierz', installer }),
+      installUpdate({ manifest: MANIFEST, baseUrl: 'http://minipc/alphapump/download', installer }),
     ).rejects.toMatchObject({ reason: 'unsupported' });
   });
 
@@ -214,7 +218,7 @@ describe('instalacja', () => {
 
     const error = await installUpdate({
       manifest: MANIFEST,
-      baseUrl: 'http://minipc/pobierz',
+      baseUrl: 'http://minipc/alphapump/download',
       installer: failing,
     }).catch((thrown: unknown) => thrown);
 
@@ -229,7 +233,7 @@ describe('instalacja', () => {
     });
 
     await expect(
-      installUpdate({ manifest: MANIFEST, baseUrl: 'http://minipc/pobierz', installer }),
+      installUpdate({ manifest: MANIFEST, baseUrl: 'http://minipc/alphapump/download', installer }),
     ).rejects.toMatchObject({ reason: 'install' });
   });
 
@@ -247,7 +251,7 @@ describe('instalacja', () => {
 
     await installUpdate({
       manifest: MANIFEST,
-      baseUrl: 'http://minipc/pobierz',
+      baseUrl: 'http://minipc/alphapump/download',
       installer,
       onProgress: ({ bytesWritten }) => progress.push(bytesWritten),
     });
@@ -259,6 +263,6 @@ describe('instalacja', () => {
 describe('rozmiar pliku', () => {
   it('pokazuje megabajty tak, jak się je czyta', () => {
     expect(formatBytes(62_400_000)).toBe('62 MB');
-    expect(formatBytes(4_500_000)).toBe('4,5 MB');
+    expect(formatBytes(4_500_000)).toBe('4.5 MB');
   });
 });

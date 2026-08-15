@@ -25,12 +25,12 @@ const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
 /**
  * Katalog z wydaniami — stamtąd aplikacja bierze `latest.json` i plik `.apk`.
- * Domyślnie ten sam host co API, bo Caddy oddaje `/pobierz` z woluminu obok
+ * Domyślnie ten sam host co API, bo Caddy oddaje `/alphapump/download` z woluminu obok
  * niego (`deploy/docker-compose.yml`). Zmienna istnieje na wypadek, gdyby
  * wydania kiedyś pojechały gdzie indziej niż API.
  */
 const UPDATE_BASE_URL =
-  process.env.EXPO_PUBLIC_UPDATE_BASE_URL ?? `${API_URL.replace(/\/+$/, '')}/pobierz`;
+  process.env.EXPO_PUBLIC_UPDATE_BASE_URL ?? `${API_URL.replace(/\/+$/, '')}/alphapump/download`;
 
 /**
  * Wersja dla człowieka — ta, którą widać w oknie „jest nowa wersja" i w

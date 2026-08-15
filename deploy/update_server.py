@@ -19,7 +19,7 @@ Also receives Android releases. The build happens in GitHub Actions, which
 already joins the NetBird network to call `/update` (see
 `.github/workflows/deploy.yml`), so it can hand the `.apk` straight to this
 server rather than the minipc having to poll GitHub for it. Uploads land in
-the directory Caddy serves under `/pobierz`, which is where phones look for
+the directory Caddy serves under `/alphapump/download`, which is where phones look for
 updates -- see `deploy/docker-compose.yml` and `apps/mobile/src/update/`.
 
 Neither endpoint is authenticated, matching the trust model the rest of the
@@ -51,7 +51,7 @@ UPDATE_SERVER_HOST = "0.0.0.0"
 DEFAULT_UPDATE_SERVER_PORT = 40002
 COMPOSE_FILE = "deploy/docker-compose.yml"
 
-# Where Caddy looks for downloadable releases: the host side of the `/srv/pobierz`
+# Where Caddy looks for downloadable releases: the host side of the `/srv/alphapump/download`
 # volume in `deploy/docker-compose.yml`.
 #
 # Deliberately *not* read from `APK_DIR`, the variable compose uses for the same

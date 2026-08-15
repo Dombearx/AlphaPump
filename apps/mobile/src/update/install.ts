@@ -119,12 +119,12 @@ export async function installUpdate(options: InstallUpdateOptions): Promise<void
 export function describeInstallFailure(reason: UpdateInstallFailure): string {
   switch (reason) {
     case 'download':
-      return 'Nie udało się pobrać pliku. Sprawdź, czy telefon jest w VPN-ie.';
+      return 'Could not download the file. Check that your phone is connected to the VPN.';
     case 'checksum':
-      return 'Pobrany plik jest niekompletny. Spróbuj jeszcze raz.';
+      return 'The download came through incomplete. Try again.';
     case 'install':
-      return 'System nie otworzył instalatora. Zezwól tej aplikacji na instalowanie nieznanych aplikacji.';
+      return 'Your phone did not open the installer. Allow AlphaPump to install unknown apps.';
     case 'unsupported':
-      return 'Aktualizacja przez pobranie pliku działa tylko na Androidzie.';
+      return 'Updating this way only works on Android.';
   }
 }

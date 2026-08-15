@@ -10,7 +10,7 @@ name: Wydanie na Androida
 #
 # Po zbudowaniu zadanie wchodzi do NetBirda i wysyła plik na `POST /apk`
 # serwera aktualizacji (`deploy/update_server.py`), który kładzie go w katalogu
-# oddawanym przez Caddy'ego pod `/pobierz` razem z `latest.json`. Telefony
+# oddawanym przez Caddy'ego pod `/alphapump/download` razem z `latest.json`. Telefony
 # widzą nowe wydanie przy najbliższym otwarciu aplikacji. Tą samą drogą chodzi
 # wdrożenie backendu (`deploy.yml`), więc nie przybywa tu ani jeden nowy kanał.
 

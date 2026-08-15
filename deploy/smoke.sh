@@ -81,17 +81,17 @@ probe 'Trasa panelu (/users)' '/users' 200 'text/html'
 # 6. Katalog wydań aplikacji. Brakujący plik ma dać **404**, a nie `index.html`
 #    ze statusem 200 — inaczej telefon pobrałby stronę panelu zamiast pakietu.
 #    Ta sama pomyłka co przy trasach API, tylko po drugiej stronie rozdziału.
-probe 'Nieznane wydanie (/pobierz/…)' '/pobierz/nie-ma-takiego.apk' 404 ''
+probe 'Nieznane wydanie (/alphapump/download/…)' '/alphapump/download/nie-ma-takiego.apk' 404 ''
 
 # 7. Manifest wydania — to z niego telefony dowiadują się o aktualizacji.
 #    Zanim wyjdzie pierwsze wydanie, 404 jest poprawnym stanem, więc brak pliku
 #    nie jest tu błędem; błędem jest 200 z `text/html`, czyli manifest oddany
 #    przez panel.
 manifest_status="$(curl --silent --show-error --max-time 20 --output /dev/null \
-  --write-out '%{http_code} %{content_type}' "${base}/pobierz/latest.json" 2>&1)"
+  --write-out '%{http_code} %{content_type}' "${base}/alphapump/download/latest.json" 2>&1)"
 case "$manifest_status" in
   200*application/json*)
-    printf '  ✓ %-38s %s\n' 'Manifest wydania (/pobierz/latest.json)' "$manifest_status"
+    printf '  ✓ %-38s %s\n' 'Manifest wydania (/alphapump/download/latest.json)' "$manifest_status"
     ;;
   404*)
     printf '  ✓ %-38s brak wydania (to normalne przed pierwszym)\n' 'Manifest wydania'

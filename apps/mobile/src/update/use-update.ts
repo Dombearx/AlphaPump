@@ -128,7 +128,7 @@ export function useUpdateCheck(): UpdateState {
           message:
             error instanceof UpdateInstallError
               ? describeInstallFailure(error.reason)
-              : 'Aktualizacja się nie udała. Spróbuj jeszcze raz.',
+              : 'The update failed. Try again.',
         });
       } finally {
         busy.current = false;

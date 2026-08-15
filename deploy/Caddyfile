@@ -66,7 +66,7 @@
 	#
 	# Plików `.apk` to nie dotyczy: ich nazwa zawiera numer wydania, więc treść
 	# pod danym adresem nigdy się nie zmienia.
-	@manifest path /pobierz/latest.json
+	@manifest path /alphapump/download/latest.json
 	header @manifest Cache-Control "no-store"
 
 	# Wydania aplikacji na Androida — katalog `deploy/apk/` gospodarza, wpięty
@@ -81,13 +81,13 @@
 	# sprawdza, więc takiego „pakietu" nie zainstaluje — ale komunikat o
 	# niezgodnej sumie prowadzi w złą stronę.)
 	#
-	# `browse` daje listę plików pod `/pobierz/`. Stąd bierze się **pierwszą**
+	# `browse` daje listę plików pod `/alphapump/download/`. Stąd bierze się **pierwszą**
 	# instalację: aplikacja, której jeszcze nie ma na telefonie, nie ma jak
 	# zaproponować własnej aktualizacji.
-	# Dwa wzorce, bo `handle` przyjmuje tylko jeden argument — a samo `/pobierz`,
+	# Dwa wzorce, bo `handle` przyjmuje tylko jeden argument — a samo `/alphapump/download`,
 	# bez ukośnika, ma trafić tu, a nie do panelu (`file_server` przekieruje je
-	# wtedy na `/pobierz/` i pokaże listę).
-	@wydania path /pobierz /pobierz/*
+	# wtedy na `/alphapump/download/` i pokaże listę).
+	@wydania path /alphapump/download /alphapump/download/*
 
 	handle @wydania {
 		root * /srv

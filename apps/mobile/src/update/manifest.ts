@@ -3,13 +3,13 @@
  *
  * Wydanie na Androida nie idzie przez sklep, więc nikt nie powie telefonowi
  * „jest aktualizacja". Robi to plik `latest.json` leżący obok `.apk` w katalogu
- * `deploy/apk/` na minipc, oddawany przez Caddy'ego pod `/pobierz/latest.json`.
+ * `deploy/apk/` na minipc, oddawany przez Caddy'ego pod `/alphapump/download/latest.json`.
  * Aplikacja pyta o niego przy każdym wejściu na pierwszy plan i porównuje
  * `versionCode` z własnym.
  *
  * Plik statyczny, a nie trasa w API, i to jest decyzja: lista ścieżek w
  * `deploy/Caddyfile` jest kontraktem pilnowanym testem (`apps/api/tests/deploy.test.ts`),
- * a `/pobierz/*` i tak wpada do `file_server`. Sprawdzanie aktualizacji nie
+ * a `/alphapump/download/*` i tak wpada do `file_server`. Sprawdzanie aktualizacji nie
  * wymaga więc ani jednej zmiany w warstwie wejściowej ani w backendzie — i nie
  * wymaga też sesji, bo działa przed zalogowaniem.
  *
@@ -162,9 +162,14 @@ export function parseInstalledVersionCode(nativeBuildVersion: string | null): nu
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
-/** Rozmiar pliku po ludzku — „62,4 MB". Wchodzi do okna przed pobraniem. */
+/**
+ * Rozmiar pliku po ludzku — „62 MB", „4.5 MB". Wchodzi do okna przed pobraniem.
+ *
+ * Kropka dziesiętna, nie przecinek: interfejs aplikacji jest po angielsku,
+ * mimo że komentarze w repozytorium są po polsku.
+ */
 export function formatBytes(bytes: number): string {
   const megabytes = bytes / 1_000_000;
   if (megabytes >= 10) return `${String(Math.round(megabytes))} MB`;
-  return `${megabytes.toFixed(1).replace('.', ',')} MB`;
+  return `${megabytes.toFixed(1)} MB`;
 }

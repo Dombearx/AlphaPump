@@ -281,7 +281,7 @@ Wszystko, co potrzebne, leży w `deploy/`:
 | `backup.env.example`, `crontab.example` | wzory dla crona kopii zapasowych |
 | `smoke.sh` | sprawdzenie działającego stosu z zewnątrz |
 | `update_server.py`, `alphapump-update-server.service` | automatyczne wdrożenie po mergu do `main` i przyjmowanie wydań aplikacji — patrz „Serwer aktualizacji" niżej |
-| `apk/` | wydania na Androida: pliki `.apk` i manifest `latest.json`, oddawane pod `/pobierz` |
+| `apk/` | wydania na Androida: pliki `.apk` i manifest `latest.json`, oddawane pod `/alphapump/download` |
 
 Kontenery są trzy, nie cztery: panel to zbiór plików statycznych, a nie proces,
 więc jest wpieczony w obraz Caddy'ego. Osobny kontener musiałby albo uruchomić
@@ -386,7 +386,7 @@ Powyższe kroki da się też wywołać zdalnie, zamiast wpisywać je ręcznie po
 | ----- | ------- |
 | `GET /health` | potwierdza, że serwer żyje, bez wdrażania czegokolwiek |
 | `GET /update` | `git pull`, a potem `docker compose -f deploy/docker-compose.yml up -d --build --force-recreate` |
-| `POST /apk` | przyjmuje wydanie aplikacji: plik `.apk` i manifest, kładzie oba w katalogu `/pobierz` |
+| `POST /apk` | przyjmuje wydanie aplikacji: plik `.apk` i manifest, kładzie oba w katalogu `/alphapump/download` |
 | `GET /apk` | oddaje manifest wydania, które telefony widzą w tej chwili |
 
 `POST /apk` woła `android-release.yml` po zbudowaniu pliku. Nazwa pliku
@@ -500,7 +500,7 @@ Wydanie robi `.github/workflows/android-release.yml` przy **każdym mergu do
 repozytorium `EXPO_PUBLIC_API_URL` (przy uruchomieniu ręcznym — z pola
 `api_url`). Zadanie buduje `.apk`, opisuje go plikiem `latest.json`, wchodzi do
 NetBirda i wysyła oba na `POST /apk` serwera aktualizacji, który kładzie je
-w katalogu oddawanym pod `/pobierz`. Nic nie trzeba kopiować ręcznie i nikt nie
+w katalogu oddawanym pod `/alphapump/download`. Nic nie trzeba kopiować ręcznie i nikt nie
 potrzebuje konta w GitHubie.
 
 Ta sama droga co wdrożenie backendu (`deploy.yml`), więc żaden nowy kanał ani
@@ -514,13 +514,13 @@ scp .../app-release.apk minipc:/opt/alphapump/deploy/apk/alphapump-99.apk
 ```
 
 — przy czym plik dołożony `scp`-em jest do pobrania pod
-`/pobierz/alphapump-99.apk`, ale **nie zostanie zaproponowany jako
+`/alphapump/download/alphapump-99.apk`, ale **nie zostanie zaproponowany jako
 aktualizacja**, dopóki nie opisze go `latest.json`. Manifest liczy się razem
 z plikiem właśnie po to, żeby te dwie rzeczy nie mogły się rozjechać.
 
 ##### Jak telefon dowiaduje się o aktualizacji
 
-Katalog `/pobierz` zawiera, obok plików `.apk`, manifest `latest.json`:
+Katalog `/alphapump/download` zawiera, obok plików `.apk`, manifest `latest.json`:
 
 ```json
 {
@@ -545,7 +545,7 @@ minipc bywa poza zasięgiem częściej, niż jest w nim.
 
 Kod: `apps/mobile/src/update/` (`manifest.ts` — kształt i porównanie wersji,
 `install.ts` — przebieg, `expo.ts` — jedyna warstwa dotykająca systemu)
-i `src/ui/update-prompt.tsx`. Trasa `/pobierz/*` nie wymaga zmian w
+i `src/ui/update-prompt.tsx`. Trasa `/alphapump/download/*` nie wymaga zmian w
 `Caddyfile`: wpada do `file_server`, tak jak wszystko spoza listy `@api`.
 
 ##### Rzeczy, które trzeba ogarnąć raz
@@ -583,7 +583,7 @@ i `src/ui/update-prompt.tsx`. Trasa `/pobierz/*` nie wymaga zmian w
 
 - **Pierwsze wydanie trzeba zainstalować ręcznie.** Aktualizuje się aplikacja,
   która już umie się aktualizować — do wersji sprzed tej zmiany trzeba wejść
-  z przeglądarki na `http://domin-server.iron.sq/pobierz/` i pobrać plik.
+  z przeglądarki na `http://domin-server.iron.sq/alphapump/download/` i pobrać plik.
 
 - **Telefon musi rozwiązywać nazwę serwera.** `domin-server.iron.sq` idzie
   z DNS-u NetBirda; jeśli aplikacja łączy się z API, pobieranie też zadziała,

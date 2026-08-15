@@ -43,7 +43,7 @@ export const appConfigSchema = z.object({
   /**
    * Katalog z wydaniami na minipc — stąd bierze się `latest.json` i sam plik
    * `.apk`. Pominięty wylicza się z `apiUrl`, bo w praktyce zawsze jest to ten
-   * sam host: Caddy oddaje `/pobierz` z woluminu obok API. Pole istnieje
+   * sam host: Caddy oddaje `/alphapump/download` z woluminu obok API. Pole istnieje
    * wyłącznie po to, żeby dało się rozdzielić te dwie rzeczy bez przepisywania
    * kodu, gdyby wydania kiedyś pojechały gdzie indziej.
    */
@@ -73,7 +73,7 @@ export function parseAppConfig(extra: unknown): AppConfig {
     apiUrl,
     updateBaseUrl:
       parsed.data.updateBaseUrl === undefined
-        ? `${apiUrl}/pobierz`
+        ? `${apiUrl}/alphapump/download`
         : trimTrailingSlash(parsed.data.updateBaseUrl),
   };
 }

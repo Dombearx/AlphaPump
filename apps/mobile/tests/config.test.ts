@@ -35,11 +35,11 @@ describe('konfiguracja aplikacji', () => {
   });
 
   it('wylicza katalog wydań z adresu API', () => {
-    // Wydania leżą pod tym samym hostem co API: Caddy oddaje `/pobierz`
+    // Wydania leżą pod tym samym hostem co API: Caddy oddaje `/alphapump/download`
     // z woluminu obok niego. Jeden adres w konfiguracji zamiast dwóch, które
     // dałoby się rozjechać.
     const config = parseAppConfig({ apiUrl: 'http://alphapump.local:3000/' });
-    expect(config.updateBaseUrl).toBe('http://alphapump.local:3000/pobierz');
+    expect(config.updateBaseUrl).toBe('http://alphapump.local:3000/alphapump/download');
   });
 
   it('pozwala rozdzielić katalog wydań od API', () => {

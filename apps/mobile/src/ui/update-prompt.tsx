@@ -34,15 +34,15 @@ export function UpdatePrompt() {
       <View className="flex-1 justify-end bg-black/60 p-4">
         <View className="gap-4 rounded-2xl border border-border bg-surface p-5">
           <View className="gap-1">
-            <SectionTitle>Aktualizacja</SectionTitle>
+            <SectionTitle>Update available</SectionTitle>
             {/* Numer w nawiasie to `versionCode` — poza wydaniem z tagu jest
                 jedynym, co odróżnia dwa kolejne wydania, bo `versionName`
                 zmienia się dopiero przy tagu. */}
             <Text className="text-xl font-semibold text-text">
-              Wersja {stage.manifest.versionName} ({stage.manifest.versionCode})
+              Version {stage.manifest.versionName} ({stage.manifest.versionCode})
             </Text>
             <Text className="text-muted">
-              {formatBytes(stage.manifest.size)} — pobierze się z serwera w VPN-ie.
+              {formatBytes(stage.manifest.size)} — downloads from the server on your VPN.
             </Text>
           </View>
 
@@ -56,16 +56,16 @@ export function UpdatePrompt() {
 
           {downloading ? (
             <Text className="text-center text-xs text-muted">
-              Po pobraniu system zapyta o zgodę na instalację.
+              Your phone will ask for permission once the download finishes.
             </Text>
           ) : (
             <View className="gap-2">
               <View className="flex-row gap-2">
-                <Button label="Nie teraz" variant="secondary" onPress={dismiss} grow />
-                <Button label={failed ? 'Spróbuj ponownie' : 'Zainstaluj'} onPress={install} grow />
+                <Button label="Not now" variant="secondary" onPress={dismiss} grow />
+                <Button label={failed ? 'Try again' : 'Install'} onPress={install} grow />
               </View>
               {failed && (
-                <Button label="Ustawienia instalacji" variant="secondary" onPress={openSettings} />
+                <Button label="Open install settings" variant="secondary" onPress={openSettings} />
               )}
             </View>
           )}
@@ -94,8 +94,8 @@ function DownloadProgressView({
       {known && <ProgressBar ratio={bytesWritten / totalBytes} />}
       <Text className="text-center text-muted">
         {known
-          ? `${formatBytes(bytesWritten)} z ${formatBytes(totalBytes)}`
-          : `Pobrano ${formatBytes(bytesWritten)}`}
+          ? `${formatBytes(bytesWritten)} of ${formatBytes(totalBytes)}`
+          : `${formatBytes(bytesWritten)} downloaded`}
       </Text>
     </View>
   );

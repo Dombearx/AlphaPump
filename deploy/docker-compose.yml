@@ -105,11 +105,11 @@ services:
       - '${BIND_ADDRESS:-0.0.0.0}:${HTTP_PORT:-80}:80'
     volumes:
       # Dystrybucja aplikacji na Androida. Plik `.apk` położony w tym katalogu
-      # jest do pobrania pod `/pobierz/<nazwa>` — czyli tam, gdzie telefony i tak
+      # jest do pobrania pod `/alphapump/download/<nazwa>` — czyli tam, gdzie telefony i tak
       # sięgają po API, bez zakładania nikomu konta w GitHubie i bez wystawiania
       # czegokolwiek poza VPN. Caddy serwuje go zwykłym `file_server`, więc żadna
       # zmiana w `Caddyfile` nie jest do tego potrzebna.
-      - ${APK_DIR:-./apk}:/srv/pobierz:ro
+      - ${APK_DIR:-./apk}:/srv/alphapump/download:ro
     healthcheck:
       # `wget -q -O -` zamiast `--spider`: obraz Caddy'ego stoi na Alpine,
       # a wget z busyboksa ma krótkie flagi zawsze, długie zależnie od budowy.
