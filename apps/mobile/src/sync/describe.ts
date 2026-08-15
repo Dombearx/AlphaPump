@@ -55,7 +55,8 @@ export function describeSync(snapshot: SyncSnapshot, now: Date = new Date()): Sy
       return {
         label: 'Error',
         tone: 'danger',
-        detail: `${snapshot.lastError ?? 'The server responded with an error.'}${queue} ${last}`.trim(),
+        detail:
+          `${snapshot.lastError ?? 'The server responded with an error.'}${queue} ${last}`.trim(),
       };
 
     case 'idle':

@@ -263,8 +263,8 @@ export function CycleFormScreen({ mode }: { mode: CycleFormMode }) {
 
             {openEnded && (
               <Text className="text-xs text-muted">
-                An open-ended cycle runs until you archive it. There are no previous periods then
-                — they can't be worked out without a cycle length.
+                An open-ended cycle runs until you archive it. There are no previous periods then —
+                they can't be worked out without a cycle length.
               </Text>
             )}
           </Card>
@@ -472,8 +472,8 @@ function GoalComposer({
 
       {scope === 'tag' && (
         <Text className="text-xs text-muted">
-          A tag goal only counts an exercise's primary tag. Additional tags are labels for
-          browsing the library and don't count sets.
+          A tag goal only counts an exercise's primary tag. Additional tags are labels for browsing
+          the library and don't count sets.
         </Text>
       )}
     </Card>

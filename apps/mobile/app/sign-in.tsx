@@ -89,7 +89,9 @@ export default function SignInScreen() {
           <View className="mb-2">
             <Text className="text-4xl font-bold text-text">AlphaPump</Text>
             <Text className="mt-1 text-muted">
-              {mode === 'sign-in' ? 'Sign in to get started.' : 'Create an account — it only takes a moment.'}
+              {mode === 'sign-in'
+                ? 'Sign in to get started.'
+                : 'Create an account — it only takes a moment.'}
             </Text>
           </View>
 
@@ -153,7 +155,9 @@ export default function SignInScreen() {
             onPress={() => setMode(mode === 'sign-in' ? 'sign-up' : 'sign-in')}
           >
             <Text className="text-center text-muted">
-              {mode === 'sign-in' ? "Don't have an account? Create one." : 'Already have an account? Sign in.'}
+              {mode === 'sign-in'
+                ? "Don't have an account? Create one."
+                : 'Already have an account? Sign in.'}
             </Text>
           </Pressable>
         </ScrollView>

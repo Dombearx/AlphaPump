@@ -50,11 +50,7 @@ export default function AccountRoute() {
           <Text className="text-lg text-text">{description.label}</Text>
           <Text className="text-muted">{description.detail}</Text>
           <View className="mt-2">
-            <Button
-              variant="secondary"
-              label="Sync now"
-              onPress={() => void engine?.syncNow()}
-            />
+            <Button variant="secondary" label="Sync now" onPress={() => void engine?.syncNow()} />
           </View>
         </Card>
 
@@ -89,11 +85,15 @@ export default function AccountRoute() {
         <Card className="gap-2">
           <SectionTitle>Feedback</SectionTitle>
           <Text className="text-muted">
-            Found a bug or missing something? Send a note — the app attaches its
-            recent log entries automatically, so it's easier to track down.
+            Found a bug or missing something? Send a note — the app attaches its recent log entries
+            automatically, so it's easier to track down.
           </Text>
           <View className="mt-1">
-            <Button variant="secondary" label="Send feedback" onPress={() => router.push('/feedback')} />
+            <Button
+              variant="secondary"
+              label="Send feedback"
+              onPress={() => router.push('/feedback')}
+            />
           </View>
         </Card>
 

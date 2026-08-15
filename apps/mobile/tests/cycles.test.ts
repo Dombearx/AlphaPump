@@ -360,10 +360,7 @@ describe('cykle w bazie lokalnej', () => {
 
       // Najbliżej ukończenia najpierw: podciąganie potrzebuje dwóch serii,
       // klatka jeszcze trzech.
-      expect(targets.map((target) => target.label)).toEqual([
-        'Pull-up',
-        'Chest',
-      ]);
+      expect(targets.map((target) => target.label)).toEqual(['Pull-up', 'Chest']);
       expect(targets[0]?.exerciseId).toBe(EXERCISES.pullUps!.id);
       expect(targets[1]?.tagId).toBe(TAGS.chest);
       expect(targets[1]?.remaining).toBe(3);

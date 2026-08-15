@@ -476,7 +476,9 @@ export function LogScreen({ day, exerciseId }: { day: IsoDate; exerciseId: strin
             <View className="gap-2">
               <SectionTitle>Today's sets</SectionTitle>
               {daySets.length === 0 ? (
-                <Text className="text-muted">None yet — the first one goes to the top of the list.</Text>
+                <Text className="text-muted">
+                  None yet — the first one goes to the top of the list.
+                </Text>
               ) : (
                 daySets.map((set, index) => {
                   if (!REORDER_ENABLED) {
@@ -523,7 +525,9 @@ export function LogScreen({ day, exerciseId }: { day: IsoDate; exerciseId: strin
                             zdąży go rozpoznać jako przeciągnięcie przy ruchu. */}
                         <View
                           className={`flex-row items-center gap-3 rounded-2xl border px-4 py-3 ${
-                            set.id === editing ? 'border-accent bg-surface' : 'border-border bg-surface'
+                            set.id === editing
+                              ? 'border-accent bg-surface'
+                              : 'border-border bg-surface'
                           }`}
                         >
                           <Pressable
@@ -559,7 +563,9 @@ export function LogScreen({ day, exerciseId }: { day: IsoDate; exerciseId: strin
             <View className="gap-2">
               <SectionTitle>Records</SectionTitle>
               {records.length === 0 ? (
-                <Text className="text-muted">The first complete set will become a record right away.</Text>
+                <Text className="text-muted">
+                  The first complete set will become a record right away.
+                </Text>
               ) : (
                 records.slice(0, RECORDS_SHOWN).map((record) => (
                   <Row key={record.id}>

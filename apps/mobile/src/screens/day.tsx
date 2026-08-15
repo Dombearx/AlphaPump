@@ -22,7 +22,16 @@ import { db } from '../db/client';
 import { daySets, groupDaySets, localUser, type DayExerciseGroup } from '../db/queries';
 import { formatDaySubtitle, formatDayTitle, setsPlural, today as currentDay } from '../day-labels';
 import { formatSet } from '../measurements';
-import { Avatar, Button, Card, EmptyState, IconButton, Loading, Row, TagDot } from '../ui/primitives';
+import {
+  Avatar,
+  Button,
+  Card,
+  EmptyState,
+  IconButton,
+  Loading,
+  Row,
+  TagDot,
+} from '../ui/primitives';
 import { SyncBadge } from '../ui/sync-badge';
 
 export function DayScreen({ day }: { day: IsoDate }) {

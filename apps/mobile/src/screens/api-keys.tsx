@@ -84,10 +84,7 @@ async function unwrap<T>(call: Promise<AuthResult<T>>): Promise<T> {
     if (status === 401 || status === 403) throw new SyncAuthError();
     // Brak statusu to brak odpowiedzi — czyli jesteśmy poza VPN-em.
     if (status === 0) throw new SyncOfflineError(result.error);
-    throw new SyncServerError(
-      result.error.message ?? `Server responded ${String(status)}`,
-      status,
-    );
+    throw new SyncServerError(result.error.message ?? `Server responded ${String(status)}`, status);
   }
 
   return result.data as T;
@@ -177,8 +174,8 @@ export function ApiKeysScreen() {
 
       <ScrollView contentContainerClassName="gap-4 p-4 pb-8">
         <Text className="text-muted">
-          A token lets you use the API outside the app — for example a bot that logs sets. It
-          only works inside the VPN, and you can have several.
+          A token lets you use the API outside the app — for example a bot that logs sets. It only
+          works inside the VPN, and you can have several.
         </Text>
 
         {fresh !== null && (
@@ -188,8 +185,8 @@ export function ApiKeysScreen() {
               {fresh.secret}
             </Text>
             <Text className="text-xs text-muted">
-              Save it now — the server only keeps its hash from here on and won't show it again.
-              A lost token gets revoked and a new one issued.
+              Save it now — the server only keeps its hash from here on and won't show it again. A
+              lost token gets revoked and a new one issued.
             </Text>
             <View className="mt-1">
               <Button

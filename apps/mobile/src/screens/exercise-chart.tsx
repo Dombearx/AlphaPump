@@ -63,7 +63,10 @@ export function ExerciseChartScreen({ exerciseId }: { exerciseId: string }) {
       <Loading label="Loading exercise…" />
     ) : (
       <SafeAreaView className="flex-1 justify-center gap-4 bg-base p-6">
-        <EmptyState title="This exercise no longer exists" hint="It was removed from the library." />
+        <EmptyState
+          title="This exercise no longer exists"
+          hint="It was removed from the library."
+        />
         <Button label="Back to library" onPress={() => router.replace('/library')} />
       </SafeAreaView>
     );

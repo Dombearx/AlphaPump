@@ -11,7 +11,15 @@
  */
 
 import type { ReactNode } from 'react';
-import { ActivityIndicator, Image, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Image,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { COLORS } from '../theme';
 
 /* ------------------------------------------------------------------ przyciski */
@@ -257,12 +265,7 @@ export function Avatar({
   size?: number;
 }) {
   if (uri !== undefined && uri !== null && uri.length > 0) {
-    return (
-      <Image
-        source={{ uri }}
-        style={{ width: size, height: size, borderRadius: size / 2 }}
-      />
-    );
+    return <Image source={{ uri }} style={{ width: size, height: size, borderRadius: size / 2 }} />;
   }
 
   const initial = label.trim().charAt(0).toUpperCase() || '?';
