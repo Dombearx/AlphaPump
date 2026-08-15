@@ -1,0 +1,37 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Join Netbird network
+        uses: hackiron/public-actions/netbird-connect@main
+        with:
+          setup-key: ${{ secrets.NETBIRD_ACCESS_KEY }}
+          hostname: github-actions-deploy-alphapump
+          management-url: ${{ secrets.NETBIRD_MANAGEMENT_URL }}
+
+      - name: Wait for AlphaPump server
+        env:
+          ALPHAPUMP_UPDATE_SERVER_URL: ${{ secrets.ALPHAPUMP_UPDATE_SERVER_URL }}
+        run: |
+          health_url="${ALPHAPUMP_UPDATE_SERVER_URL%/update}/health"
+          for i in $(seq 1 30); do
+            if curl -fsS -o /dev/null "$health_url"; then
+              echo "AlphaPump server is available"
+              exit 0
+            fi
+            echo "Waiting for AlphaPump server to become available..."
+            sleep 10
+          done
+          echo "::error::Timed out waiting for AlphaPump server after 5 minutes"
+          exit 1
+
+      - name: Trigger AlphaPump update
+        run: curl -fsS "${{ secrets.ALPHAPUMP_UPDATE_SERVER_URL }}"
