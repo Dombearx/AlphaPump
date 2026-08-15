@@ -1,0 +1,17 @@
+[Unit]
+Description=AlphaPump update server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=domin
+WorkingDirectory=/opt/alphapump
+# Login shell so uv is picked up from the profile wherever its installer put
+# it, rather than hardcoding a path here. exec replaces the shell, so systemd
+# supervises uv itself instead of a wrapper.
+ExecStart=/bin/bash -lc 'exec uv run deploy/update_server.py'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

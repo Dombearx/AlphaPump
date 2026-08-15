@@ -280,6 +280,7 @@ Wszystko, co potrzebne, leży w `deploy/`:
 | `.env.example` | wzór konfiguracji stosu |
 | `backup.env.example`, `crontab.example` | wzory dla crona kopii zapasowych |
 | `smoke.sh` | sprawdzenie działającego stosu z zewnątrz |
+| `update_server.py`, `alphapump-update-server.service` | automatyczne wdrożenie po mergu do `main` — patrz „Serwer aktualizacji" niżej |
 
 Kontenery są trzy, nie cztery: panel to zbiór plików statycznych, a nie proces,
 więc jest wpieczony w obraz Caddy'ego. Osobny kontener musiałby albo uruchomić
@@ -374,6 +375,43 @@ uruchomić `scripts/backup.sh` ręcznie.
 
 Warto też robić wydania z tagiem (`git tag -a v0.2.0`): tag jest jedyną rzeczą,
 która później pozwala powiedzieć, *co* dokładnie stoi na minipc.
+
+#### Serwer aktualizacji
+
+Powyższe kroki da się też wywołać zdalnie, zamiast wpisywać je ręcznie po SSH.
+`deploy/update_server.py` wystawia `GET /update` na porcie 40002, który robi
+`git pull`, a potem
+`docker compose -f deploy/docker-compose.yml up -d --build --force-recreate`,
+oraz `GET /health`, które tylko potwierdza, że serwer żyje, bez wdrażania
+niczego.
+
+Stoi bezpośrednio na gospodarzu, nie w kontenerze, żeby móc wołać `git`
+i `docker` bez montowania gniazda Dockera do środka. To samodzielny skrypt
+z zależnościami zadeklarowanymi inline (PEP 723 — `fastapi`, `uvicorn`), więc
+`uv run deploy/update_server.py` instaluje tylko te dwie paczki do osobnego
+środowiska, bez dotykania `pnpm`/Turborepo, których nie potrzebuje.
+
+Instalacja jako usługa systemd, żeby przeżyła restart i awarię. Jednostka
+zakłada checkout w `/opt/alphapump` — inna ścieżka wymaga zmiany
+`WorkingDirectory`:
+
+```bash
+sudo cp deploy/alphapump-update-server.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now alphapump-update-server
+```
+
+`systemctl status alphapump-update-server` pokazuje, czy działa, a
+`journalctl -u alphapump-update-server -f` śledzi logi. Użytkownik, na którym
+stoi usługa, musi należeć do grupy `docker`.
+
+Endpoint nie ma własnego uwierzytelnienia — ma być osiągalny wyłącznie przez
+prywatną sieć (NetBird), tak jak z `.github/workflows/deploy.yml`, który woła
+go po każdym mergu do `main`. Ten workflow potrzebuje trzech sekretów
+w ustawieniach repozytorium: `NETBIRD_ACCESS_KEY`, `NETBIRD_MANAGEMENT_URL`
+(te same wartości, których używa analogiczny mechanizm w LivingBotFramework)
+oraz `ALPHAPUMP_UPDATE_SERVER_URL` — adres serwera aktualizacji w sieci
+NetBird, z `/update` na końcu, np. `http://100.64.0.1:40002/update`.
 
 #### Kopie zapasowe
 
