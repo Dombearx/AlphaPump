@@ -857,6 +857,16 @@ każdym żądaniu), lecz komunikatem: „brak uprawnień" zamiast pięciu ekran�
 `/admin/*` dostały tylko te trzy rzeczy, których nigdzie indziej nie ma: lista
 i edycja kont, liczby systemowe i porządkowanie cache'u re-rankera.
 
+Biblioteka jest w panelu **kompletna**: dodawanie, zmiana i usuwanie ćwiczeń
+razem z tagiem głównym, tagami dodatkowymi, siłownią i notatką, oraz dodawanie,
+zmiana nazwy i usuwanie tagów. Przeglądanie biblioteki przed rozdaniem aplikacji
+nie wymaga więc telefonu. Reguły formularza mieszkają w
+`apps/admin/src/lib/exercise-draft.ts` i są przetestowane bez renderowania —
+dwie z nich są domenowe, a nie kosmetyczne: tag główny nie może się powtórzyć
+wśród dodatkowych (inaczej ćwiczenie liczyłoby się do celu cyklu dwa razy),
+a `PATCH` niesie **wyłącznie** zmienione pola (komplet podbijałby `updatedAt`
+na wszystkich urządzeniach także wtedy, gdy nic się nie zmieniło).
+
 Kont panel nie usuwa i nie będzie: konto jest autorem ćwiczeń i właścicielem serii,
 więc jego usunięcie albo osieroca cudze dane, albo wymaga kaskady niszczącej
 historię grupy. Właściwą operacją jest blokada — dane zostają, człowiek nie wchodzi.

@@ -116,6 +116,70 @@ export function Field({
   );
 }
 
+const controlStyles =
+  'w-full rounded-lg border border-border bg-elevated px-3 py-2 text-sm text-text ' +
+  'placeholder:text-muted focus:border-accent focus:outline-none disabled:opacity-50';
+
+export type SelectProps = React.SelectHTMLAttributes<HTMLSelectElement>;
+
+export function Select({ className, ...props }: SelectProps) {
+  return <select className={cn(controlStyles, className)} {...props} />;
+}
+
+export type TextareaProps = React.TextareaHTMLAttributes<HTMLTextAreaElement>;
+
+export function Textarea({ className, ...props }: TextareaProps) {
+  return <textarea className={cn(controlStyles, 'resize-y', className)} {...props} />;
+}
+
+/**
+ * Przełączalny znacznik — wybór wielu wartości z krótkiej listy.
+ *
+ * Zamiast `<select multiple>`, który wymaga trzymania klawisza do odznaczenia
+ * i nie pokazuje wybranych bez przewijania. Tagów dodatkowych jest kilkanaście,
+ * więc wszystkie mieszczą się na ekranie naraz — a to samo rozwiązanie
+ * (`ChipRow`) ma aplikacja mobilna, więc wybór tagów wygląda tak samo po obu
+ * stronach.
+ */
+export function ToggleChip({
+  label,
+  selected,
+  color,
+  disabled = false,
+  onToggle,
+}: {
+  label: string;
+  selected: boolean;
+  /** Kropka w kolorze tagu; pomijana tam, gdzie znacznik nie dotyczy tagu. */
+  color?: string;
+  disabled?: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      disabled={disabled}
+      onClick={onToggle}
+      className={cn(
+        'inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs transition-colors',
+        'disabled:cursor-not-allowed disabled:opacity-50',
+        selected
+          ? 'border-accent bg-accent/15 text-accent'
+          : 'border-border bg-elevated text-muted hover:text-text',
+      )}
+    >
+      {color !== undefined && (
+        <span
+          className="inline-block size-2.5 rounded-full border border-border"
+          style={{ backgroundColor: color }}
+        />
+      )}
+      {label}
+    </button>
+  );
+}
+
 /* ------------------------------------------------------------------- odznaka */
 
 const badgeStyles = cva('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium', {

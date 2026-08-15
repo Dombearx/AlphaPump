@@ -156,19 +156,18 @@ w oknie aplikacji, a potem system pyta o podmianę pakietu.
 
 ## G. Przegląd biblioteki przed rozdaniem
 
-Podział pracy jest tu niesymetryczny i warto o tym wiedzieć zawczasu:
+Wszystko robisz w panelu, zakładka *Biblioteka*: przeglądanie, dodawanie,
+zmienianie i usuwanie — zarówno ćwiczeń, jak i tagów. Formularz ćwiczenia
+obejmuje nazwę, typ logowania, tag główny, tagi dodatkowe, siłownię i notatkę.
 
-| Czynność | Gdzie |
-| -------- | ----- |
-| przejrzeć wszystkie ćwiczenia i tagi | panel, zakładka *Biblioteka* |
-| zmienić nazwę ćwiczenia lub tagu | panel |
-| usunąć ćwiczenie lub tag | panel |
-| **dodać** ćwiczenie lub tag | **aplikacja na telefonie** |
+Biblioteka jest wspólna dla całej grupy, więc dodane pozycje zobaczą wszyscy.
+Jedyna różnica między ćwiczeniem wbudowanym a dodanym przez Ciebie to autor
+(konto systemowe kontra Twoje) — na widoczność ani na filtrowanie po tagach nie
+wpływa to w żaden sposób.
 
-Panel nie ma formularza dodawania — biblioteka jest wspólna dla całej grupy,
-więc nowe pozycje dodane z telefonu zobaczą wszyscy. Jedyna różnica: ćwiczenia
-wbudowane mają jako autora konto systemowe, a dodane przez Ciebie — Ciebie. Na
-widoczność i filtrowanie po tagach nie wpływa to w żaden sposób.
+Kolejność ma znaczenie w jedną stronę: **najpierw tagi, potem ćwiczenia**. Tag
+główny jest wymagany, więc przy pustej liście tagów przycisk dodawania ćwiczenia
+jest nieaktywny.
 
 Dwie reguły, które panel egzekwuje i które łatwo wziąć za błąd:
 
