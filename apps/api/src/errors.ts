@@ -16,11 +16,12 @@ export const ERROR_CODES = [
   'conflict',
   'rate_limited',
   'internal',
+  'unavailable',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
-const STATUS_BY_CODE: Record<ErrorCode, 400 | 401 | 403 | 404 | 409 | 429 | 500> = {
+const STATUS_BY_CODE: Record<ErrorCode, 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503> = {
   bad_request: 400,
   unauthorized: 401,
   forbidden: 403,
@@ -28,6 +29,7 @@ const STATUS_BY_CODE: Record<ErrorCode, 400 | 401 | 403 | 404 | 409 | 429 | 500>
   conflict: 409,
   rate_limited: 429,
   internal: 500,
+  unavailable: 503,
 };
 
 export class ApiError extends Error {
@@ -53,6 +55,8 @@ export const notFound = (message: string) => new ApiError('not_found', message);
 export const conflict = (message: string, details?: unknown) =>
   new ApiError('conflict', message, details);
 export const rateLimited = (message: string) => new ApiError('rate_limited', message);
+export const internal = (message: string) => new ApiError('internal', message);
+export const unavailable = (message: string) => new ApiError('unavailable', message);
 
 export const errorResponseSchema = z.object({
   error: z.object({

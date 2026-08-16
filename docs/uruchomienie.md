@@ -85,11 +85,16 @@ Uzupełnij `deploy/.env`:
 | `OPENROUTER_API_KEY` | [openrouter.ai](https://openrouter.ai) → *Keys*. Puste = wykrywanie duplikatów liczone z samej pisowni; to poprawny stan, nie błąd |
 
 > **Segregacja zgłoszeń wymaga uwagi.** Usługa `triage` bez `DISCORD_BOT_TOKEN`,
-> `DISCORD_CHANNEL_ID` i `TRIAGE_GITHUB_TOKEN` kończy proces przy starcie
-> i wpada w pętlę restartów (nazwę brakującej zmiennej widać
-> w `docker compose logs triage`). Reszta stosu działa normalnie. Jeśli nie
-> chcesz jej teraz uruchamiać, zakomentuj usługę `triage` w
+> `DISCORD_CHANNEL_ID`, `TRIAGE_GITHUB_TOKEN` i `TRIAGE_HTTP_TOKEN` kończy
+> proces przy starcie i wpada w pętlę restartów (nazwę brakującej zmiennej
+> widać w `docker compose logs triage`). Reszta stosu działa normalnie. Jeśli
+> nie chcesz jej teraz uruchamiać, zakomentuj usługę `triage` w
 > `deploy/docker-compose.yml`.
+>
+> `TRIAGE_HTTP_TOKEN` jest też tym, czym API i triage dogadują się w środku
+> sieci Compose: bez niego przycisk „Uruchom przegląd zgłoszeń" w panelu
+> (ekran „Zgłoszenia") jest niedostępny, a przegląd nadal dzieje się codziennie
+> o umówionej godzinie.
 
 Start:
 

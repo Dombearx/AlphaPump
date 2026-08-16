@@ -12,6 +12,7 @@ import { createAuth } from './auth.js';
 import { loadConfig } from './config.js';
 import { createDatabase, runMigrations } from './db.js';
 import { createOpenRouterLayers } from './duplicates/index.js';
+import { createTriageClient } from './triage.js';
 
 export { createApp, type App } from './app.js';
 export { createAuth, type Auth } from './auth.js';
@@ -19,6 +20,7 @@ export { loadConfig, type AppConfig } from './config.js';
 export { createDatabase, runMigrations, type Database } from './db.js';
 export { buildOpenApiDocument } from './openapi.js';
 export { exportArchive, importArchive } from './transfer/index.js';
+export { createTriageClient, type TriageClient } from './triage.js';
 
 export async function main(): Promise<void> {
   const config = loadConfig();
@@ -32,7 +34,12 @@ export async function main(): Promise<void> {
   // ten sam wynik: `null` w konfiguracji i wykrywanie duplikatów sprowadzone do
   // warstwy leksykalnej, bez żadnego wpływu na tworzenie ćwiczeń.
   const duplicates = createOpenRouterLayers(config.llm);
-  const app = createApp({ db: connection.db, auth, duplicates }, config);
+  // `undefined`, nie `null`: `AppDependencies.triage` jest opcjonalne dokładnie
+  // dlatego, żeby brak konfiguracji triage'a nie wymagał osobnej gałęzi tutaj —
+  // `createAdminRouter` traktuje pominięcie pola jako „panel nie wyzwoli
+  // przeglądu ręcznie".
+  const triage = config.triage ? createTriageClient(config.triage) : undefined;
+  const app = createApp({ db: connection.db, auth, duplicates, triage }, config);
 
   if (config.llm === null) {
     console.warn(

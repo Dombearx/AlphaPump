@@ -72,6 +72,28 @@ describe('konfiguracja', () => {
     ).toEqual({ clientId: 'id', clientSecret: 'sekret' });
   });
 
+  it('trzyma triage wyłączone, dopóki nie skonfigurowano obu wartości naraz', () => {
+    expect(loadConfig(MINIMAL).triage).toBeNull();
+    expect(loadConfig({ ...MINIMAL, TRIAGE_URL: 'http://triage:8090' }).triage).toBeNull();
+    expect(loadConfig({ ...MINIMAL, TRIAGE_HTTP_TOKEN: 'sekret' }).triage).toBeNull();
+  });
+
+  it('nie wywala się na pustym TRIAGE_URL — tak Compose przekazuje brak tokenu', () => {
+    // `docker-compose.yml` liczy `TRIAGE_URL` z `${TRIAGE_HTTP_TOKEN:+…}`: bez
+    // tokenu do kontenera trafia pusty napis, nie brak zmiennej.
+    expect(loadConfig({ ...MINIMAL, TRIAGE_URL: '', TRIAGE_HTTP_TOKEN: '' }).triage).toBeNull();
+  });
+
+  it('włącza triage przy komplecie adresu i tokenu', () => {
+    expect(
+      loadConfig({
+        ...MINIMAL,
+        TRIAGE_URL: 'http://triage:8090',
+        TRIAGE_HTTP_TOKEN: 'sekret',
+      }).triage,
+    ).toEqual({ url: 'http://triage:8090', token: 'sekret' });
+  });
+
   it('dokłada BETTER_AUTH_URL do zaufanych origin-ów', () => {
     const config = loadConfig({
       ...MINIMAL,

@@ -24,6 +24,7 @@ const NAV = [
   { to: '/', label: 'Przegląd' },
   { to: '/users', label: 'Konta' },
   { to: '/library', label: 'Biblioteka' },
+  { to: '/triage', label: 'Zgłoszenia' },
   { to: '/data', label: 'Dane' },
 ] as const;
 

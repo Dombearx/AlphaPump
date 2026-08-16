@@ -25,7 +25,7 @@ WORKDIR /app
 # więc poprawka w prompcie nie unieważnia warstwy z pobranymi paczkami.
 COPY services/triage/pyproject.toml ./
 RUN pip install --no-cache-dir \
-    "discord.py>=2.4,<3" "httpx>=0.27,<1" "apscheduler>=3.10,<4"
+    "discord.py>=2.4,<3" "httpx>=0.27,<1" "apscheduler>=3.10,<4" "aiohttp>=3.9,<4"
 
 COPY services/triage/src ./src
 RUN pip install --no-cache-dir --no-deps .
@@ -42,9 +42,13 @@ USER triage
 ENV TRIAGE_FEEDBACK_DIR=/data/feedback \
     TRIAGE_STATE_DB=/data/state/triage.sqlite3
 
-# Brak `HEALTHCHECK` jest świadomy. Usługa nie wystawia żadnego portu, a jej
-# „zdrowie" to utrzymane połączenie z Discordem — czego z zewnątrz procesu nie
-# widać inaczej niż przez zapytanie do API Discorda, czyli kosztem limitu zapytań
-# co kilkanaście sekund. Zerwane połączenie klient odtwarza sam, a upadek procesu
-# łapie `restart: unless-stopped`.
+# Port jest wewnętrzny do sieci Compose — patrz `http.py`. Wystawia dokładnie
+# jedną rzecz: ręczne wyzwolenie przeglądu z panelu administracyjnego.
+EXPOSE 8090
+
+# Brak `HEALTHCHECK` tutaj (w odróżnieniu od `api`/`web` w `docker-compose.yml`)
+# jest nadal świadomy: „zdrowie" tej usługi to głównie utrzymane połączenie
+# z Discordem, czego `/health` na porcie wyżej nie sprawdza — mówi tylko, że
+# serwer HTTP odpowiada, nie że przegląd cokolwiek zdziała. Zerwane połączenie
+# z Discordem klient odtwarza sam, a upadek procesu łapie `restart: unless-stopped`.
 CMD ["python", "-m", "alphapump_triage"]

@@ -66,6 +66,13 @@ services:
       # Ścieżka w kontenerze jest stała — host decyduje, co się pod nią kryje,
       # przez wolumin niżej. Aplikacja nie musi znać żadnej z tych decyzji.
       FEEDBACK_DIR: /data/feedback
+      # Adres usługi `triage` **w sieci Compose** — nazwa serwisu niżej jest
+      # jednocześnie nazwą hosta, bez żadnego portu na gospodarzu. Puste znaczy
+      # „panel administracyjny nie może wyzwolić przeglądu ręcznie"; endpoint
+      # `/admin/feedback/run` oddaje wtedy 503, a przegląd dalej dzieje się
+      # o umówionej godzinie w usłudze `triage`.
+      TRIAGE_URL: ${TRIAGE_HTTP_TOKEN:+http://triage:${TRIAGE_HTTP_PORT:-8090}}
+      TRIAGE_HTTP_TOKEN: ${TRIAGE_HTTP_TOKEN:-}
     # Brak `ports:` również tutaj: do API wchodzi się przez Caddy'ego, żeby panel
     # i API miały jedno pochodzenie. Kopie zapasowe wołają CLI przez
     # `docker compose exec`, więc też nie potrzebują portu.
@@ -164,6 +171,11 @@ services:
       TRIAGE_LABEL_FEATURE: ${TRIAGE_LABEL_FEATURE:-enhancement}
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
       DISCORD_CHANNEL_ID: ${DISCORD_CHANNEL_ID:-}
+      # Port jest wewnętrzny do sieci Compose — brak `ports:` niżej znaczy, że
+      # nikt spoza tej sieci go nie dotknie. Token jest drugą warstwą, patrz
+      # `services/triage/src/alphapump_triage/http.py`.
+      TRIAGE_HTTP_PORT: ${TRIAGE_HTTP_PORT:-8090}
+      TRIAGE_HTTP_TOKEN: ${TRIAGE_HTTP_TOKEN:-}
     volumes:
       # Zgłoszenia **tylko do odczytu**. Usługa nie ma powodu kasować plików,
       # a stan „co już przejrzane" trzyma we własnej bazie — pomyłka w kodzie nie

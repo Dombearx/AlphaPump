@@ -9,8 +9,10 @@
  */
 
 import { SYSTEM_USER } from '@alphapump/db';
-import type { AdminUser, SystemStats } from '@alphapump/core';
+import type { AdminUser, FeedbackTriageReport, SystemStats } from '@alphapump/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { conflict } from '../src/errors.js';
+import type { TriageClient } from '../src/triage.js';
 import { createHarness, type Harness, type TestUser } from './harness.js';
 
 describe('panel administracyjny', () => {
@@ -213,5 +215,77 @@ describe('panel administracyjny', () => {
       headers: admin.headers,
     });
     expect(removedTag.status).toBe(204);
+  });
+
+  it('odmawia ręcznego przeglądu zgłoszeń, gdy triage nie jest skonfigurowany', async () => {
+    const response = await harness.json('POST', '/admin/feedback/run', {
+      headers: admin.headers,
+    });
+    expect(response.status).toBe(503);
+  });
+});
+
+describe('ręczny przegląd zgłoszeń zwrotnych', () => {
+  class FakeTriageClient implements TriageClient {
+    calls = 0;
+    nextError: Error | null = null;
+    report: FeedbackTriageReport = {
+      scanned: 2,
+      bugs: 1,
+      changeRequests: 1,
+      duplicates: 0,
+      failures: [],
+    };
+
+    async runDaily(): Promise<FeedbackTriageReport> {
+      this.calls += 1;
+      if (this.nextError) throw this.nextError;
+      return this.report;
+    }
+  }
+
+  let harness: Harness;
+  let admin: TestUser;
+  let member: TestUser;
+  let triage: FakeTriageClient;
+
+  beforeAll(async () => {
+    triage = new FakeTriageClient();
+    harness = await createHarness({ triage });
+    admin = await harness.signUp('szef@example.com', 'haslo-testowe-123', 'Szef');
+    member = await harness.signUp('kuba2@example.com', 'haslo-testowe-123', 'Kuba');
+    await harness.promoteToAdmin(admin);
+  });
+
+  afterAll(async () => {
+    await harness.close();
+  });
+
+  it('jest zastrzeżony dla administratora', async () => {
+    const response = await harness.json('POST', '/admin/feedback/run', {
+      headers: member.headers,
+    });
+    expect(response.status).toBe(403);
+    expect(triage.calls).toBe(0);
+  });
+
+  it('wyzwala przegląd i oddaje podsumowanie', async () => {
+    const response = await harness.json<FeedbackTriageReport>('POST', '/admin/feedback/run', {
+      headers: admin.headers,
+    });
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(triage.report);
+    expect(triage.calls).toBe(1);
+  });
+
+  it('oddaje 409, gdy usługa triage mówi, że przegląd już trwa', async () => {
+    triage.nextError = conflict('Przegląd zgłoszeń już trwa — spróbuj ponownie za chwilę');
+
+    const response = await harness.json('POST', '/admin/feedback/run', {
+      headers: admin.headers,
+    });
+    expect(response.status).toBe(409);
+
+    triage.nextError = null;
   });
 });

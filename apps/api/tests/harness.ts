@@ -26,6 +26,7 @@ import type { AppConfig } from '../src/config.js';
 import type { Database } from '../src/db.js';
 import type { DuplicateLayers } from '../src/duplicates/layers.js';
 import type { DerivedRecomputation } from '../src/sync/derived.js';
+import type { TriageClient } from '../src/triage.js';
 import { users } from '../src/schema.js';
 
 export const TEST_CONFIG: AppConfig = {
@@ -45,6 +46,9 @@ export const TEST_CONFIG: AppConfig = {
   // tymczasowym — testy zgłoszeń piszą naprawdę na dysk i nie mogą dzielić
   // katalogu między sobą.
   feedbackDir: './data/feedback',
+  // Domyślnie wyłączony jak `llm` wyżej — testy podstawiają atrapę klienta
+  // przez `HarnessOptions.triage`, kiedy sprawdzają `POST /admin/feedback/run`.
+  triage: null,
 };
 
 export interface TestUser {
@@ -63,6 +67,8 @@ export interface HarnessOptions {
    * wyłączona" — czyli dokładnie stan, w którym musi działać tworzenie ćwiczeń.
    */
   duplicates?: DuplicateLayers;
+  /** Klient usługi triage — pominięcie znaczy „panel nie wyzwoli przeglądu ręcznie". */
+  triage?: TriageClient;
 }
 
 export interface Harness {
@@ -98,7 +104,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 
   const auth = createAuth(db, config);
   const app = createApp(
-    { db, auth, derived: options.derived, duplicates: options.duplicates },
+    { db, auth, derived: options.derived, duplicates: options.duplicates, triage: options.triage },
     config,
   );
 
