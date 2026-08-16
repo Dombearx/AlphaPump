@@ -62,7 +62,12 @@ const environmentSchema = z.object({
    * wewnątrz samej usługi `triage`, niezależnie od tego, czy API potrafi go
    * wyzwolić ręcznie.
    */
-  TRIAGE_URL: z.url().optional(),
+  // `z.string()`, nie `z.url()`: Compose przekazuje pusty napis, gdy
+  // `TRIAGE_HTTP_TOKEN` nie jest ustawiony (`${TRIAGE_HTTP_TOKEN:+…}` w
+  // `docker-compose.yml`), a `.optional()` łapie tylko `undefined` — pusty
+  // napis trafiłby w `z.url()` i wywalał start serwera komunikatem
+  // „Invalid URL" na stosie, który świadomie triage'a nie skonfigurował.
+  TRIAGE_URL: z.string().optional(),
   TRIAGE_HTTP_TOKEN: z.string().optional(),
 
   /* ------------------------------------------- warstwa semantyczna (etap 12) */
@@ -189,11 +194,10 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
         }
       : null;
 
+  const triageUrl = environmentVariables.TRIAGE_URL?.trim() ?? '';
   const triageToken = environmentVariables.TRIAGE_HTTP_TOKEN?.trim() ?? '';
   const triage =
-    environmentVariables.TRIAGE_URL && triageToken.length > 0
-      ? { url: environmentVariables.TRIAGE_URL, token: triageToken }
-      : null;
+    triageUrl.length > 0 && triageToken.length > 0 ? { url: triageUrl, token: triageToken } : null;
 
   return {
     nodeEnv: environmentVariables.NODE_ENV,
