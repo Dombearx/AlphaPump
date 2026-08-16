@@ -19,6 +19,7 @@ import {
   adminUserListSchema,
   archiveSchema,
   exerciseSchema,
+  feedbackTriageReportSchema,
   importReportSchema,
   systemStatsSchema,
   tagSchema,
@@ -26,6 +27,7 @@ import {
   type Archive,
   type CreateExerciseInput,
   type Exercise,
+  type FeedbackTriageReport,
   type ImportReport,
   type SystemStats,
   type Tag,
@@ -170,6 +172,17 @@ export const pruneTombstones = (
     body: {},
     fetchImpl,
   });
+
+/* --------------------------------------------------------- zgłoszenia zwrotne */
+
+/**
+ * Ręczne wyzwolenie przeglądu zgłoszeń — sprawdzenie, klasyfikacja, założenie
+ * issue albo otwarcie dyskusji na Discordzie. Ten sam przebieg co codzienny,
+ * tylko na żądanie z panelu; wykonuje go `services/triage`, API jedynie
+ * przekazuje wywołanie.
+ */
+export const runFeedbackTriage = (fetchImpl?: typeof fetch): Promise<FeedbackTriageReport> =>
+  request('/admin/feedback/run', feedbackTriageReportSchema, { method: 'POST', fetchImpl });
 
 /* -------------------------------------------------------------- biblioteka */
 

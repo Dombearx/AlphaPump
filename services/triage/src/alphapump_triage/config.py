@@ -96,6 +96,9 @@ class Config:
     max_attempts: int
     dry_run: bool
 
+    http_port: int
+    http_token: str
+
     @property
     def github_owner(self) -> str:
         return self.github_repo.split("/", 1)[0]
@@ -155,4 +158,9 @@ def load_config() -> Config:
         # i codziennie kosztował te same zapytania do LLM-a.
         max_attempts=_positive_int("TRIAGE_MAX_ATTEMPTS", 3),
         dry_run=_flag("TRIAGE_DRY_RUN"),
+        # Port jest wewnętrzny do sieci Compose (usługa nie ma `ports:`), więc
+        # ma sensowną wartość domyślną. Token nie ma — to jedyne, co chroni
+        # ręczne wyzwolenie przeglądu przed każdym, kto trafi w ten port.
+        http_port=_positive_int("TRIAGE_HTTP_PORT", 8090),
+        http_token=_required("TRIAGE_HTTP_TOKEN"),
     )

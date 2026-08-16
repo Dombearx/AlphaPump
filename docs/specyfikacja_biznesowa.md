@@ -352,7 +352,10 @@ Zakres panelu administracyjnego obejmuje:
 - zarządzanie użytkownikami,
 - podstawowe zarządzanie bazą ćwiczeń,
 - podstawowe zarządzanie tagami,
-- podstawowy wgląd w dane systemowe.
+- podstawowy wgląd w dane systemowe,
+- ręczne wyzwolenie przeglądu zgłoszeń zwrotnych (sprawdzenie, klasyfikacja, założenie issue na
+  GitHubie albo otwarcie dyskusji na Discordzie) — ten sam przebieg, który dzieje się codziennie
+  automatycznie.
 
 Nie są wymagane rozbudowane workflow moderacyjne ani zaawansowane narzędzia analityczne dla administratora. 
 

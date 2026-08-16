@@ -15,8 +15,9 @@
  * dwa miejsca, w których trzeba pamiętać o `server_seq`, tombstonie i regule
  * „tag używany przez ćwiczenia nie znika".
  *
- * Zostają więc trzy rzeczy, których nigdzie indziej nie ma: lista i edycja kont,
- * przegląd liczb systemowych i zadanie porządkowe cache'u odpowiedzi modelu.
+ * Zostają więc cztery rzeczy, których nigdzie indziej nie ma: lista i edycja
+ * kont, przegląd liczb systemowych, zadanie porządkowe cache'u odpowiedzi
+ * modelu i ręczne wyzwolenie przeglądu zgłoszeń zwrotnych (`services/triage`).
  *
  * ## Dwie blokady, które chronią administratora od siebie samego
  *
@@ -31,6 +32,7 @@ import { SYSTEM_USER } from '@alphapump/db';
 import {
   adminUserListSchema,
   adminUserSchema,
+  feedbackTriageReportSchema,
   systemStatsSchema,
   updateUserInputSchema,
   type AdminUser,
@@ -40,7 +42,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import type { AppDependencies, AppEnvironment } from '../context.js';
 import { NO_LAYERS, DEFAULT_CACHE_RETENTION_DAYS, pruneCache } from '../duplicates/index.js';
-import { conflict, forbidden, notFound } from '../errors.js';
+import { conflict, forbidden, notFound, unavailable } from '../errors.js';
 import { requireAdmin } from '../middleware/authenticate.js';
 import { validateJson, validateParam } from '../middleware/validate.js';
 import type { RouteSpec } from '../openapi.js';
@@ -124,6 +126,22 @@ export const adminRoutes: RouteSpec[] = [
     body: pruneCacheBodySchema,
     responses: [
       { status: 200, description: 'Liczba zdjętych wpisów', schema: pruneCacheResponseSchema },
+    ],
+  },
+  {
+    method: 'post',
+    path: '/admin/feedback/run',
+    summary: 'Ręczny przegląd zgłoszeń zwrotnych',
+    description:
+      'Wyzwala u usługi `services/triage` dokładnie ten sam przebieg, który dzieje się ' +
+      'codziennie o umówionej godzinie: sprawdza nowe zgłoszenia, klasyfikuje je i albo ' +
+      'zakłada issue na GitHubie, albo otwiera dyskusję na Discordzie.',
+    tag: 'administracja',
+    security: 'admin',
+    responses: [
+      { status: 200, description: 'Podsumowanie przebiegu', schema: feedbackTriageReportSchema },
+      { status: 409, description: 'Przegląd już trwa' },
+      { status: 503, description: 'Usługa triage nie jest skonfigurowana albo nieosiągalna' },
     ],
   },
 ];
@@ -297,6 +315,15 @@ export function createAdminRouter(dependencies: AppDependencies) {
       return context.json({ removed: await pruneCache(db, olderThanDays) });
     },
   );
+
+  router.post('/admin/feedback/run', async (context) => {
+    if (!dependencies.triage) {
+      throw unavailable(
+        'Usługa segregacji zgłoszeń nie jest skonfigurowana (brak TRIAGE_URL/TRIAGE_HTTP_TOKEN)',
+      );
+    }
+    return context.json(await dependencies.triage.runDaily());
+  });
 
   return router;
 }

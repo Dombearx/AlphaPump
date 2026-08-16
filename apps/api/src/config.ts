@@ -54,6 +54,17 @@ const environmentSchema = z.object({
    */
   FEEDBACK_DIR: nonEmpty.default('./data/feedback'),
 
+  /**
+   * Adres usługi `services/triage` w sieci Compose (np. `http://triage:8090`)
+   * i token, którym panel administracyjny wyzwala u niej przegląd na żądanie —
+   * patrz `POST /admin/feedback/run`. Bez obu naraz endpoint istnieje, ale
+   * oddaje 503: przegląd i tak dzieje się codziennie o umówionej godzinie
+   * wewnątrz samej usługi `triage`, niezależnie od tego, czy API potrafi go
+   * wyzwolić ręcznie.
+   */
+  TRIAGE_URL: z.url().optional(),
+  TRIAGE_HTTP_TOKEN: z.string().optional(),
+
   /* ------------------------------------------- warstwa semantyczna (etap 12) */
 
   /**
@@ -93,6 +104,11 @@ export interface GoogleCredentials {
   clientSecret: string;
 }
 
+export interface TriageConfig {
+  url: string;
+  token: string;
+}
+
 /**
  * Konfiguracja warstwy semantycznej. `null` w `AppConfig.llm` znaczy „warstwa
  * wyłączona" — i jest to stan w pełni obsługiwany, nie awaria konfiguracji.
@@ -127,6 +143,8 @@ export interface AppConfig {
   llm: LlmConfig | null;
   /** Katalog na zgłoszenia zwrotne — patrz `FEEDBACK_DIR`. */
   feedbackDir: string;
+  /** `null`, gdy panel nie ma jak wyzwolić przeglądu zgłoszeń ręcznie — patrz `TRIAGE_URL`. */
+  triage: TriageConfig | null;
 }
 
 export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -171,6 +189,12 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
         }
       : null;
 
+  const triageToken = environmentVariables.TRIAGE_HTTP_TOKEN?.trim() ?? '';
+  const triage =
+    environmentVariables.TRIAGE_URL && triageToken.length > 0
+      ? { url: environmentVariables.TRIAGE_URL, token: triageToken }
+      : null;
+
   return {
     nodeEnv: environmentVariables.NODE_ENV,
     host: environmentVariables.HOST,
@@ -182,5 +206,6 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
     google,
     llm,
     feedbackDir: environmentVariables.FEEDBACK_DIR,
+    triage,
   };
 }

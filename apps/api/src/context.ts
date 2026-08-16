@@ -7,6 +7,7 @@ import type { Auth } from './auth.js';
 import type { Database } from './db.js';
 import type { DuplicateLayers } from './duplicates/layers.js';
 import type { DerivedRecomputation } from './sync/derived.js';
+import type { TriageClient } from './triage.js';
 
 /** Skąd wzięło się uwierzytelnienie — przydaje się w logach i w testach. */
 export type Credential = 'session' | 'api-key';
@@ -45,4 +46,12 @@ export interface AppDependencies {
    * i rachunek u dostawcy modeli. Produkcja składa je z konfiguracji w `index.ts`.
    */
   duplicates?: DuplicateLayers;
+  /**
+   * Klient usługi `services/triage` do ręcznego wyzwolenia przeglądu zgłoszeń
+   * z panelu administracyjnego. Pominięcie pola znaczy **panel nie może
+   * wyzwolić przeglądu** — `POST /admin/feedback/run` oddaje wtedy 503, tak
+   * jak przy braku `TRIAGE_URL`/`TRIAGE_HTTP_TOKEN` w środowisku. Przegląd
+   * dzieje się mimo to codziennie o umówionej godzinie wewnątrz `triage`.
+   */
+  triage?: TriageClient;
 }

@@ -133,6 +133,7 @@ name = "alphapump-triage"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "aiohttp" },
     { name = "apscheduler" },
     { name = "discord-py" },
     { name = "httpx" },
@@ -147,6 +148,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiohttp", specifier = ">=3.9,<4" },
     { name = "apscheduler", specifier = ">=3.10,<4" },
     { name = "discord-py", specifier = ">=2.4,<3" },
     { name = "httpx", specifier = ">=0.27,<1" },

@@ -7,6 +7,10 @@ dependencies = [
   "discord.py>=2.4,<3",
   "httpx>=0.27,<1",
   "apscheduler>=3.10,<4",
+  # Wystawia ręczne wyzwolenie przeglądu (`http.py`) panelowi administracyjnemu.
+  # Już wchodzi tranzytywnie przez discord.py — tu jest jawnie, bo `aiohttp.web`
+  # jest częścią kontraktu usługi, nie przypadkiem instalacji.
+  "aiohttp>=3.9,<4",
 ]
 
 [project.optional-dependencies]

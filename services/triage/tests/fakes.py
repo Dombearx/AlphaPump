@@ -107,6 +107,8 @@ def make_config(**overrides) -> Config:
         pr_poll_seconds=60,
         max_attempts=3,
         dry_run=False,
+        http_port=8090,
+        http_token="test",
     )
     defaults.update(overrides)
     return Config(**defaults)

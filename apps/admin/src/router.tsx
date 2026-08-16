@@ -10,6 +10,7 @@
 import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router';
 import { Layout } from './components/layout';
 import { DataPage } from './pages/data';
+import { FeedbackPage } from './pages/feedback';
 import { LibraryPage } from './pages/library';
 import { OverviewPage } from './pages/overview';
 import { UsersPage } from './pages/users';
@@ -20,6 +21,10 @@ const routes = [
   createRoute({ getParentRoute: () => rootRoute, path: '/', component: OverviewPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/users', component: UsersPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/library', component: LibraryPage }),
+  // Nie `/feedback`: ta ścieżka jest już zajęta przez `POST /feedback` API
+  // (zgłoszenia z aplikacji mobilnej) i `deploy/Caddyfile` kierowałby tam
+  // żądanie GET przy bezpośrednim wejściu na ten ekran — patrz `deploy.test.ts`.
+  createRoute({ getParentRoute: () => rootRoute, path: '/triage', component: FeedbackPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/data', component: DataPage }),
 ];
 

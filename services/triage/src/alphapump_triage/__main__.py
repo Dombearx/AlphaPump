@@ -20,6 +20,7 @@ import os
 import sys
 
 import discord
+from aiohttp import web
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
@@ -29,6 +30,7 @@ from .discord_bot import DiscordChat, TriageBot
 from .dryrun import DryRunChat, DryRunIssueTracker
 from .feedback import FeedbackReader
 from .github import GitHubIssues
+from .http import create_http_app
 from .openrouter import OpenRouterLlm
 from .service import TriageService
 from .state import State
@@ -65,6 +67,15 @@ async def _run(config: Config, once: bool) -> None:
     tracker = DryRunIssueTracker(github) if config.dry_run else github
     scheduler = AsyncIOScheduler(timezone=config.timezone)
 
+    # Dzielona między planistę i serwer HTTP: przegląd o umówionej godzinie
+    # i przegląd wywołany ręcznie z panelu administracyjnego nie mogą ruszyć
+    # się naraz — obydwa czytają i oznaczają te same zgłoszenia.
+    run_lock = asyncio.Lock()
+
+    async def run_daily_scheduled() -> None:
+        async with run_lock:
+            await service.run_daily()
+
     async def handle_mention(thread_id: str) -> None:
         await service.handle_mention(thread_id)
 
@@ -76,7 +87,7 @@ async def _run(config: Config, once: bool) -> None:
             return
 
         scheduler.add_job(
-            _guarded(service.run_daily, "przegląd dzienny"),
+            _guarded(run_daily_scheduled, "przegląd dzienny"),
             CronTrigger(
                 hour=config.daily_hour, minute=config.daily_minute, timezone=config.timezone
             ),
@@ -113,11 +124,25 @@ async def _run(config: Config, once: bool) -> None:
     if config.dry_run:
         logger.warning("TRYB PRÓBNY: nic nie zostanie zapisane ani wysłane")
 
+    # Tryb `once` jest jednorazowym przebiegiem z CLI, bez publiczności dla
+    # panelu administracyjnego — serwer HTTP nie ma tam czego robić.
+    http_runner: web.AppRunner | None = None
+    if not once:
+        http_app = create_http_app(config.http_token, service.run_daily, run_lock)
+        http_runner = web.AppRunner(http_app)
+        await http_runner.setup()
+        await web.TCPSite(http_runner, "0.0.0.0", config.http_port).start()
+        logger.info(
+            "serwer HTTP nasłuchuje na porcie %d (ręczne wyzwolenie przeglądu)", config.http_port
+        )
+
     try:
         await bot.start(config.discord_token)
     finally:
         if scheduler.running:
             scheduler.shutdown(wait=False)
+        if http_runner is not None:
+            await http_runner.cleanup()
         # `close()` również wtedy, gdy `start()` poległo na logowaniu: klient
         # zdążył już otworzyć własną sesję HTTP, a niedomknięta wypisuje przy
         # wyjściu ostrzeżenie, które wygląda jak awaria, a nią nie jest.

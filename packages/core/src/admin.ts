@@ -94,6 +94,25 @@ export const systemStatsSchema = z.object({
 
 export type SystemStats = z.infer<typeof systemStatsSchema>;
 
+/* -------------------------------------------------- segregacja zgłoszeń */
+
+/**
+ * Wynik przeglądu zgłoszeń zwrotnych wyzwolonego z panelu — sprawdzenie,
+ * klasyfikacja, założenie issue albo otwarcie dyskusji na Discordzie. Kształt
+ * odpowiada `DailyReport` z `services/triage/src/alphapump_triage/models.py`;
+ * `failures` jest listą, nie liczbą, bo administrator, który widzi „2 błędy",
+ * i tak musi zajrzeć do logu usługi — nazwa pliku od razu mówi, którego.
+ */
+export const feedbackTriageReportSchema = z.object({
+  scanned: z.int().min(0),
+  bugs: z.int().min(0),
+  changeRequests: z.int().min(0),
+  duplicates: z.int().min(0),
+  failures: z.array(z.object({ file: z.string(), error: z.string() })),
+});
+
+export type FeedbackTriageReport = z.infer<typeof feedbackTriageReportSchema>;
+
 /* ------------------------------------------------------- transfer danych */
 
 const transferCountsSchema = z.object({
