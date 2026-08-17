@@ -5,12 +5,12 @@ Wants=network-online.target
 
 [Service]
 User=domin
-WorkingDirectory=/opt/alphapump
+WorkingDirectory=/home/domin/alphapump
 # Katalog z wydaniami aplikacji, ten sam, który compose montuje Caddy'emu jako
 # `/srv/pobierz`. Domyślna wartość serwera (`deploy/apk`) odpowiada domyślnej
 # w compose — odkomentuj i ustaw ścieżkę bezwzględną, jeśli zmieniasz `APK_DIR`
 # w `deploy/.env`. Patrz komentarz przy tej zmiennej w `deploy/.env.example`.
-# Environment=UPDATE_SERVER_APK_DIR=/opt/alphapump/deploy/apk
+# Environment=UPDATE_SERVER_APK_DIR=/home/domin/alphapump/deploy/apk
 # Login shell so uv is picked up from the profile wherever its installer put
 # it, rather than hardcoding a path here. exec replaces the shell, so systemd
 # supervises uv itself instead of a wrapper.

@@ -8,14 +8,17 @@
 # Cron nie czyta żadnego pliku środowiska sam, dlatego wpisy niżej ładują go
 # jawnie. `set -a` sprawia, że zmienne z pliku stają się zmiennymi środowiska,
 # a nie tylko zmiennymi powłoki — bez tego skrypt ich nie zobaczy.
+#
+# Ścieżki do repozytorium podstaw swoje. Muszą być bezwzględne: cron nie startuje
+# w katalogu repozytorium i nie rozwija `~`.
 
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 SHELL=/bin/sh
 
 # Kopia codziennie o 3:17. Nierówna minuta jest celowa: o pełnej godzinie
 # minipc robi już aktualizacje systemu i odświeżanie NetBirda.
-17 3 * * * set -a; . /etc/alphapump/backup.env; set +a; /opt/alphapump/scripts/backup.sh >> /var/log/alphapump-backup.log 2>&1
+17 3 * * * set -a; . /etc/alphapump/backup.env; set +a; /home/domin/alphapump/scripts/backup.sh >> /var/log/alphapump-backup.log 2>&1
 
 # Cotygodniowe sprawdzenie stosu. Nie zastępuje monitoringu — jest po to, żeby
 # awaria bazy przy żywym procesie API nie czekała na zgłoszenie od użytkownika.
-23 6 * * 1 /opt/alphapump/deploy/smoke.sh http://localhost >> /var/log/alphapump-smoke.log 2>&1
+23 6 * * 1 /home/domin/alphapump/deploy/smoke.sh http://localhost >> /var/log/alphapump-smoke.log 2>&1

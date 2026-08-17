@@ -68,9 +68,26 @@ Logowania Google **nie ustawiaj** — jest domyślnie wyłączone i nic nie wyma
 
 ## C. minipc — stos aplikacji
 
+Katalog repozytorium jest Twoim wyborem — **nic w kodzie nie zna tej ścieżki**.
+Compose liczy ścieżki względne od `deploy/`, serwer aktualizacji od katalogu
+repozytorium, a jedno i drugie dostaje go z katalogu bieżącego. Niżej wszędzie
+`~/alphapump`: katalog domowy jest nawet wygodniejszy od `/opt`, bo repozytorium
+należy wtedy do tego samego użytkownika, na którym stoi serwer aktualizacji
+(krok D) — `git pull` w klonie założonym przez `sudo` w `/opt` odbiłby się
+o właściciela `root`.
+
+Ścieżka wchodzi jawnie do trzech plików i tam **musi być bezwzględna** (`~` nie
+rozwija się ani w systemd, ani w cronie):
+
+| Plik | Co poprawić |
+| ---- | ----------- |
+| `deploy/alphapump-update-server.service` | `WorkingDirectory=` (krok D) |
+| `deploy/crontab.example` | ścieżki do `scripts/backup.sh` i `deploy/smoke.sh` |
+| `deploy/backup.env.example` | `ALPHAPUMP_EXPORT_CMD`, a przy odtwarzaniu `ALPHAPUMP_IMPORT_CMD` |
+
 ```bash
-git clone https://github.com/Dombearx/AlphaPump /opt/alphapump
-cd /opt/alphapump/deploy
+git clone https://github.com/Dombearx/AlphaPump ~/alphapump
+cd ~/alphapump/deploy
 cp .env.example .env
 ```
 
@@ -91,15 +108,34 @@ Uzupełnij `deploy/.env`:
 > nie chcesz jej teraz uruchamiać, zakomentuj usługę `triage` w
 > `deploy/docker-compose.yml`.
 >
-> `TRIAGE_HTTP_TOKEN` jest też tym, czym API i triage dogadują się w środku
-> sieci Compose: bez niego przycisk „Uruchom przegląd zgłoszeń" w panelu
-> (ekran „Zgłoszenia") jest niedostępny, a przegląd nadal dzieje się codziennie
-> o umówionej godzinie.
+Skąd wziąć zmienne segregacji, jeśli ją uruchamiasz:
+
+| Zmienna | Skąd wziąć |
+| ------- | ---------- |
+| `DISCORD_BOT_TOKEN` | [discord.com/developers/applications](https://discord.com/developers/applications) → aplikacja → *Bot*. Bot potrzebuje intencji „MESSAGE CONTENT" i praw na kanale: wysyłanie wiadomości, tworzenie wątków publicznych, wysyłanie w wątkach, czytanie historii |
+| `DISCORD_CHANNEL_ID` | tryb dewelopera w Discordzie → PPM na kanale → *Kopiuj ID kanału*. Kanał **tekstowy**, nie forum |
+| `TRIAGE_GITHUB_TOKEN` | GitHub → *Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token*. Właściciel `Dombearx`, *Only select repositories* → `AlphaPump`, uprawnienia: *Issues* → Read and write, *Pull requests* → Read-only, *Contents* → Read-only |
+| `TRIAGE_HTTP_TOKEN` | znikąd — wymyślasz go sam: `openssl rand -base64 32` |
+
+Dwa ostatnie łatwo pomylić z czymś, czym nie są, więc wprost:
+
+- `TRIAGE_GITHUB_TOKEN` to token **konta**, nie sekret repozytorium — wpisujesz
+  go w `deploy/.env` na minipc, w GitHubie nie ustawiasz nic. Nie da się go
+  zastąpić `GITHUB_TOKEN`-em z Actions, bo segregacja działa poza Actions.
+  Issue powstają **jako Twoje konto** (widać to w autorze), a token ma datę
+  wygaśnięcia: po niej zakładanie issue przestaje działać i trzeba go wymienić.
+- `TRIAGE_HTTP_TOKEN` nie pochodzi z żadnej usługi zewnętrznej. To wspólny
+  sekret, którym API i triage dogadują się w środku sieci Compose: oba kontenery
+  czytają tę samą zmienną z tego samego `.env`, więc nie ma czego z niczym
+  uzgadniać. Port segregacji nie jest wystawiony na gospodarza, więc token jest
+  drugą warstwą, nie jedyną. Bez niego przycisk „Uruchom przegląd zgłoszeń"
+  w panelu (ekran „Zgłoszenia") jest niedostępny, a przegląd nadal dzieje się
+  codziennie o umówionej godzinie.
 
 Start:
 
 ```bash
-cd /opt/alphapump
+cd ~/alphapump
 docker compose -f deploy/docker-compose.yml up --detach --build --wait
 deploy/smoke.sh http://localhost
 ```
@@ -112,15 +148,18 @@ kontenerów.
 Przyjmuje wydania aplikacji z GitHub Actions i przebudowuje stos po mergu.
 
 ```bash
-sudo cp /opt/alphapump/deploy/alphapump-update-server.service /etc/systemd/system/
+# `WorkingDirectory` we wzorze to `/home/domin/alphapump` — podstaw swoją
+# ścieżkę bezwzględną przed skopiowaniem, patrz krok C
+sudo cp ~/alphapump/deploy/alphapump-update-server.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now alphapump-update-server
 systemctl status alphapump-update-server
 ```
 
-Jednostka zakłada checkout w `/opt/alphapump` i użytkownika `domin` należącego do
-grupy `docker` — inna ścieżka lub użytkownik znaczy edycję pliku przed
-skopiowaniem.
+Jednostka zakłada użytkownika `domin` należącego do grupy `docker` — inny
+użytkownik znaczy edycję pliku przed skopiowaniem, tak samo jak inna ścieżka.
+Użytkownik z `User=` musi być właścicielem repozytorium: usługa robi w nim
+`git pull` i `docker compose`.
 
 > **Po każdej zmianie w `deploy/update_server.py` trzeba go zrestartować ręcznie.**
 > `/update` robi `git pull`, ale nie przeładowuje samego siebie: usługa trzyma
@@ -147,7 +186,7 @@ w zakładce *Actions*.
 3. Nadaj sobie rolę administratora — bez niej panel nie wpuści:
 
    ```bash
-   cd /opt/alphapump
+   cd ~/alphapump
    docker compose -f deploy/docker-compose.yml exec db \
      psql -U alphapump -d alphapump \
      -c "UPDATE users SET role = 'admin' WHERE email = 'twoj@adres.pl';"
