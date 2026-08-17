@@ -22,6 +22,28 @@ Adres API trafia do Variables **świadomie**: i tak jest w środku pliku `.apk`
 (w `res/xml/network_security_config.xml`), więc ukrywanie go w sekretach
 zamazałoby tylko logi, utrudniając diagnostykę bez zysku.
 
+## Czego potrzebuje minipc
+
+Zanim zaczniesz krok C, na minipc musi być to:
+
+| Czego | Do czego | Sprawdzenie |
+| ----- | -------- | ----------- |
+| Docker z wtyczką Compose | cały stos | `docker compose version` |
+| użytkownik w grupie `docker` | serwer aktualizacji i kopie wołają `docker` bez `sudo` | `id -nG` zawiera `docker` |
+| `git` | klon i `git pull` przy wdrożeniu | `git --version` |
+| [`uv`](https://docs.astral.sh/uv/) | serwer aktualizacji z kroku D (jednostka woła `uv run`) | `uv --version` |
+| NetBird | jedyna droga do minipc — Actions wchodzą tą samą siecią | `ip -4 addr show wt0` |
+| `age` i `rclone` | kopie zapasowe z kroku H | `age --version`, `rclone version` |
+
+`uv` instaluje się jednym poleceniem
+(`curl -LsSf https://astral.sh/uv/install.sh | sh`) i ląduje w profilu
+użytkownika. Jednostka systemd celowo woła go przez powłokę logowania, więc nie
+musisz nigdzie wpisywać ścieżki — ale musi być zainstalowany na **tym**
+użytkowniku, na którym stoi usługa.
+
+Kopie zapasowe i segregacja zgłoszeń są niezależne od reszty: bez `age`
+i `rclone` stos wstanie i będzie działał, po prostu nie będzie kopii.
+
 ---
 
 ## A. Klucz podpisujący — raz, na zawsze
@@ -55,8 +77,17 @@ Zakładka **Secrets**:
 | `NETBIRD_ACCESS_KEY` | panel NetBirda → *Setup Keys* (te same, których używa `deploy.yml`) |
 | `NETBIRD_MANAGEMENT_URL` | panel NetBirda → adres instancji zarządzającej |
 | `ALPHAPUMP_UPDATE_SERVER_URL` | `http://domin-server.iron.sq:40002/update` |
+| `CLAUDE_CODE_OAUTH_TOKEN` | na własnej maszynie: `claude setup-token`. Token z subskrypcji, nie klucz API — nie obciąża rachunku za API |
+| `AGE_CI_IDENTITY` | **opcjonalny**: klucz prywatny `age` przeznaczony dla CI (krok H). Bez niego comiesięczna próba odtworzenia generuje parę jednorazową i nadal sprawdza cały łańcuch |
 
-Trzy ostatnie prawdopodobnie już masz — używa ich wdrożenie backendu.
+`NETBIRD_*` i `ALPHAPUMP_UPDATE_SERVER_URL` prawdopodobnie już masz — używa ich
+wdrożenie backendu.
+
+`CLAUDE_CODE_OAUTH_TOKEN` czyta `.github/workflows/agent-issue.yml`, czyli agent
+podejmujący issue założone przez segregację zgłoszeń. Bez niego pętla
+„zgłoszenie → issue → PR-ka" zatrzymuje się na issue: samo powstaje normalnie,
+ale nikt się za nie nie bierze. Jeśli nie uruchamiasz segregacji (krok C),
+sekret nie jest potrzebny.
 
 Zakładka **Variables**:
 
@@ -66,11 +97,33 @@ Zakładka **Variables**:
 
 Logowania Google **nie ustawiaj** — jest domyślnie wyłączone i nic nie wymaga.
 
+Jeszcze jedno miejsce w GitHubie, jeśli agent z `agent-issue.yml` ma otwierać
+PR-ki: *Settings → Actions → General → Workflow permissions* i zgoda
+„Allow GitHub Actions to create and approve pull requests". Bez niej przebieg
+dojdzie do końca i przewróci się dopiero na otwieraniu PR-ki.
+
 ## C. minipc — stos aplikacji
 
+Katalog repozytorium jest Twoim wyborem — **nic w kodzie nie zna tej ścieżki**.
+Compose liczy ścieżki względne od `deploy/`, serwer aktualizacji od katalogu
+repozytorium, a jedno i drugie dostaje go z katalogu bieżącego. Niżej wszędzie
+`~/AlphaPump`: katalog domowy jest nawet wygodniejszy od `/opt`, bo repozytorium
+należy wtedy do tego samego użytkownika, na którym stoi serwer aktualizacji
+(krok D) — `git pull` w klonie założonym przez `sudo` w `/opt` odbiłby się
+o właściciela `root`.
+
+Ścieżka wchodzi jawnie do trzech plików i tam **musi być bezwzględna** (`~` nie
+rozwija się ani w systemd, ani w cronie):
+
+| Plik | Co poprawić |
+| ---- | ----------- |
+| `deploy/alphapump-update-server.service` | `WorkingDirectory=` (krok D) |
+| `deploy/crontab.example` | ścieżki do `scripts/backup.sh` i `deploy/smoke.sh` |
+| `deploy/backup.env.example` | `ALPHAPUMP_EXPORT_CMD`, a przy odtwarzaniu `ALPHAPUMP_IMPORT_CMD` |
+
 ```bash
-git clone https://github.com/Dombearx/AlphaPump /opt/alphapump
-cd /opt/alphapump/deploy
+git clone https://github.com/Dombearx/AlphaPump ~/AlphaPump
+cd ~/AlphaPump/deploy
 cp .env.example .env
 ```
 
@@ -82,24 +135,68 @@ Uzupełnij `deploy/.env`:
 | `BETTER_AUTH_SECRET` | `openssl rand -base64 48` — od razu docelowy, jego zmiana wylogowuje wszystkich |
 | `BETTER_AUTH_URL` | `http://domin-server.iron.sq` — **musi** równać się `EXPO_PUBLIC_API_URL` |
 | `TRUSTED_ORIGINS` | `alphapump://` (jest we wzorze) |
-| `OPENROUTER_API_KEY` | [openrouter.ai](https://openrouter.ai) → *Keys*. Puste = wykrywanie duplikatów liczone z samej pisowni; to poprawny stan, nie błąd |
+| `OPENROUTER_API_KEY` | [openrouter.ai](https://openrouter.ai) → *Keys*. Puste = wykrywanie duplikatów liczone z samej pisowni; dla API i panelu to poprawny stan, nie błąd — ale segregacja zgłoszeń bez niego nie wstanie |
 
-> **Segregacja zgłoszeń wymaga uwagi.** Usługa `triage` bez `DISCORD_BOT_TOKEN`,
-> `DISCORD_CHANNEL_ID`, `TRIAGE_GITHUB_TOKEN` i `TRIAGE_HTTP_TOKEN` kończy
-> proces przy starcie i wpada w pętlę restartów (nazwę brakującej zmiennej
-> widać w `docker compose logs triage`). Reszta stosu działa normalnie. Jeśli
-> nie chcesz jej teraz uruchamiać, zakomentuj usługę `triage` w
-> `deploy/docker-compose.yml`.
->
-> `TRIAGE_HTTP_TOKEN` jest też tym, czym API i triage dogadują się w środku
-> sieci Compose: bez niego przycisk „Uruchom przegląd zgłoszeń" w panelu
-> (ekran „Zgłoszenia") jest niedostępny, a przegląd nadal dzieje się codziennie
-> o umówionej godzinie.
+> **Segregacja zgłoszeń wymaga uwagi.** Usługa `triage` bez `OPENROUTER_API_KEY`,
+> `DISCORD_BOT_TOKEN`, `DISCORD_CHANNEL_ID`, `TRIAGE_GITHUB_TOKEN`
+> i `TRIAGE_HTTP_TOKEN` kończy proces przy starcie i wpada w pętlę restartów
+> (nazwę brakującej zmiennej widać w `docker compose logs triage`). Reszta stosu
+> działa normalnie. Jeśli nie chcesz jej teraz uruchamiać, zakomentuj usługę
+> `triage` w `deploy/docker-compose.yml` — pusty `OPENROUTER_API_KEY` sam z siebie
+> nie przeszkadza niczemu innemu.
+
+Skąd wziąć zmienne segregacji, jeśli ją uruchamiasz:
+
+| Zmienna | Skąd wziąć |
+| ------- | ---------- |
+| `DISCORD_BOT_TOKEN` | [discord.com/developers/applications](https://discord.com/developers/applications) → aplikacja → *Bot*. Bot potrzebuje intencji „MESSAGE CONTENT" i praw na kanale: wysyłanie wiadomości, tworzenie wątków publicznych, wysyłanie w wątkach, czytanie historii |
+| `DISCORD_CHANNEL_ID` | tryb dewelopera w Discordzie → PPM na kanale → *Kopiuj ID kanału*. Kanał **tekstowy**, nie forum |
+| `TRIAGE_GITHUB_TOKEN` | GitHub → *Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token*. Właściciel `Dombearx`, *Only select repositories* → `AlphaPump`, uprawnienia: *Issues* → Read and write, *Pull requests* → Read-only, *Contents* → Read-only |
+| `TRIAGE_HTTP_TOKEN` | znikąd — wymyślasz go sam: `openssl rand -base64 32` |
+
+Dwa ostatnie łatwo pomylić z czymś, czym nie są, więc wprost:
+
+- `TRIAGE_GITHUB_TOKEN` to token **konta**, nie sekret repozytorium — wpisujesz
+  go w `deploy/.env` na minipc, w GitHubie nie ustawiasz nic. Nie da się go
+  zastąpić `GITHUB_TOKEN`-em z Actions, bo segregacja działa poza Actions.
+  Issue powstają **jako Twoje konto** (widać to w autorze), a token ma datę
+  wygaśnięcia: po niej zakładanie issue przestaje działać i trzeba go wymienić.
+- `TRIAGE_HTTP_TOKEN` nie pochodzi z żadnej usługi zewnętrznej. To wspólny
+  sekret, którym API i triage dogadują się w środku sieci Compose: oba kontenery
+  czytają tę samą zmienną z tego samego `.env`, więc nie ma czego z niczym
+  uzgadniać. Port segregacji nie jest wystawiony na gospodarza, więc token jest
+  drugą warstwą, nie jedyną. Bez niego przycisk „Uruchom przegląd zgłoszeń"
+  w panelu (ekran „Zgłoszenia") jest niedostępny, a przegląd nadal dzieje się
+  codziennie o umówionej godzinie.
+
+Sam token Discorda nie stawia jeszcze bota na serwerze — trzeba go zaprosić:
+*OAuth2 → URL Generator*, zakres `bot`, uprawnienia *Send Messages*, *Create
+Public Threads*, *Send Messages in Threads*, *Read Message History*, i otworzyć
+wygenerowany adres. Intencję „MESSAGE CONTENT" włącza się osobno, w zakładce
+*Bot* (*Privileged Gateway Intents*).
+
+Dwa kroki po stronie GitHuba, **przed** pierwszym przebiegiem segregacji:
+
+```bash
+# na własnej maszynie, z zalogowanym `gh` — GitHub odrzuca issue z nieznaną
+# etykietą, więc bez tego pierwszy przebieg wywala się na każdym zgłoszeniu
+scripts/triage-labels.sh Dombearx/AlphaPump
+```
+
+Sekret `CLAUDE_CODE_OAUTH_TOKEN` z kroku B jest drugim z nich — bez niego issue
+powstaną, ale nikt ich nie podejmie.
+
+Pierwszy przebieg wygodnie zrobić na próbę: `TRIAGE_DRY_RUN=true`
+w `deploy/.env` sprawia, że klasyfikacja i wykrywanie duplikatów działają
+naprawdę, ale nic nie powstaje ani na GitHubie, ani na Discordzie — wynik widać
+wyłącznie w `docker compose logs triage`. Przegląd ruszy sam o `TRIAGE_DAILY_AT`
+(domyślnie 03:17), a po kroku F wywołasz go od ręki przyciskiem w panelu. Po
+udanej próbie wróć do `false` i podnieś stos ponownie.
 
 Start:
 
 ```bash
-cd /opt/alphapump
+cd ~/AlphaPump
 docker compose -f deploy/docker-compose.yml up --detach --build --wait
 deploy/smoke.sh http://localhost
 ```
@@ -112,15 +209,18 @@ kontenerów.
 Przyjmuje wydania aplikacji z GitHub Actions i przebudowuje stos po mergu.
 
 ```bash
-sudo cp /opt/alphapump/deploy/alphapump-update-server.service /etc/systemd/system/
+# Wzór celuje w `/home/domin/AlphaPump` i użytkownika `domin`. Klonowałeś gdzie
+# indziej albo stoisz na innym użytkowniku? Popraw `WorkingDirectory=` i `User=`
+# przed skopiowaniem — ścieżka bezwzględna, patrz krok C
+sudo cp ~/AlphaPump/deploy/alphapump-update-server.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now alphapump-update-server
 systemctl status alphapump-update-server
 ```
 
-Jednostka zakłada checkout w `/opt/alphapump` i użytkownika `domin` należącego do
-grupy `docker` — inna ścieżka lub użytkownik znaczy edycję pliku przed
-skopiowaniem.
+Użytkownik z `User=` musi należeć do grupy `docker`, mieć `uv` w profilu i być
+**właścicielem katalogu repozytorium**: usługa robi w nim `git pull` i
+`docker compose`. Klon w katalogu domowym spełnia to sam z siebie.
 
 > **Po każdej zmianie w `deploy/update_server.py` trzeba go zrestartować ręcznie.**
 > `/update` robi `git pull`, ale nie przeładowuje samego siebie: usługa trzyma
@@ -147,7 +247,7 @@ w zakładce *Actions*.
 3. Nadaj sobie rolę administratora — bez niej panel nie wpuści:
 
    ```bash
-   cd /opt/alphapump
+   cd ~/AlphaPump
    docker compose -f deploy/docker-compose.yml exec db \
      psql -U alphapump -d alphapump \
      -c "UPDATE users SET role = 'admin' WHERE email = 'twoj@adres.pl';"
@@ -182,12 +282,59 @@ Dwie reguły, które panel egzekwuje i które łatwo wziąć za błąd:
 - **typu logowania nie da się zmienić** — kto chce inny, tworzy nowe ćwiczenie.
   Zmiana typu unieważniłaby zapisane serie.
 
-## H. Zanim rozdasz grupie
+## H. Kopie zapasowe
+
+Nie da się tego odłożyć „na po rozdaniu": pierwsza kopia jest potrzebna, zanim
+w bazie pojawi się cokolwiek, czego nie chcesz stracić.
+
+Klucz szyfrujący — na własnej maszynie, nie na minipc:
+
+```bash
+age-keygen -o alphapump-age.txt      # klucz prywatny: menedżer haseł, wydruk
+grep 'public key' alphapump-age.txt  # klucz publiczny (`age1…`) idzie na minipc
+```
+
+> Na minipc trafia **wyłącznie klucz publiczny**. Klucz prywatny na maszynie,
+> której kopie dotyczą, jest najczęstszą przyczyną kopii bezużytecznych: awaria
+> zabiera jedno i drugie. Do odtworzenia przynosisz go z menedżera haseł
+> (`scripts/restore.sh` czyta ścieżkę ze zmiennej `AGE_IDENTITY`).
+
+Wysyłka — `rclone` autoryzuje się w przeglądarce, więc konfigurację robisz na
+maszynie, która ją ma, i przenosisz plik na minipc:
+
+```bash
+rclone config                                  # remote na Dysk, np. `gdrive`
+rclone lsd gdrive:                             # sprawdzenie
+scp ~/.config/rclone/rclone.conf minipc:~/.config/rclone/rclone.conf
+```
+
+Na minipc:
+
+```bash
+sudo install -D -m 600 ~/AlphaPump/deploy/backup.env.example /etc/alphapump/backup.env
+sudo nano /etc/alphapump/backup.env    # AGE_RECIPIENTS, RCLONE_REMOTE, ścieżka repozytorium
+sudo touch /var/log/alphapump-backup.log /var/log/alphapump-smoke.log
+sudo chown "$USER" /var/log/alphapump-backup.log /var/log/alphapump-smoke.log
+
+# pierwsza kopia ręcznie, żeby zobaczyć błąd konfiguracji teraz, a nie w nocy
+set -a; . /etc/alphapump/backup.env; set +a; ~/AlphaPump/scripts/backup.sh
+
+crontab -e                             # wpisy z deploy/crontab.example, ścieżki swoje
+```
+
+Zostaje jedna rzecz, bez której kopia jest tylko plikiem na Dysku:
+**odtworzenie wykonane na sucho.** `scripts/restore.sh` kieruj do bazy testowej,
+nigdy do produkcyjnej — importuje do **czystej** bazy. Comiesięczną próbę robi
+też `.github/workflows/backup-restore.yml` (na danych fikcyjnych, prawdziwy
+eksport nigdy nie trafia do CI), a `scripts/backup-drill.sh` przechodzi cały
+łańcuch lokalnie.
+
+## I. Zanim rozdasz grupie
 
 - `deploy/smoke.sh http://domin-server.iron.sq` przechodzi w całości,
-- kopie zapasowe: cron z `scripts/backup.sh`, klucz `age` **przechowywany poza
-  minipc**, i co najmniej jedno odtworzenie wykonane na sucho
-  (`scripts/restore.sh` do bazy testowej, nie produkcyjnej),
+- kopie zapasowe z kroku H działają, a odtworzenie zostało wykonane na sucho,
+- `docker compose -f deploy/docker-compose.yml ps` pokazuje wszystkie usługi jako
+  `running`/`healthy` — w tym `triage`, jeśli ją uruchamiasz,
 - pamiętaj, że w VPN każdy może założyć konto — dodanie kogoś do NetBirda jest
   równoznaczne z daniem dostępu do aplikacji.
 
@@ -199,5 +346,10 @@ Dwie reguły, które panel egzekwuje i które łatwo wziąć za błąd:
 | zadanie wydania: „nie zna trasy POST /apk" | `sudo systemctl restart alphapump-update-server` |
 | aplikacja nie łączy się z serwerem | `EXPO_PUBLIC_API_URL` ≠ `BETTER_AUTH_URL`, albo telefon poza VPN |
 | telefon nie widzi nowej wersji | sprawdź `curl http://domin-server.iron.sq/alphapump/download/latest.json` |
-| `docker compose logs triage` w pętli restartów | brak zmiennych Discorda/GitHuba — patrz krok C |
+| `docker compose logs triage` w pętli restartów | brak jednej z pięciu zmiennych z kroku C — log podaje nazwę |
+| `systemctl status alphapump-update-server`: `uv: command not found` | `uv` nie jest zainstalowany na użytkowniku z `User=` — patrz „Czego potrzebuje minipc" |
+| serwer aktualizacji: `dubious ownership` albo `Permission denied` przy `git pull` | repozytorium należy do innego użytkownika niż ten z `User=` — `sudo chown -R <user> <katalog>` |
+| segregacja: błąd przy zakładaniu issue, „label does not exist" | `scripts/triage-labels.sh` nie został uruchomiony — krok C |
+| issue z etykietą `ai-triage` powstaje, ale agent się nie rusza | brak `CLAUDE_CODE_OAUTH_TOKEN` albo zgody na otwieranie PR-ek — krok B |
+| bot na Discordzie nie pisze, choć usługa działa | bot nie jest zaproszony na serwer albo nie ma praw na kanale — krok C |
 | panel nie wpuszcza | brak roli administratora — krok F.3 |
