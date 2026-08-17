@@ -163,20 +163,30 @@ Skrypty z `scripts/` nie czytają `.env`; zmienne biorą ze środowiska.
 | Zmienna | Gdzie | Skąd wziąć |
 | ------- | ----- | ---------- |
 | `DATABASE_URL`, `BETTER_AUTH_SECRET` | skrypty wołające CLI z repozytorium | jak w konfiguracji API |
-| `AGE_RECIPIENTS` | `backup.sh` | klucze **publiczne** `age` po przecinku (`age-keygen`): główny i CI |
-| `RCLONE_REMOTE` | `backup.sh` | zdalny katalog po `rclone config`, np. `gdrive:alphapump-backups` |
+| `BACKUP_DIR` | `backup.sh` | katalog kopii na tej maszynie — cel domyślny, nic poza ścieżką do ustawienia |
+| `RCLONE_REMOTE` | `backup.sh` | cel zdalny **zamiast** `BACKUP_DIR`: katalog po `rclone config`, np. `gdrive:alphapump-backups` |
+| `AGE_RECIPIENTS` | `backup.sh` | klucze **publiczne** `age` po przecinku (`age-keygen`): główny i CI. Wymagane przy `RCLONE_REMOTE`, dobrowolne przy `BACKUP_DIR` |
 | `RETENTION_DAYS`, `BACKUP_PREFIX` | `backup.sh` | domyślnie `90` i `alphapump` |
 | `ALPHAPUMP_EXPORT_CMD` | `backup.sh` | polecenie wypisujące archiwum na stdout — wzór w `deploy/backup.env.example` |
-| `AGE_IDENTITY` | `restore.sh` | plik z kluczem **prywatnym** — z menedżera haseł, nigdy z minipc |
+| `AGE_IDENTITY` | `restore.sh` | plik z kluczem **prywatnym** — z menedżera haseł, nigdy z minipc. Tylko dla kopii `.age` |
 | `ALPHAPUMP_IMPORT_CMD` | `restore.sh` | polecenie czytające archiwum ze stdin |
 | `RESTORE_DATABASE_URL` | `backup-drill.sh` | czysta baza docelowa próby |
 
 Dwie ostatnie zmienne istnieją dlatego, że **na minipc gospodarz nie ma dostępu
 do bazy**: Postgres nie wystawia portu, jest widoczny wyłącznie w sieci Compose.
 Eksport i import idą więc wewnątrz kontenera API (`docker compose exec`),
-a szyfrowanie i wysyłka zostają na gospodarzu, bo to tam leżą klucz `age`
-i konfiguracja rclone. Gdy zmiennych nie ma, skrypty wołają CLI z repozytorium
-tak jak dotąd — i wtedy potrzebują `DATABASE_URL`.
+a zapis kopii, szyfrowanie i ewentualna wysyłka zostają na gospodarzu, bo to tam
+leżą katalog kopii, klucz `age` i konfiguracja rclone. Gdy zmiennych nie ma,
+skrypty wołają CLI z repozytorium tak jak dotąd — i wtedy potrzebują
+`DATABASE_URL`.
+
+Cel kopii jest **jeden z dwóch** i `backup.sh` przerywa, gdy ustawione są oba
+albo żaden. `BACKUP_DIR` jest wariantem na start: broni przed złą migracją,
+pomyłkowym `DELETE` i przewróconym kontenerem, ale nie przed padem dysku — kopia
+leży wtedy razem z oryginałem. Szyfrowanie jest przy nim dobrowolne, bo kto ma
+dostęp do dysku serwera, ma i tak dostęp do bazy; przy `RCLONE_REMOTE` jest
+wymagane i skrypt tego pilnuje, zamiast po cichu oddać obcemu dostawcy historię
+treningową grupy.
 
 Po stronie repozytorium jest jeden sekret: `AGE_CI_IDENTITY` (comiesięczna próba
 odtworzenia). Bez niego próba nadal przechodzi — na kluczu jednorazowym.
@@ -304,7 +314,8 @@ zależałaby od kolejności startu.
 #### Zanim zaczniesz
 
 Na minipc: Docker z wtyczką Compose, `git`, `uv` (woła go serwer aktualizacji),
-a do kopii zapasowych `age` i `rclone`. Użytkownik, na którym to stoi, musi
+a `age` i `rclone` dopiero wtedy, gdy kopie mają wychodzić poza minipc — kopia do
+katalogu lokalnego nie potrzebuje żadnego z nich. Użytkownik, na którym to stoi, musi
 należeć do grupy `docker` i być właścicielem katalogu repozytorium. W VPN:
 NetBird uruchomiony i minipc widoczny z telefonów. Adres
 minipc w sieci NetBird (`ip -4 addr show wt0` albo panel NetBirda) jest tą samą
@@ -375,7 +386,8 @@ docker compose exec db psql -U alphapump -d alphapump \
 - `OPENROUTER_API_KEY` ustawiony albo **świadomie** pusty — log przy starcie
   mówi wprost, że warstwa semantyczna jest wyłączona,
 - `deploy/smoke.sh` przechodzi w całości,
-- cron kopii zapasowych działa, a odtworzenie zostało wykonane na sucho.
+- cron kopii zapasowych działa, a odtworzenie zostało wykonane na sucho —
+  pamiętając, że kopia w `BACKUP_DIR` na minipc nie przeżyje utraty minipc.
 
 #### Aktualizacja
 
@@ -459,26 +471,30 @@ jest wymagany — patrz niżej.
 
 #### Kopie zapasowe
 
-Zestaw jest z etapu 14 — eksport JSON → gzip → `age` → `rclone` na Dysk Google —
-a wdrożenie dokłada mu tylko jedną rzecz: eksport idzie **wewnątrz kontenera**,
-bo baza nie wystawia portu na gospodarza.
+Zestaw jest z etapu 14 — eksport JSON → gzip → (`age`) → katalog lokalny albo
+`rclone` na Dysk Google — a wdrożenie dokłada mu tylko jedną rzecz: eksport idzie
+**wewnątrz kontenera**, bo baza nie wystawia portu na gospodarza.
 
 ```
 sudo install -D -m 600 deploy/backup.env.example /etc/alphapump/backup.env
-sudo nano /etc/alphapump/backup.env      # klucze age, remote rclone
+sudo nano /etc/alphapump/backup.env      # BACKUP_DIR (albo remote rclone i klucze age)
 crontab -e                               # wpisy z deploy/crontab.example
 ```
 
-Na minipc trafia **wyłącznie klucz publiczny** `age`. Klucz prywatny mieszka
-w menedżerze haseł i na wydruku — nigdy na maszynie, której kopie dotyczą, i nigdy
-na Dysku obok nich.
+Domyślny `BACKUP_DIR` to katalog na minipc, **poza repozytorium**: w repozytorium
+serwer aktualizacji robi `git pull`. Skrypt zakłada go z prawami `700` i daje
+plikom `600` — przy kopii nieszyfrowanej to jedyna ochrona.
+
+Przy wariancie zdalnym na minipc trafia **wyłącznie klucz publiczny** `age`.
+Klucz prywatny mieszka w menedżerze haseł i na wydruku — nigdy na maszynie,
+której kopie dotyczą, i nigdy na Dysku obok nich.
 
 Pierwszą kopię zrób ręcznie i sprawdź, że doszła:
 
 ```
 set -a; . /etc/alphapump/backup.env; set +a
 scripts/backup.sh
-rclone ls "$RCLONE_REMOTE"
+ls -l "$BACKUP_DIR"                      # zdalnie: rclone ls "$RCLONE_REMOTE"
 ```
 
 #### Odtworzenie po awarii
@@ -492,16 +508,22 @@ cd ~/AlphaPump
 docker compose -f deploy/docker-compose.yml down --volumes
 docker compose -f deploy/docker-compose.yml up --detach --wait
 
-# 2. Klucz prywatny — przyniesiony, nie znaleziony na maszynie.
-export AGE_IDENTITY=/media/pendrive/klucz-alphapump.txt
-
-# 3. Import wewnątrz kontenera; odszyfrowanie zostaje na gospodarzu.
+# 2. Import wewnątrz kontenera; rozpakowanie zostaje na gospodarzu.
 export ALPHAPUMP_IMPORT_CMD="docker compose -f $HOME/AlphaPump/deploy/docker-compose.yml exec -T api node /app/apps/api/dist/cli/import.js"
+scripts/restore.sh ~/alphapump-backups/alphapump-2026-08-10.json.gz
+
+# 2'. Kopia zaszyfrowana: klucz prywatny — przyniesiony, nie znaleziony na maszynie.
+export AGE_IDENTITY=/media/pendrive/klucz-alphapump.txt
 scripts/restore.sh gdrive:alphapump-backups/alphapump-2026-08-10.json.gz.age
 
-# 4. Sprawdzenie.
+# 3. Sprawdzenie.
 deploy/smoke.sh http://localhost
 ```
+
+O odszyfrowaniu decyduje **rozszerzenie pliku**, a nie zmienna środowiskowa:
+`.age` żąda `AGE_IDENTITY`, zwykły `.json.gz` wchodzi wprost. Dzięki temu jedno
+polecenie obsługuje kopie z obu wariantów, także wtedy, gdy w katalogu leżą obok
+siebie po przejściu z jednego na drugi.
 
 Import sam uruchamia migracje i seed przed wczytaniem archiwum, więc celuje
 w bazę pustą i nie wymaga niczego przygotowanego wcześniej.
@@ -827,19 +849,25 @@ urządzeń, których kursor stoi już powyżej.
 | ---------------------------------------------------- | ---------------------------------------- |
 | `pnpm --silent --filter @alphapump/api run export`     | archiwum systemowe na stdout             |
 | `pnpm --silent --filter @alphapump/api run import [plik]` | import z pliku albo ze stdin          |
-| `scripts/backup.sh`                                   | eksport → gzip → age → rclone + retencja |
-| `scripts/restore.sh <plik\|zdalny>`                    | age -d → gunzip → import                 |
+| `scripts/backup.sh`                                   | eksport → gzip → (age) → katalog lub rclone + retencja |
+| `scripts/restore.sh <plik\|zdalny>`                    | (age -d) → gunzip → import               |
 | `scripts/backup-drill.sh`                             | pełna próba odtworzenia z porównaniem    |
 
 `--silent` nie jest ozdobą: pnpm wypisuje nagłówek skryptu na **stdout**, czyli
 tym samym strumieniem, którym jedzie archiwum. `run` też nie — `pnpm import` jest
 wbudowanym poleceniem pnpm.
 
-Kopia idzie potokiem, bez pliku pośredniego, i jest szyfrowana **kluczem
-publicznym** `age` do dwóch odbiorców: głównego i CI. Na minipc trafia wyłącznie
-klucz publiczny, więc włamanie na serwer nie daje dostępu do kopii na Dysku.
-Klucz prywatny nie leży ani na minipc, ani na Dysku obok kopii — menedżer haseł
-i wydruk.
+Kopia idzie potokiem, bez pliku pośredniego w drodze, i powstaje pod nazwą
+roboczą `.part` — dopiero sprawdzenie rozmiaru nadaje jej nazwę docelową, żeby
+kopia przerwana w połowie nie wyglądała przy odtwarzaniu na najświeższą.
+
+Przy wysyłce na Dysk jest szyfrowana **kluczem publicznym** `age` do dwóch
+odbiorców: głównego i CI. Na minipc trafia wyłącznie klucz publiczny, więc
+włamanie na serwer nie daje dostępu do kopii na Dysku. Klucz prywatny nie leży
+ani na minipc, ani na Dysku obok kopii — menedżer haseł i wydruk. Przy kopii do
+katalogu lokalnego szyfrowanie jest dobrowolne i domyślnie wyłączone: chroniłoby
+przed kimś, kto ma dostęp do dysku serwera, a więc i tak do bazy, a kosztowałoby
+klucz do trwałego przechowania.
 
 Comiesięczna próba odtworzenia (`.github/workflows/backup-restore.yml`) przechodzi
 cały łańcuch na dwóch bazach i na końcu **porównuje dane z oryginałem** w postaci

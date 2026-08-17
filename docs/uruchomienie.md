@@ -33,7 +33,7 @@ Zanim zaczniesz krok C, na minipc musi być to:
 | `git` | klon i `git pull` przy wdrożeniu | `git --version` |
 | [`uv`](https://docs.astral.sh/uv/) | serwer aktualizacji z kroku D (jednostka woła `uv run`) | `uv --version` |
 | NetBird | jedyna droga do minipc — Actions wchodzą tą samą siecią | `ip -4 addr show wt0` |
-| `age` i `rclone` | kopie zapasowe z kroku H | `age --version`, `rclone version` |
+| `age` i `rclone` | **tylko** kopie wysyłane na Dysk (koniec kroku H) | `age --version`, `rclone version` |
 
 `uv` instaluje się jednym poleceniem
 (`curl -LsSf https://astral.sh/uv/install.sh | sh`) i ląduje w profilu
@@ -41,8 +41,10 @@ użytkownika. Jednostka systemd celowo woła go przez powłokę logowania, więc
 musisz nigdzie wpisywać ścieżki — ale musi być zainstalowany na **tym**
 użytkowniku, na którym stoi usługa.
 
-Kopie zapasowe i segregacja zgłoszeń są niezależne od reszty: bez `age`
-i `rclone` stos wstanie i będzie działał, po prostu nie będzie kopii.
+Kopie zapasowe i segregacja zgłoszeń są niezależne od reszty: stos wstanie i bez
+nich. Kopie z kroku H w wariancie domyślnym — do katalogu na minipc — nie
+potrzebują niczego ponad to, co i tak masz; `age` i `rclone` dochodzą dopiero,
+gdy zechcesz wysyłać kopie na Dysk.
 
 ---
 
@@ -78,7 +80,7 @@ Zakładka **Secrets**:
 | `NETBIRD_MANAGEMENT_URL` | panel NetBirda → adres instancji zarządzającej |
 | `ALPHAPUMP_UPDATE_SERVER_URL` | `http://domin-server.iron.sq:40002/update` |
 | `CLAUDE_CODE_OAUTH_TOKEN` | na własnej maszynie: `claude setup-token`. Token z subskrypcji, nie klucz API — nie obciąża rachunku za API |
-| `AGE_CI_IDENTITY` | **opcjonalny**: klucz prywatny `age` przeznaczony dla CI (krok H). Bez niego comiesięczna próba odtworzenia generuje parę jednorazową i nadal sprawdza cały łańcuch |
+| `AGE_CI_IDENTITY` | **opcjonalny**, i przy kopiach lokalnych z kroku H niepotrzebny: klucz prywatny `age` dla CI. Bez niego comiesięczna próba odtworzenia generuje parę jednorazową i nadal sprawdza cały łańcuch |
 
 `NETBIRD_*` i `ALPHAPUMP_UPDATE_SERVER_URL` prawdopodobnie już masz — używa ich
 wdrożenie backendu.
@@ -119,7 +121,7 @@ rozwija się ani w systemd, ani w cronie):
 | ---- | ----------- |
 | `deploy/alphapump-update-server.service` | `WorkingDirectory=` (krok D) |
 | `deploy/crontab.example` | ścieżki do `scripts/backup.sh` i `deploy/smoke.sh` |
-| `deploy/backup.env.example` | `ALPHAPUMP_EXPORT_CMD`, a przy odtwarzaniu `ALPHAPUMP_IMPORT_CMD` |
+| `deploy/backup.env.example` | `ALPHAPUMP_EXPORT_CMD` i `BACKUP_DIR`, a przy odtwarzaniu `ALPHAPUMP_IMPORT_CMD` |
 
 ```bash
 git clone https://github.com/Dombearx/AlphaPump ~/AlphaPump
@@ -282,12 +284,69 @@ Dwie reguły, które panel egzekwuje i które łatwo wziąć za błąd:
 - **typu logowania nie da się zmienić** — kto chce inny, tworzy nowe ćwiczenie.
   Zmiana typu unieważniłaby zapisane serie.
 
-## H. Kopie zapasowe
+## H. Kopie zapasowe — na minipc, obok bazy
 
 Nie da się tego odłożyć „na po rozdaniu": pierwsza kopia jest potrzebna, zanim
-w bazie pojawi się cokolwiek, czego nie chcesz stracić.
+w bazie pojawi się cokolwiek, czego nie chcesz stracić. Wariant niżej stawia się
+w kilka minut, bo kopia zostaje na minipc: nie ma tu ani konta u dostawcy, ani
+klucza szyfrującego do przechowania. Wariant z wysyłką na Dysk jest na końcu
+kroku — przechodzi się na niego podmianą jednej zmiennej.
 
-Klucz szyfrujący — na własnej maszynie, nie na minipc:
+```bash
+sudo install -D -m 600 ~/AlphaPump/deploy/backup.env.example /etc/alphapump/backup.env
+sudo nano /etc/alphapump/backup.env    # ALPHAPUMP_EXPORT_CMD i BACKUP_DIR — ścieżki swoje
+sudo touch /var/log/alphapump-backup.log /var/log/alphapump-smoke.log
+sudo chown "$USER" /var/log/alphapump-backup.log /var/log/alphapump-smoke.log
+
+# pierwsza kopia ręcznie, żeby zobaczyć błąd konfiguracji teraz, a nie w nocy
+set -a; . /etc/alphapump/backup.env; set +a; ~/AlphaPump/scripts/backup.sh
+ls -l "$BACKUP_DIR"
+
+crontab -e                             # wpisy z deploy/crontab.example, ścieżki swoje
+```
+
+`BACKUP_DIR` daj **poza katalogiem repozytorium** — w repozytorium serwer
+aktualizacji robi `git pull` i kopie nie mają czego szukać w drzewie, którym
+zarządza automat. Skrypt zakłada katalog sam z prawami `700` i daje plikom `600`:
+kopia jest tu nieszyfrowana, więc prawa są jedyną ochroną.
+
+> **Wiedz, przed czym to broni.** Zła migracja, pomyłkowy `DELETE`, przewrócony
+> kontener — tak, i to są przypadki najczęstsze. Pad dysku albo utrata minipc —
+> **nie**, bo kopia leży wtedy razem z oryginałem. Katalog wskazany na osobny
+> nośnik albo na zamontowany zasób sieciowy zdejmuje i to zastrzeżenie, bez
+> zmiany czegokolwiek w konfiguracji poza samą ścieżką.
+
+Zostaje jedna rzecz, bez której kopia jest tylko plikiem na dysku:
+**odtworzenie wykonane na sucho.** `scripts/restore.sh` kieruj do bazy testowej,
+nigdy do produkcyjnej — importuje do **czystej** bazy, więc wycelowany w tę
+właściwą zamieniłby dzisiejsze dane na wczorajsze. Baza na próbę stoi w tym samym
+kontenerze, a kopia lokalna nie wymaga do tego żadnego klucza:
+
+```bash
+cd ~/AlphaPump
+docker compose -f deploy/docker-compose.yml exec db \
+  psql -U alphapump -d alphapump -c 'CREATE DATABASE alphapump_proba;'
+
+# hasło to POSTGRES_PASSWORD z deploy/.env; `db` to nazwa usługi w sieci Compose
+ALPHAPUMP_IMPORT_CMD="docker compose -f $HOME/AlphaPump/deploy/docker-compose.yml exec -T -e DATABASE_URL=postgres://alphapump:HASŁO@db:5432/alphapump_proba api node /app/apps/api/dist/cli/import.js" \
+  scripts/restore.sh ~/alphapump-backups/alphapump-2026-08-17.json.gz
+
+docker compose -f deploy/docker-compose.yml exec db \
+  psql -U alphapump -d alphapump_proba -c 'SELECT count(*) FROM users;'
+```
+
+Import sam uruchamia migracje i seed przed wczytaniem archiwum, więc pusta baza
+`alphapump_proba` to wszystko, czego potrzebuje. Po próbie skasuj ją
+(`DROP DATABASE alphapump_proba;`).
+
+Comiesięczną próbę robi też `.github/workflows/backup-restore.yml` (na danych
+fikcyjnych, prawdziwy eksport nigdy nie trafia do CI), a `scripts/backup-drill.sh`
+przechodzi cały łańcuch lokalnie.
+
+### Kiedy zechcesz kopię poza minipc
+
+Wtedy dochodzą dwie rzeczy, obie pomijalne dzisiaj. Klucz `age` — na własnej
+maszynie, nie na minipc:
 
 ```bash
 age-keygen -o alphapump-age.txt      # klucz prywatny: menedżer haseł, wydruk
@@ -299,7 +358,7 @@ grep 'public key' alphapump-age.txt  # klucz publiczny (`age1…`) idzie na mini
 > zabiera jedno i drugie. Do odtworzenia przynosisz go z menedżera haseł
 > (`scripts/restore.sh` czyta ścieżkę ze zmiennej `AGE_IDENTITY`).
 
-Wysyłka — `rclone` autoryzuje się w przeglądarce, więc konfigurację robisz na
+I wysyłka — `rclone` autoryzuje się w przeglądarce, więc konfigurację robisz na
 maszynie, która ją ma, i przenosisz plik na minipc:
 
 ```bash
@@ -308,31 +367,18 @@ rclone lsd gdrive:                             # sprawdzenie
 scp ~/.config/rclone/rclone.conf minipc:~/.config/rclone/rclone.conf
 ```
 
-Na minipc:
-
-```bash
-sudo install -D -m 600 ~/AlphaPump/deploy/backup.env.example /etc/alphapump/backup.env
-sudo nano /etc/alphapump/backup.env    # AGE_RECIPIENTS, RCLONE_REMOTE, ścieżka repozytorium
-sudo touch /var/log/alphapump-backup.log /var/log/alphapump-smoke.log
-sudo chown "$USER" /var/log/alphapump-backup.log /var/log/alphapump-smoke.log
-
-# pierwsza kopia ręcznie, żeby zobaczyć błąd konfiguracji teraz, a nie w nocy
-set -a; . /etc/alphapump/backup.env; set +a; ~/AlphaPump/scripts/backup.sh
-
-crontab -e                             # wpisy z deploy/crontab.example, ścieżki swoje
-```
-
-Zostaje jedna rzecz, bez której kopia jest tylko plikiem na Dysku:
-**odtworzenie wykonane na sucho.** `scripts/restore.sh` kieruj do bazy testowej,
-nigdy do produkcyjnej — importuje do **czystej** bazy. Comiesięczną próbę robi
-też `.github/workflows/backup-restore.yml` (na danych fikcyjnych, prawdziwy
-eksport nigdy nie trafia do CI), a `scripts/backup-drill.sh` przechodzi cały
-łańcuch lokalnie.
+W `/etc/alphapump/backup.env` zamieniasz wtedy `BACKUP_DIR` na `RCLONE_REMOTE`
+i `AGE_RECIPIENTS` — obie czekają zakomentowane we wzorze, wystarczy je
+odkomentować i zakomentować `BACKUP_DIR`. `backup.sh` przerywa, gdy
+ustawisz oba cele naraz albo gdy wyślesz na Dysk bez szyfrowania — kopia
+u zewnętrznego dostawcy to historia treningowa całej grupy.
 
 ## I. Zanim rozdasz grupie
 
 - `deploy/smoke.sh http://domin-server.iron.sq` przechodzi w całości,
-- kopie zapasowe z kroku H działają, a odtworzenie zostało wykonane na sucho,
+- kopie zapasowe z kroku H działają (`ls "$BACKUP_DIR"` pokazuje dzisiejszy
+  plik), a odtworzenie zostało wykonane na sucho — pamiętając, że kopia na
+  minipc nie przeżyje utraty samego minipc,
 - `docker compose -f deploy/docker-compose.yml ps` pokazuje wszystkie usługi jako
   `running`/`healthy` — w tym `triage`, jeśli ją uruchamiasz,
 - pamiętaj, że w VPN każdy może założyć konto — dodanie kogoś do NetBirda jest
@@ -353,3 +399,5 @@ eksport nigdy nie trafia do CI), a `scripts/backup-drill.sh` przechodzi cały
 | issue z etykietą `ai-triage` powstaje, ale agent się nie rusza | brak `CLAUDE_CODE_OAUTH_TOKEN` albo zgody na otwieranie PR-ek — krok B |
 | bot na Discordzie nie pisze, choć usługa działa | bot nie jest zaproszony na serwer albo nie ma praw na kanale — krok C |
 | panel nie wpuszcza | brak roli administratora — krok F.3 |
+| kopia: „Ustaw BACKUP_DIR … albo RCLONE_REMOTE" | w `/etc/alphapump/backup.env` nie ma celu kopii — krok H |
+| kopia: „Kopia ma tylko N bajtów — przerywam" | eksport nic nie oddał: stos nie stoi albo `ALPHAPUMP_EXPORT_CMD` celuje w złą ścieżkę `docker-compose.yml` |
