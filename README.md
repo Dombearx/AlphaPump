@@ -303,8 +303,10 @@ zależałaby od kolejności startu.
 
 #### Zanim zaczniesz
 
-Na minipc: Docker z wtyczką Compose, `git`, a do kopii zapasowych `age`
-i `rclone`. W VPN: NetBird uruchomiony i minipc widoczny z telefonów. Adres
+Na minipc: Docker z wtyczką Compose, `git`, `uv` (woła go serwer aktualizacji),
+a do kopii zapasowych `age` i `rclone`. Użytkownik, na którym to stoi, musi
+należeć do grupy `docker` i być właścicielem katalogu repozytorium. W VPN:
+NetBird uruchomiony i minipc widoczny z telefonów. Adres
 minipc w sieci NetBird (`ip -4 addr show wt0` albo panel NetBirda) jest tą samą
 wartością, która wejdzie do `BETTER_AUTH_URL` i do `EXPO_PUBLIC_API_URL` przy
 budowaniu aplikacji — pomyłka tutaj kończy się aplikacją, która wygląda
@@ -318,15 +320,15 @@ nie wychodzi: nie ma przekierowania portu na routerze i nie ma go czym dodać.
 
 Katalog repozytorium jest dowolny — nic w kodzie nie zna tej ścieżki (Compose
 liczy ścieżki względne od `deploy/`, serwer aktualizacji od katalogu
-repozytorium). Niżej `~/alphapump`, bo klon w katalogu domowym należy do tego
+repozytorium). Niżej `~/AlphaPump`, bo klon w katalogu domowym należy do tego
 samego użytkownika, na którym stoi serwer aktualizacji. Bezwzględną ścieżkę
 trzeba wpisać w trzech miejscach: `WorkingDirectory` w
 `deploy/alphapump-update-server.service`, wpisy w `deploy/crontab.example`
 i `ALPHAPUMP_EXPORT_CMD`/`ALPHAPUMP_IMPORT_CMD` z `deploy/backup.env.example`.
 
 ```
-git clone <adres-repozytorium> ~/alphapump
-cd ~/alphapump/deploy
+git clone <adres-repozytorium> ~/AlphaPump
+cd ~/AlphaPump/deploy
 cp .env.example .env
 ```
 
@@ -378,7 +380,7 @@ docker compose exec db psql -U alphapump -d alphapump \
 #### Aktualizacja
 
 ```
-cd ~/alphapump
+cd ~/AlphaPump
 git pull
 docker compose -f deploy/docker-compose.yml up --detach --build --wait
 deploy/smoke.sh http://localhost
@@ -425,7 +427,7 @@ z zależnościami zadeklarowanymi inline (PEP 723 — `fastapi`, `uvicorn`,
 osobnego środowiska, bez dotykania `pnpm`/Turborepo, których nie potrzebuje.
 
 Instalacja jako usługa systemd, żeby przeżyła restart i awarię. We wzorze
-jednostki `WorkingDirectory` to `/home/domin/alphapump` — podstaw ścieżkę
+jednostki `WorkingDirectory` to `/home/domin/AlphaPump` — podstaw ścieżkę
 swojego checkoutu, bezwzględną, bo `~` w systemd się nie rozwija. Właścicielem
 repozytorium musi być użytkownik z `User=`: usługa robi w nim `git pull`
 i `docker compose`:
@@ -486,7 +488,7 @@ dlatego nie zardzewieje między awariami.
 
 ```
 # 1. Czysty stos. `down --volumes` kasuje bazę: to jest właśnie ten moment.
-cd ~/alphapump
+cd ~/AlphaPump
 docker compose -f deploy/docker-compose.yml down --volumes
 docker compose -f deploy/docker-compose.yml up --detach --wait
 
@@ -494,7 +496,7 @@ docker compose -f deploy/docker-compose.yml up --detach --wait
 export AGE_IDENTITY=/media/pendrive/klucz-alphapump.txt
 
 # 3. Import wewnątrz kontenera; odszyfrowanie zostaje na gospodarzu.
-export ALPHAPUMP_IMPORT_CMD="docker compose -f $HOME/alphapump/deploy/docker-compose.yml exec -T api node /app/apps/api/dist/cli/import.js"
+export ALPHAPUMP_IMPORT_CMD="docker compose -f $HOME/AlphaPump/deploy/docker-compose.yml exec -T api node /app/apps/api/dist/cli/import.js"
 scripts/restore.sh gdrive:alphapump-backups/alphapump-2026-08-10.json.gz.age
 
 # 4. Sprawdzenie.
@@ -533,7 +535,7 @@ sekret nie przybywa. Ręcznie, gdyby zaszła potrzeba, wygląda to tak:
 EXPO_PUBLIC_API_URL=http://domin-server.iron.sq ANDROID_VERSION_CODE=99 \
   pnpm --filter @alphapump/mobile run prebuild
 cd apps/mobile/android && ./gradlew assembleRelease
-scp .../app-release.apk minipc:alphapump/deploy/apk/alphapump-99.apk
+scp .../app-release.apk minipc:AlphaPump/deploy/apk/alphapump-99.apk
 ```
 
 — przy czym plik dołożony `scp`-em jest do pobrania pod
