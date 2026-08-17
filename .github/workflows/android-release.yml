@@ -82,6 +82,11 @@ jobs:
       # pustym napisem, a ten w porównaniu z wartością logiczną wychodzi na
       # fałsz — czyli publikacja po cichu by nie zadziałała.
       PUBLIKUJ: ${{ github.event_name != 'workflow_dispatch' || inputs.opublikuj }}
+      # `secrets` nie jest dostępne w warunkach `if:` kroków (GitHub odrzuca
+      # cały plik na etapie parsowania: „Unrecognized named-value: 'secrets'").
+      # Stąd ten sam sekret trafia najpierw tutaj, do `env`, gdzie jest
+      # dozwolony, a warunki niżej czytają już `env.HAS_SIGNING_KEY`.
+      HAS_SIGNING_KEY: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
       TURBO_TELEMETRY_DISABLED: 1
       DO_NOT_TRACK: 1
 
@@ -104,7 +109,7 @@ jobs:
       # Drugi powód jest praktyczny — podpisu nie da się później zmienić bez
       # odinstalowania aplikacji na każdym telefonie.
       - name: Sprawdź klucz podpisujący
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 == '' && inputs.bez_podpisu != true }}
+        if: ${{ env.HAS_SIGNING_KEY != 'true' && inputs.bez_podpisu != true }}
         run: |
           cat >&2 <<'KONIEC'
           ::error::Brak sekretu ANDROID_KEYSTORE_BASE64 — wydanie zostałoby podpisane publicznie znanym kluczem deweloperskim.
@@ -174,7 +179,7 @@ jobs:
       # łataniem wyniku generatora. `apksigner` zastępuje podpis istniejący, co
       # jest dokładnie tym, czego tu potrzeba.
       - name: Podpisz własnym kluczem
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        if: ${{ env.HAS_SIGNING_KEY == 'true' }}
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
