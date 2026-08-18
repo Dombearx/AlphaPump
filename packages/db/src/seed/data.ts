@@ -102,7 +102,135 @@ interface ExerciseDefinition {
  * tylko dla ciężaru z powtórzeniami.
  */
 const EXERCISE_DEFINITIONS: readonly ExerciseDefinition[] = [
+  // biceps
+  { name: 'Lying dumbbell curl', loggingType: 'weight_reps', primaryTag: 'biceps' },
 
+  // triceps
+  { name: 'Lying triceps extension', loggingType: 'weight_reps', primaryTag: 'triceps' },
+  { name: 'Overhead cable triceps extension', loggingType: 'weight_reps', primaryTag: 'triceps' },
+
+  // quads
+  {
+    name: 'Barbell squat',
+    loggingType: 'weight_reps',
+    primaryTag: 'quads',
+    additionalTags: ['glutes'],
+  },
+  {
+    name: 'Zercher squat',
+    loggingType: 'weight_reps',
+    primaryTag: 'quads',
+    additionalTags: ['glutes', 'back'],
+  },
+  {
+    name: 'Leg press',
+    loggingType: 'weight_reps',
+    primaryTag: 'quads',
+    additionalTags: ['glutes'],
+  },
+  {
+    name: 'Rear kick',
+    loggingType: 'weight_reps',
+    primaryTag: 'quads',
+    additionalTags: ['glutes'],
+  },
+
+  // hamstrings
+  {
+    name: 'Romanian deadlift',
+    loggingType: 'weight_reps',
+    primaryTag: 'hamstrings',
+    additionalTags: ['glutes', 'back'],
+  },
+  { name: 'Single leg seated hamstring curl', loggingType: 'weight_reps', primaryTag: 'hamstrings' },
+  {
+    name: 'Dumbbell jefferson curl',
+    loggingType: 'weight_reps',
+    primaryTag: 'hamstrings',
+    additionalTags: ['back'],
+  },
+
+  // glutes
+  {
+    name: 'Deadlift',
+    loggingType: 'weight_reps',
+    primaryTag: 'glutes',
+    additionalTags: ['hamstrings', 'back'],
+  },
+  {
+    name: 'Single leg hip thrust',
+    loggingType: 'weight_reps',
+    primaryTag: 'glutes',
+    additionalTags: ['hamstrings'],
+  },
+
+  // chest
+  {
+    name: 'Flat dumbbell bench press',
+    loggingType: 'weight_reps',
+    primaryTag: 'chest',
+    additionalTags: ['triceps', 'shoulders'],
+  },
+  {
+    name: 'Flat barbell bench press',
+    loggingType: 'weight_reps',
+    primaryTag: 'chest',
+    additionalTags: ['triceps', 'shoulders'],
+  },
+  {
+    name: 'Weighted push up',
+    loggingType: 'weight_reps',
+    primaryTag: 'chest',
+    additionalTags: ['triceps', 'shoulders'],
+  },
+  {
+    name: 'Weighted deep push up',
+    loggingType: 'weight_reps',
+    primaryTag: 'chest',
+    additionalTags: ['triceps', 'shoulders'],
+  },
+  {
+    name: 'Weighted dip',
+    loggingType: 'weight_reps',
+    primaryTag: 'chest',
+    additionalTags: ['triceps', 'shoulders'],
+  },
+
+  // back
+  {
+    name: 'Machine row',
+    loggingType: 'weight_reps',
+    primaryTag: 'back',
+    additionalTags: ['biceps'],
+  },
+  {
+    name: 'Weighted pull up',
+    loggingType: 'weight_reps',
+    primaryTag: 'back',
+    additionalTags: ['biceps'],
+  },
+  {
+    name: 'Dumbbell pullover',
+    loggingType: 'weight_reps',
+    primaryTag: 'back',
+    additionalTags: ['chest'],
+  },
+
+  // abs
+  { name: "Mason's crunch", loggingType: 'bodyweight_reps', primaryTag: 'abs' },
+
+  // shoulders
+  { name: 'Lateral dumbbell raise', loggingType: 'weight_reps', primaryTag: 'shoulders' },
+  {
+    name: 'Overhead press',
+    loggingType: 'weight_reps',
+    primaryTag: 'shoulders',
+    additionalTags: ['triceps'],
+  },
+  { name: 'Lying lateral raise', loggingType: 'weight_reps', primaryTag: 'shoulders' },
+
+  // calves
+  { name: 'Calf raise', loggingType: 'weight_reps', primaryTag: 'calves' },
 ];
 
 export const SEED_EXERCISES: readonly SeedExercise[] = EXERCISE_DEFINITIONS.map((definition) => ({
