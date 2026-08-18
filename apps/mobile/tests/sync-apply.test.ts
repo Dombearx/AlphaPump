@@ -172,8 +172,8 @@ describe('paczka zmian', () => {
     const id = EXERCISES.bench!.id;
     const base = {
       id,
-      name: 'Barbell bench press',
-      slug: 'barbell-bench-press',
+      name: 'Flat barbell bench press',
+      slug: 'flat-barbell-bench-press',
       authorId: '73d7cbab-d3b4-549a-8d8f-9de36dbaae82',
       loggingType: 'weight_reps' as const,
       primaryTagId: tagId('Chest'),
@@ -250,8 +250,8 @@ describe('paczka zmian', () => {
       exercises: [
         {
           id: EXERCISES.bench!.id,
-          name: 'Barbell bench press',
-          slug: 'barbell-bench-press',
+          name: 'Flat barbell bench press',
+          slug: 'flat-barbell-bench-press',
           authorId: '73d7cbab-d3b4-549a-8d8f-9de36dbaae82',
           loggingType: 'weight_reps',
           primaryTagId: tagId('Chest'),

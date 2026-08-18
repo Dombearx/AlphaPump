@@ -127,7 +127,7 @@ export async function runSample(): Promise<void> {
       })
       .onConflictDoNothing();
 
-    const bench = builtInExerciseId('Barbell bench press');
+    const bench = builtInExerciseId('Flat barbell bench press');
 
     await db
       .insert(workoutSets)

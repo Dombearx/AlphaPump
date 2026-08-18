@@ -82,7 +82,7 @@ describe('zapytania ekranów', () => {
     const [details] = await exerciseDetails(local.db, EXERCISES.bench!.id);
 
     expect(details).toMatchObject({
-      name: 'Barbell bench press',
+      name: 'Flat barbell bench press',
       loggingType: 'weight_reps',
       authorNickname: 'AlphaPump',
     });
@@ -117,22 +117,26 @@ describe('zapytania ekranów', () => {
   });
 
   it('biblioteka po tagu dodatkowym też znajduje ćwiczenie, ale z tagiem głównym w wierszu', async () => {
-    // „Dips" ma tag główny Chest i dodatkowy Triceps — filtr po Triceps musi je
-    // znaleźć, ale wiersz i tak niesie Chest, bo to on liczy się do cyklu.
-    const rows = await exerciseLibrary(local.db, TEST_USER.id, { tagId: tagId('Triceps') });
+    // „Weighted dip" ma tag główny chest i dodatkowe triceps oraz shoulders —
+    // filtr po triceps musi je znaleźć, ale wiersz i tak niesie chest, bo to
+    // on liczy się do cyklu.
+    const rows = await exerciseLibrary(local.db, TEST_USER.id, { tagId: tagId('triceps') });
 
     const dips = rows.find((row) => row.id === EXERCISES.dips!.id);
     expect(dips).toBeDefined();
-    expect(dips?.tagName).toBe('Chest');
+    expect(dips?.tagName).toBe('chest');
   });
 
   it('grupuje tagi dodatkowe po ćwiczeniu, w kolejności zapisu', async () => {
     const rows = await allAdditionalTags(local.db);
     const grouped = groupAdditionalTags(rows);
 
-    expect(grouped.get(EXERCISES.dips!.id)?.map((tag) => tag.name)).toEqual(['Triceps']);
+    expect(grouped.get(EXERCISES.dips!.id)?.map((tag) => tag.name)).toEqual([
+      'triceps',
+      'shoulders',
+    ]);
     // Ćwiczenie bez tagów dodatkowych po prostu nie ma wpisu w mapie.
-    expect(grouped.get(EXERCISES.bench!.id)).toBeUndefined();
+    expect(grouped.get(EXERCISES.crunch!.id)).toBeUndefined();
   });
 });
 

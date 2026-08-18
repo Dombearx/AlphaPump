@@ -26,9 +26,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createHarness, type Harness, type TestUser } from './harness.js';
 import type { AffectedScope } from '../src/sync/derived.js';
 
-const BENCH = builtInExerciseId('Barbell bench press');
+const BENCH = builtInExerciseId('Flat barbell bench press');
 const SQUAT = builtInExerciseId('Barbell squat');
-const PLANK = builtInExerciseId('Plank');
+let PLANK: string;
 
 const DAY = '2026-08-10';
 
@@ -116,6 +116,14 @@ describe('synchronizacja', () => {
     // Identyfikatory dobrane tak, by remis rozstrzygał się na korzyść tabletu.
     phone = device(harness, user, '00000000-0000-7000-8000-0000000000a1');
     tablet = device(harness, user, '00000000-0000-7000-8000-0000000000b2');
+
+    // Baza domyślna nie ma wbudowanego ćwiczenia „masa ciała + czas" — testujemy
+    // na własnym.
+    const plank = await harness.json<{ id: string }>('POST', '/exercises', {
+      headers: user.headers,
+      body: { name: 'Deska', loggingType: 'bodyweight_time', primaryTagId: tagId('abs') },
+    });
+    PLANK = plank.body.id;
   });
 
   afterEach(async () => {

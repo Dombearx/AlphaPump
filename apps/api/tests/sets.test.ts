@@ -6,14 +6,14 @@
  * z której korzysta bot Discord i to ona ma być potwierdzona.
  */
 
-import { builtInExerciseId } from '@alphapump/core';
+import { builtInExerciseId, tagId } from '@alphapump/core';
 import type { WorkoutSet } from '@alphapump/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createHarness, type Harness, type TestUser } from './harness.js';
 
-const BENCH = builtInExerciseId('Barbell bench press');
-const PLANK = builtInExerciseId('Plank');
-const RUN = builtInExerciseId('Running');
+const BENCH = builtInExerciseId('Flat barbell bench press');
+let PLANK: string;
+let RUN: string;
 
 describe('serie', () => {
   let harness: Harness;
@@ -24,6 +24,20 @@ describe('serie', () => {
     harness = await createHarness();
     user = await harness.signUp('serie@example.com');
     apiKey = { 'x-api-key': await harness.createApiKey(user) };
+
+    // Baza domyślna nie ma wbudowanych ćwiczeń „masa ciała + czas" ani
+    // „dystans + czas" — te dwa typy logowania testujemy na własnych.
+    const plank = await harness.json<{ id: string }>('POST', '/exercises', {
+      headers: user.headers,
+      body: { name: 'Deska', loggingType: 'bodyweight_time', primaryTagId: tagId('abs') },
+    });
+    PLANK = plank.body.id;
+
+    const run = await harness.json<{ id: string }>('POST', '/exercises', {
+      headers: user.headers,
+      body: { name: 'Bieganie', loggingType: 'distance_time', primaryTagId: tagId('quads') },
+    });
+    RUN = run.body.id;
   });
 
   afterAll(async () => {

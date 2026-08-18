@@ -126,7 +126,7 @@ describe('cykle w bazie lokalnej', () => {
     it('przyjmuje wiele pozycji celu naraz', async () => {
       const id = await create([
         { metric: 'sets', target: 12, exerciseId: null, tagId: TAGS.chest },
-        { metric: 'sets', target: 6, exerciseId: EXERCISES.pullUps!.id, tagId: null },
+        { metric: 'sets', target: 6, exerciseId: EXERCISES.crunch!.id, tagId: null },
       ]);
 
       const goals = await local.db.select().from(cycleGoals).where(eq(cycleGoals.cycleId, id));
@@ -228,7 +228,7 @@ describe('cykle w bazie lokalnej', () => {
       // musi go zignorować, zamiast liczyć jako zero-wartościowe trafienie.
       await createSet(local.db, {
         ...AUTHOR,
-        exerciseId: EXERCISES.pullUps!.id,
+        exerciseId: EXERCISES.crunch!.id,
         performedOn: DAY,
         values: {
           weightG: null,
@@ -351,17 +351,17 @@ describe('cykle w bazie lokalnej', () => {
     it('pokazuje pozostałe pozycje aktywnych cykli', async () => {
       await create([
         { metric: 'sets', target: 4, exerciseId: null, tagId: TAGS.chest },
-        { metric: 'sets', target: 2, exerciseId: EXERCISES.pullUps!.id, tagId: null },
+        { metric: 'sets', target: 2, exerciseId: EXERCISES.crunch!.id, tagId: null },
       ]);
       await addBench();
 
       const { summaries } = await load();
       const targets = remainingTargets(summaries, DAY);
 
-      // Najbliżej ukończenia najpierw: podciąganie potrzebuje dwóch serii,
+      // Najbliżej ukończenia najpierw: brzuszek potrzebuje dwóch serii,
       // klatka jeszcze trzech.
-      expect(targets.map((target) => target.label)).toEqual(['Pull-up', 'Chest']);
-      expect(targets[0]?.exerciseId).toBe(EXERCISES.pullUps!.id);
+      expect(targets.map((target) => target.label)).toEqual(["Mason's crunch", 'chest']);
+      expect(targets[0]?.exerciseId).toBe(EXERCISES.crunch!.id);
       expect(targets[1]?.tagId).toBe(TAGS.chest);
       expect(targets[1]?.remaining).toBe(3);
     });
