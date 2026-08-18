@@ -385,6 +385,33 @@ export function groupAdditionalTags(
   return byExercise;
 }
 
+export interface ExerciseTag {
+  id: string;
+  name: string;
+  color: string;
+  /** Tylko tag główny liczy się do celów cyklu — reszta jest samą etykietą. */
+  primary: boolean;
+}
+
+/**
+ * Komplet tagów jednego ćwiczenia do pokazania na ekranie: główny na przedzie,
+ * dodatkowe w kolejności zapisanej przy edycji.
+ *
+ * Powtórzenie tagu głównego wśród dodatkowych jest odrzucane. Formularz
+ * ćwiczenia takiej pary nie pozwala ustawić, ale dane przychodzą też
+ * synchronizacją z innego urządzenia i ze starszych wpisów — a dwa identyczne
+ * chipsy obok siebie wyglądałyby jak błąd aplikacji.
+ */
+export function exerciseTagList(
+  primary: { id: string; name: string; color: string },
+  additional: readonly { id: string; name: string; color: string }[],
+): ExerciseTag[] {
+  return [
+    { ...primary, primary: true },
+    ...additional.filter((tag) => tag.id !== primary.id).map((tag) => ({ ...tag, primary: false })),
+  ];
+}
+
 /* --------------------------------------------------------------------- cykle */
 
 /**
