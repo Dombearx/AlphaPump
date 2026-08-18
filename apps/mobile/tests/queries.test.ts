@@ -10,11 +10,13 @@ import { tagId } from '@alphapump/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createSet } from '../src/db/sets';
 import {
+  additionalTagsOf,
   allAdditionalTags,
   daySetCounts,
   exerciseDetails,
   exerciseHistory,
   exerciseLibrary,
+  exerciseTagList,
   groupAdditionalTags,
   localUser,
 } from '../src/db/queries';
@@ -137,6 +139,37 @@ describe('zapytania ekranów', () => {
     ]);
     // Ćwiczenie bez tagów dodatkowych po prostu nie ma wpisu w mapie.
     expect(grouped.get(EXERCISES.crunch!.id)).toBeUndefined();
+  });
+
+  it('ekran zapisu serii dostaje tag główny na przedzie, a dodatkowe w kolejności zapisu', async () => {
+    const [details] = await exerciseDetails(local.db, EXERCISES.dips!.id);
+    const extra = await additionalTagsOf(local.db, EXERCISES.dips!.id);
+
+    const list = exerciseTagList(
+      { id: details!.tagId, name: details!.tagName, color: details!.tagColor },
+      extra,
+    );
+
+    expect(list.map((tag) => tag.name)).toEqual(['chest', 'triceps', 'shoulders']);
+    expect(list.map((tag) => tag.primary)).toEqual([true, false, false]);
+  });
+
+  it('ćwiczenie bez tagów dodatkowych ma na liście sam tag główny', async () => {
+    const [details] = await exerciseDetails(local.db, EXERCISES.crunch!.id);
+    const extra = await additionalTagsOf(local.db, EXERCISES.crunch!.id);
+
+    expect(
+      exerciseTagList(
+        { id: details!.tagId, name: details!.tagName, color: details!.tagColor },
+        extra,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('tag główny powtórzony wśród dodatkowych nie pokazuje się dwa razy', () => {
+    const chest = { id: tagId('chest'), name: 'chest', color: '#ef4444' };
+
+    expect(exerciseTagList(chest, [chest])).toEqual([{ ...chest, primary: true }]);
   });
 });
 

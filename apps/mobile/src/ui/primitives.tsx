@@ -185,19 +185,34 @@ export function Chip({
   selected?: boolean;
   /** Kropka w kolorze tagu; pomijana tam, gdzie chips nie dotyczy tagu. */
   color?: string;
-  onPress: () => void;
+  /**
+   * Bez `onPress` chips jest samą etykietą: nie reaguje na dotyk i nie
+   * przedstawia się czytnikowi ekranu jako przycisk. Tak wyglądają tagi
+   * ćwiczenia na ekranie zapisu serii — informują, a nie filtrują.
+   */
+  onPress?: () => void;
 }) {
+  const shape = `flex-row items-center gap-2 rounded-full border px-3 py-2 ${
+    selected ? 'border-accent bg-surface' : 'border-border bg-base'
+  }`;
+
+  const content = (
+    <>
+      {color !== undefined && <TagDot color={color} />}
+      <Text className={selected ? 'text-text' : 'text-muted'}>{label}</Text>
+    </>
+  );
+
+  if (onPress === undefined) return <View className={shape}>{content}</View>;
+
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ selected }}
       onPress={onPress}
-      className={`flex-row items-center gap-2 rounded-full border px-3 py-2 active:opacity-70 ${
-        selected ? 'border-accent bg-surface' : 'border-border bg-base'
-      }`}
+      className={`${shape} active:opacity-70`}
     >
-      {color !== undefined && <TagDot color={color} />}
-      <Text className={selected ? 'text-text' : 'text-muted'}>{label}</Text>
+      {content}
     </Pressable>
   );
 }

@@ -41,7 +41,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSession } from '../auth/client';
 import { db } from '../db/client';
-import { exerciseDetails, exerciseHistory } from '../db/queries';
+import { additionalTagsOf, exerciseDetails, exerciseHistory, exerciseTagList } from '../db/queries';
 import { createSet, deleteSet, moveSet, updateSet, type SetAuthor } from '../db/sets';
 import { useDeviceId } from '../hooks';
 import {
@@ -57,6 +57,8 @@ import { useRequestSync } from '../sync/provider';
 import {
   Button,
   Card,
+  Chip,
+  ChipRow,
   EmptyState,
   Field,
   IconButton,
@@ -102,6 +104,7 @@ export function LogScreen({ day, exerciseId }: { day: IsoDate; exerciseId: strin
   const userId = session?.user.id ?? '';
 
   const details = useLiveQuery(exerciseDetails(db, exerciseId));
+  const extraTags = useLiveQuery(additionalTagsOf(db, exerciseId), [exerciseId]);
   const history = useLiveQuery(exerciseHistory(db, userId, exerciseId));
 
   const [draft, setDraft] = useState<SetDraft | null>(null);
@@ -172,6 +175,10 @@ export function LogScreen({ day, exerciseId }: { day: IsoDate; exerciseId: strin
   }
 
   const loggingType: LoggingType = exercise.loggingType;
+  const tagList = exerciseTagList(
+    { id: exercise.tagId, name: exercise.tagName, color: exercise.tagColor },
+    extraTags.data,
+  );
   const current: SetDraft = draft ?? suggestion ?? { values: {}, note: '' };
   const author = deviceId === null ? null : { userId, deviceId };
 
@@ -424,10 +431,24 @@ export function LogScreen({ day, exerciseId }: { day: IsoDate; exerciseId: strin
             keyboardShouldPersistTaps="handled"
             scrollEnabled={!dragScrollLocked}
           >
-            <Text className="text-muted">
-              {exercise.tagName} · {exercise.authorNickname}
-              {exercise.gym === null ? '' : ` · ${exercise.gym}`}
-            </Text>
+            {/* Tagi ćwiczenia — te same chipsy co w bibliotece, tylko bez
+                `onPress`: tutaj mówią wyłącznie, czego ćwiczenie dotyczy, i nie
+                mają dokąd prowadzić w środku zapisywania serii. Tag główny stoi
+                pierwszy i jest wyróżniony, bo jako jedyny liczy się do celów
+                cyklu. Jego nazwa zniknęła z linijki niżej, żeby nie stać na
+                ekranie dwa razy. */}
+            <View className="gap-2">
+              <ChipRow wrap>
+                {tagList.map((tag) => (
+                  <Chip key={tag.id} label={tag.name} color={tag.color} selected={tag.primary} />
+                ))}
+              </ChipRow>
+
+              <Text className="text-muted">
+                {exercise.authorNickname}
+                {exercise.gym === null ? '' : ` · ${exercise.gym}`}
+              </Text>
+            </View>
 
             {/* Karta formularza łyka tapnięcia, których nie wziął żaden `Field`
                 ani `Button` — inaczej trafienie w jej margines albo w odstęp
