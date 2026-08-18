@@ -15,7 +15,7 @@ import logging
 
 import httpx
 
-from .models import ExistingIssue, IssueRef, PullRequestRef
+from .models import ExistingIssue, IssueComment, IssueRef, PullRequestRef
 
 logger = logging.getLogger(__name__)
 
@@ -118,12 +118,36 @@ class GitHubIssues:
             )
         return issues
 
-    async def comment(self, issue_number: int, body: str) -> None:
-        await self._request(
+    async def comment(self, issue_number: int, body: str) -> int:
+        response = await self._request(
             "POST",
             f"/repos/{self._repo}/issues/{issue_number}/comments",
             json={"body": body},
         )
+        return int(response.json()["id"])
+
+    async def issue_comments(self, issue_number: int) -> list[IssueComment]:
+        """Komentarze pod issue, od najstarszego.
+
+        Sto na stronę bez stronicowania: zgłoszenia w tym repozytorium mają ich
+        kilka, a nie kilkaset. Gdyby kiedyś miały — urwie się najstarsze, czyli
+        te, które i tak trafiły już do wątku dawno temu.
+        """
+
+        response = await self._request(
+            "GET",
+            f"/repos/{self._repo}/issues/{issue_number}/comments",
+            params={"per_page": 100},
+        )
+        return [
+            IssueComment(
+                id=int(item["id"]),
+                author=(item.get("user") or {}).get("login") or "?",
+                body=item.get("body") or "",
+                url=item["html_url"],
+            )
+            for item in response.json()
+        ]
 
     async def linked_pull_request(self, issue_number: int) -> PullRequestRef | None:
         """Pierwszy pull request powiązany z issue albo `None`.

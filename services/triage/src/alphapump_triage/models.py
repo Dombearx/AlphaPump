@@ -97,6 +97,22 @@ class PullRequestRef:
 
 
 @dataclass(frozen=True)
+class IssueComment:
+    """Komentarz pod issue na GitHubie.
+
+    `id` jest tu ważniejsze niż treść: po nim usługa poznaje, czego jeszcze nie
+    przekazała do wątku. Numery komentarzy rosną w skali całego GitHuba, więc
+    porównanie „większy niż ostatnio widziany" działa też wtedy, gdy dwa
+    komentarze powstały w tej samej sekundzie.
+    """
+
+    id: int
+    author: str
+    body: str
+    url: str
+
+
+@dataclass(frozen=True)
 class ChatMessage:
     """Wiadomość z wątku na Discordzie, w postaci podawanej LLM-owi."""
 
@@ -141,6 +157,7 @@ class TrackedIssue:
     title: str
     thread_id: str | None
     pr_number: int | None = None
+    last_comment_id: int | None = None
 
 
 @dataclass

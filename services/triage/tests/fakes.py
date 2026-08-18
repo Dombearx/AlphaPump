@@ -12,7 +12,13 @@ from itertools import count
 from zoneinfo import ZoneInfo
 
 from alphapump_triage.config import Config
-from alphapump_triage.models import ChatMessage, ExistingIssue, IssueRef, PullRequestRef
+from alphapump_triage.models import (
+    ChatMessage,
+    ExistingIssue,
+    IssueComment,
+    IssueRef,
+    PullRequestRef,
+)
 
 
 class FakeLlm:
@@ -40,7 +46,10 @@ class FakeTracker:
         self.created: list[tuple[str, str, list[str]]] = []
         self.comments: list[tuple[int, str]] = []
         self.pull_requests: dict[int, PullRequestRef] = {}
+        # Komentarze widoczne pod issue — to, co odda `issue_comments`.
+        self.issue_threads: dict[int, list[IssueComment]] = {}
         self._numbers = count(101)
+        self._comment_ids = count(9001)
 
     async def create_issue(self, title: str, body: str, labels: list[str]) -> IssueRef:
         self.created.append((title, body, labels))
@@ -50,8 +59,16 @@ class FakeTracker:
     async def list_open_issues(self, label: str) -> list[ExistingIssue]:
         return list(self.open_issues)
 
-    async def comment(self, issue_number: int, body: str) -> None:
+    async def comment(self, issue_number: int, body: str) -> int:
         self.comments.append((issue_number, body))
+        comment_id = next(self._comment_ids)
+        self.issue_threads.setdefault(issue_number, []).append(
+            IssueComment(id=comment_id, author="triage", body=body, url="https://example/c")
+        )
+        return comment_id
+
+    async def issue_comments(self, issue_number: int) -> list[IssueComment]:
+        return list(self.issue_threads.get(issue_number, []))
 
     async def linked_pull_request(self, issue_number: int) -> PullRequestRef | None:
         return self.pull_requests.get(issue_number)

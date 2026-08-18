@@ -9,6 +9,9 @@ Trzy przebiegi, każdy uruchamiany przez kogoś innego:
   rozmowa nie odpowiedziała.
 * `poll_pull_requests()` — pętla co kilka minut. Dokleja link do PR-ki w wątku
   tego issue, którego PR-ka dotyczy.
+* `poll_issue_comments()` — ta sama pętla. Przekłada do wątku komentarze, które
+  pojawiły się pod issue: agent bywa odpowiada pytaniem zamiast PR-ką, a wtedy
+  pytanie musi trafić tam, gdzie są ludzie zdolni odpowiedzieć.
 
 Klasa nie wie nic o HTTP, SQL-u ani o Discordzie: dostaje `Llm`, `IssueTracker`
 i `Chat` w konstruktorze. Stąd testy z atrapami zamiast serwera na localhoście.
@@ -142,7 +145,10 @@ class TriageService:
     ) -> None:
         duplicate = await self._find_duplicate_issue(feedback)
         if duplicate is not None:
-            await self._tracker.comment(duplicate, prompts.duplicate_note(feedback))
+            comment_id = await self._tracker.comment(duplicate, prompts.duplicate_note(feedback))
+            # Własna wypowiedź odhaczona od razu: odpytywanie ma jej nie odesłać
+            # z powrotem do wątku, w którym za chwilę i tak ją ogłosimy.
+            self._state.mark_comments_seen(duplicate, comment_id)
             tracked = self._state.issue(duplicate)
             if tracked and tracked.thread_id:
                 await self._chat.post_in_thread(
@@ -390,6 +396,52 @@ class TriageService:
             linked += 1
             logger.info("issue #%d dostało PR-kę #%d", issue.number, pull_request.number)
         return linked
+
+    async def poll_issue_comments(self) -> int:
+        """Przekłada nowe komentarze spod issue do wątku na Discordzie.
+
+        Agent w Akcjach nie zawsze kończy PR-ką. Gdy zgłoszenie jest zbyt ogólne,
+        żeby je zlokalizować, ma napisać o tym w komentarzu — i taki komentarz
+        był dotąd ślepym zaułkiem: powstawał na GitHubie, a rozmowa toczyła się
+        na Discordzie. To samo dotyczy powiadomienia o nieudanym przebiegu.
+
+        Odpytujemy te same issue co przy PR-kach — z wątkiem i bez PR-ki. Po
+        powstaniu PR-ki rozmowa i tak przenosi się do niej, a każde dodatkowe
+        issue to kolejne zapytanie w każdej rundzie pętli.
+        """
+
+        relayed = 0
+        for issue in self._state.issues_awaiting_pr():
+            if not issue.thread_id:
+                continue
+            try:
+                comments = await self._tracker.issue_comments(issue.number)
+            except Exception:  # noqa: BLE001 — awaria GitHuba nie może ubić pętli
+                logger.exception("nie udało się pobrać komentarzy do #%d", issue.number)
+                continue
+            if not comments:
+                continue
+
+            newest = comments[-1].id
+            if issue.last_comment_id is None:
+                # Issue sprzed tej funkcji: nie wiemy, co wątek już widział.
+                # Zapamiętujemy stan bieżący i milczymy — wysypanie całej
+                # historii komentarzy byłoby gorsze niż jej pominięcie.
+                self._state.mark_comments_seen(issue.number, newest)
+                logger.info(
+                    "issue #%d: zapamiętany stan komentarzy, bez przekazywania", issue.number
+                )
+                continue
+
+            for comment in comments:
+                if comment.id <= issue.last_comment_id:
+                    continue
+                await self._chat.post_in_thread(
+                    issue.thread_id, prompts.issue_comment_note(comment, issue.number)
+                )
+                relayed += 1
+            self._state.mark_comments_seen(issue.number, newest)
+        return relayed
 
 
 def _fallback_title(feedback: Feedback) -> str:

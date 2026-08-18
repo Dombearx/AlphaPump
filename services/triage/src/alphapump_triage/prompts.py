@@ -10,7 +10,15 @@ dotykania warstwy sieciowej i żeby dało się je obejrzeć w jednym miejscu.
 
 from __future__ import annotations
 
-from .models import ChatMessage, ExistingIssue, Feedback, IssueRef, Kind, PullRequestRef
+from .models import (
+    ChatMessage,
+    ExistingIssue,
+    Feedback,
+    IssueComment,
+    IssueRef,
+    Kind,
+    PullRequestRef,
+)
 
 # Discord tnie wiadomości po 2000 znakach; zostawiamy zapas na ozdobniki
 # doklejane przy składaniu treści.
@@ -270,6 +278,21 @@ def issue_already_exists_note(number: int, url: str) -> str:
     return (
         f"Ta dyskusja ma już swoje issue: [#{number}]({url}). "
         "Jeśli ustalenia się zmieniły, dopiszcie je bezpośrednio w issue."
+    )
+
+
+def issue_comment_note(comment: IssueComment, issue_number: int) -> str:
+    """Nowy komentarz spod issue, przełożony do wątku.
+
+    Treść idzie w całości (przycięta cytatem), a nie samym linkiem: wątek ma
+    być miejscem, w którym da się przeczytać sprawę, a nie spisem odnośników do
+    otwierania. Gdy agent pyta o brakujący szczegół, pytanie musi być widoczne
+    tam, gdzie są ludzie zdolni odpowiedzieć.
+    """
+
+    return (
+        f"💬 **Nowy komentarz pod [#{issue_number}]({comment.url})** — od **{comment.author}**\n\n"
+        f"> {_quote(comment.body)}"
     )
 
 

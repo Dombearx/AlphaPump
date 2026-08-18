@@ -105,6 +105,15 @@ async def _run(config: Config, once: bool) -> None:
             coalesce=True,
             max_instances=1,
         )
+        # Ten sam odstęp co przy PR-kach i ten sam zbiór issue — obie pętle
+        # pytają GitHuba o to samo zgłoszenie, tylko o inną jego stronę.
+        scheduler.add_job(
+            _guarded(service.poll_issue_comments, "odpytywanie o komentarze"),
+            IntervalTrigger(seconds=config.pr_poll_seconds),
+            id="issue-comments",
+            coalesce=True,
+            max_instances=1,
+        )
         scheduler.start()
         logger.info(
             "planista wystartował: przegląd o %02d:%02d (%s), pull requesty co %ds",

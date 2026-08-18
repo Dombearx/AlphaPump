@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS issues (
     created_at   TEXT NOT NULL,
     pr_number    INTEGER,
     pr_url       TEXT,
-    pr_linked_at TEXT
+    pr_linked_at TEXT,
+    last_comment_id INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS discussions (
@@ -88,11 +89,17 @@ class State:
         indziej.
         """
 
-        columns = {
-            row["name"] for row in self._connection.execute("PRAGMA table_info(discussions)")
-        }
-        if "open_questions" not in columns:
+        def kolumny(tabela: str) -> set[str]:
+            return {row["name"] for row in self._connection.execute(f"PRAGMA table_info({tabela})")}
+
+        if "open_questions" not in kolumny("discussions"):
             self._connection.execute("ALTER TABLE discussions ADD COLUMN open_questions TEXT")
+        if "last_comment_id" not in kolumny("issues"):
+            # Bez wartości domyślnej: `NULL` znaczy „nie wiemy, co już widzieliśmy".
+            # Odpytywanie traktuje to jako sygnał, żeby zapamiętać stan bieżący
+            # i przemilczeć tę rundę — inaczej wątek issue, które żyje od tygodni,
+            # dostałby naraz całą swoją historię komentarzy.
+            self._connection.execute("ALTER TABLE issues ADD COLUMN last_comment_id INTEGER")
 
     def close(self) -> None:
         self._connection.close()
@@ -171,8 +178,9 @@ class State:
     ) -> None:
         self._connection.execute(
             """
-            INSERT INTO issues (number, kind, url, title, message_id, thread_id, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO issues
+                (number, kind, url, title, message_id, thread_id, created_at, last_comment_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0)
             ON CONFLICT(number) DO UPDATE SET
                 url = excluded.url,
                 title = excluded.title,
@@ -199,6 +207,18 @@ class State:
             "SELECT * FROM issues WHERE pr_number IS NULL AND thread_id IS NOT NULL ORDER BY number"
         ).fetchall()
         return [_to_tracked_issue(row) for row in rows]
+
+    def mark_comments_seen(self, issue_number: int, comment_id: int) -> None:
+        """Przesuwa znacznik ostatniego komentarza przekazanego do wątku.
+
+        Wołane także zaraz po tym, jak usługa sama dopisze komentarz — własnej
+        wypowiedzi nie ma po co odsyłać do wątku, w którym przed chwilą padła.
+        """
+
+        self._connection.execute(
+            "UPDATE issues SET last_comment_id = ? WHERE number = ?",
+            (comment_id, issue_number),
+        )
 
     def mark_pull_request(self, issue_number: int, pr_number: int, pr_url: str) -> None:
         self._connection.execute(
@@ -273,6 +293,9 @@ def _to_tracked_issue(row: sqlite3.Row) -> TrackedIssue:
         title=row["title"],
         thread_id=row["thread_id"],
         pr_number=int(row["pr_number"]) if row["pr_number"] is not None else None,
+        last_comment_id=(
+            int(row["last_comment_id"]) if row["last_comment_id"] is not None else None
+        ),
     )
 
 
