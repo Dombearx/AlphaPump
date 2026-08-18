@@ -101,9 +101,7 @@ interface ExerciseDefinition {
  * inaczej cała ścieżka „wybierz ćwiczenie, zapisz serię" byłaby przetestowana
  * tylko dla ciężaru z powtórzeniami.
  */
-const EXERCISE_DEFINITIONS: readonly ExerciseDefinition[] = [
-
-];
+const EXERCISE_DEFINITIONS: readonly ExerciseDefinition[] = [];
 
 export const SEED_EXERCISES: readonly SeedExercise[] = EXERCISE_DEFINITIONS.map((definition) => ({
   id: builtInExerciseId(definition.name),
