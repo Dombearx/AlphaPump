@@ -2,7 +2,12 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # Gałęzie agenta lecą tu obok `main`, bo PR-kę zakłada `gh` z tokenem
+    # zadania, a zdarzenia od `GITHUB_TOKEN` nie budzą kolejnych workflow —
+    # `pull_request` by nie wystrzelił i PR-ka wisiałaby bez ani jednego
+    # sprawdzenia. Przebieg z `push` przypina się do tego samego commita, więc
+    # jego wynik i tak widać w PR-ce.
+    branches: [main, 'claude/**']
   pull_request:
 
 concurrency:
