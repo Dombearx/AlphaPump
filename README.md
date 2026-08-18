@@ -74,7 +74,7 @@ złapać nie może:
 | `ios-simulator.yml` | PR dotykający aplikacji | że projekt na iOS wciąż się buduje, mimo że wydanie idzie na Androida |
 | `backup-restore.yml` | co miesiąc i przy zmianie kodu kopii | że kopia daje się odtworzyć, a dane po odtworzeniu zgadzają się z oryginałem |
 | `deploy-stack.yml` | PR dotykający wdrożenia, backendu lub panelu | że stos z `deploy/` wstaje na czystej bazie i odpowiada przez Caddy'ego |
-| `android-release.yml` | każdy merge do `main`, tag `v*` i ręcznie | zbudowanie `.apk` i położenie go na minipc, skąd telefony biorą aktualizację |
+| `android-release.yml` | merge do `main` ruszający aplikację, tag `v*` i ręcznie | zbudowanie `.apk` i położenie go na minipc, skąd telefony biorą aktualizację |
 
 ### Konfiguracja: pliki `.env` i klucze API
 
@@ -542,8 +542,16 @@ przestawienie czegoś w aplikacji.
 
 ##### Skąd biorą się wydania
 
-Wydanie robi `.github/workflows/android-release.yml` przy **każdym mergu do
-`main`**, przy tagu `v*` i na żądanie. Adres API bierze się ze zmiennej
+Wydanie robi `.github/workflows/android-release.yml` przy każdym mergu do
+`main`, **który ruszył cokolwiek wchodzącego do pliku `.apk`** — samą aplikację
+(`apps/mobile/`), pakiety współdzielone (`packages/`) albo manifesty decydujące
+o wersjach zależności. Zmiana w panelu, w API, w segregacji zgłoszeń czy
+w `deploy/` wydania nie wywołuje: nie zmieniłaby ani bajtu w pliku, a kosztuje
+kilkanaście minut gradle'a i numer wersji. Rozstrzyga o tym osobne zadanie
+`zmiany`, a nie filtr `paths` — ten obejmowałby także pushe z tagiem, więc tag
+postawiony na commicie ruszającym wyłącznie `deploy/` przestałby wydawać
+cokolwiek. Wydanie z tagu `v*` i uruchomienie ręczne przechodzą przez tę bramkę
+bez pytania. Adres API bierze się ze zmiennej
 repozytorium `EXPO_PUBLIC_API_URL` (przy uruchomieniu ręcznym — z pola
 `api_url`). Zadanie buduje `.apk`, opisuje go plikiem `latest.json`, wchodzi do
 NetBirda i wysyła oba na `POST /apk` serwera aktualizacji, który kładzie je
