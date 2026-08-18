@@ -114,6 +114,11 @@ class Discussion:
     Plik na minipc może zostać sprzątnięty albo przeniesiony, a wątek na
     Discordzie żyje tygodniami — kopia w bazie stanu sprawia, że domknięcie
     dyskusji nie zależy od tego, czy plik jeszcze tam leży.
+
+    `open_questions` to pytania, którymi bot odesłał dyskusję z powrotem do
+    zespołu. Trzymamy je, bo w kolejnej rundzie własne wypowiedzi bota wypadają
+    z materiału dla modelu — bez tej kopii odpowiedzi w wątku nie miałyby do
+    czego się odnosić.
     """
 
     thread_id: str
@@ -123,6 +128,7 @@ class Discussion:
     reporter: str
     source_file: str | None = None
     issue_number: int | None = None
+    open_questions: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

@@ -88,3 +88,43 @@ def test_dyskusja_znika_z_otwartych_po_zalozeniu_issue(state: State):
     assert state.open_discussions() == []
     discussion = state.discussion("w1")
     assert discussion is not None and discussion.issue_number == 42
+
+
+def test_pytania_przezywaja_restart(state: State):
+    state.record_discussion(Discussion("w1", "m1", "Timer", "Timer przerw.", "kasia"))
+    state.record_open_questions("w1", ["Ile sekund domyślnie?"])
+
+    assert state.discussion("w1").open_questions == ("Ile sekund domyślnie?",)
+
+
+def test_baza_sprzed_kolumny_z_pytaniami_otwiera_sie(tmp_path):
+    """Plik stanu na minipc żyje od pierwszego uruchomienia — nowa kolumna musi go dogonić."""
+
+    import sqlite3
+
+    sciezka = tmp_path / "stan.sqlite3"
+    stara = sqlite3.connect(sciezka)
+    stara.executescript(
+        """
+        CREATE TABLE discussions (
+            thread_id    TEXT PRIMARY KEY,
+            message_id   TEXT NOT NULL,
+            title        TEXT NOT NULL,
+            source_text  TEXT NOT NULL,
+            reporter     TEXT NOT NULL,
+            source_file  TEXT,
+            created_at   TEXT NOT NULL,
+            issue_number INTEGER
+        );
+        INSERT INTO discussions VALUES ('w1', 'm1', 'Timer', 'Timer przerw.', 'kasia', NULL,
+            '2026-08-01T00:00:00+00:00', NULL);
+        """
+    )
+    stara.commit()
+    stara.close()
+
+    state = State(sciezka)
+
+    assert state.discussion("w1").open_questions == ()
+    state.record_open_questions("w1", ["Ile sekund?"])
+    assert state.discussion("w1").open_questions == ("Ile sekund?",)

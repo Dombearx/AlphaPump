@@ -233,6 +233,78 @@ async def test_wypowiedzi_bota_nie_wchodza_do_ustalen(reader):
     assert "Oznaczcie mnie" not in captured[0]
 
 
+async def test_nierozstrzygnieta_dyskusja_wraca_pytaniami_zamiast_issue(reader):
+    """Etykieta `ai-triage` budzi agenta natychmiast, a agent nie ma jak dopytać."""
+
+    state = State(":memory:")
+    state.record_discussion(Discussion("w1", "m1", "Przyciski", "Przyciski są zbędne.", "domin"))
+    chat = FakeChat(thread_history={"w1": [chat_message("domin", "Wywalmy oba.")]})
+    service, tracker, chat, state = build(
+        reader,
+        [
+            {
+                "title": "Uproszczenie przycisków",
+                "body": "## Zakres\n- usunąć przyciski",
+                "open_questions": ["Kliknięcie poza formularzem zapisuje czy odrzuca zmiany?"],
+            }
+        ],
+        chat=chat,
+        state=state,
+    )
+
+    await service.handle_mention("w1")
+
+    assert tracker.created == []
+    assert state.discussion("w1").issue_number is None
+    watek, tresc = chat.thread_posts[-1]
+    assert watek == "w1"
+    assert "zapisuje czy odrzuca" in tresc
+    # Pytania zostają w stanie: własne wypowiedzi bota wypadają z materiału
+    # dla modelu, więc bez tej kopii kolejna runda pytałaby od nowa.
+    assert state.discussion("w1").open_questions == (
+        "Kliknięcie poza formularzem zapisuje czy odrzuca zmiany?",
+    )
+
+
+async def test_po_odpowiedziach_issue_powstaje_a_model_widzi_swoje_pytania(reader):
+    state = State(":memory:")
+    state.record_discussion(Discussion("w1", "m1", "Przyciski", "Przyciski są zbędne.", "domin"))
+    state.record_open_questions("w1", ["Zapisywać czy odrzucać zmiany?"])
+    chat = FakeChat(thread_history={"w1": [chat_message("domin", "Odrzucać.")]})
+    captured: list[str] = []
+
+    def writer(model: str, system: str, user: str) -> dict:
+        captured.append(user)
+        return {"title": "Uproszczenie przycisków", "body": "## Zakres\n…", "open_questions": []}
+
+    service, tracker, chat, state = build(reader, [writer], chat=chat, state=state)
+
+    await service.handle_mention("w1")
+
+    assert "Zapisywać czy odrzucać zmiany?" in captured[0]
+    assert "Odrzucać." in captured[0]
+    title, body, labels = tracker.created[0]
+    assert title == "Uproszczenie przycisków"
+    assert labels == ["ai-triage", "enhancement"]
+    assert state.discussion("w1").issue_number == 101
+
+
+async def test_puste_pytanie_nie_zatrzymuje_issue(reader):
+    """Model potrafi zwrócić `[""]` zamiast `[]` — to nie jest pytanie."""
+
+    state = State(":memory:")
+    state.record_discussion(Discussion("w1", "m1", "Timer", "Timer przerw.", "kasia"))
+    service, tracker, chat, state = build(
+        reader,
+        [{"title": "Timer przerw", "body": "## Zakres\n…", "open_questions": ["", "   "]}],
+        state=state,
+    )
+
+    await service.handle_mention("w1")
+
+    assert tracker.created != []
+
+
 async def test_oznaczenie_w_nieznanym_watku_nic_nie_robi(reader):
     service, tracker, chat, _ = build(reader, [])
 

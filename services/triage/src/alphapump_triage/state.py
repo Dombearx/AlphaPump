@@ -16,6 +16,7 @@ kupiłoby wyłącznie okazję do wyścigu.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -54,7 +55,8 @@ CREATE TABLE IF NOT EXISTS discussions (
     reporter     TEXT NOT NULL,
     source_file  TEXT,
     created_at   TEXT NOT NULL,
-    issue_number INTEGER
+    issue_number INTEGER,
+    open_questions TEXT
 );
 """
 
@@ -75,6 +77,22 @@ class State:
         self._connection.execute("PRAGMA journal_mode=WAL")
         self._connection.execute("PRAGMA foreign_keys=ON")
         self._connection.executescript(_SCHEMA)
+        self._migrate()
+
+    def _migrate(self) -> None:
+        """Dokłada kolumny, których nie miały wcześniejsze wersje schematu.
+
+        `CREATE TABLE IF NOT EXISTS` omija istniejącą tabelę w całości, a plik
+        na minipc żyje od pierwszego uruchomienia usługi. Bez tego nowa kolumna
+        pojawiłaby się wyłącznie na świeżej bazie — czyli w testach i nigdzie
+        indziej.
+        """
+
+        columns = {
+            row["name"] for row in self._connection.execute("PRAGMA table_info(discussions)")
+        }
+        if "open_questions" not in columns:
+            self._connection.execute("ALTER TABLE discussions ADD COLUMN open_questions TEXT")
 
     def close(self) -> None:
         self._connection.close()
@@ -199,8 +217,8 @@ class State:
             """
             INSERT INTO discussions
                 (thread_id, message_id, title, source_text, reporter, source_file, created_at,
-                 issue_number)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 issue_number, open_questions)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(thread_id) DO UPDATE SET
                 title = excluded.title,
                 source_text = excluded.source_text
@@ -214,6 +232,7 @@ class State:
                 discussion.source_file,
                 _now(),
                 discussion.issue_number,
+                json.dumps(list(discussion.open_questions), ensure_ascii=False),
             ),
         )
 
@@ -230,6 +249,14 @@ class State:
             "SELECT * FROM discussions WHERE issue_number IS NULL ORDER BY created_at"
         ).fetchall()
         return [_to_discussion(row) for row in rows]
+
+    def record_open_questions(self, thread_id: str, questions: list[str]) -> None:
+        """Zapamiętuje pytania, którymi bot odesłał dyskusję do zespołu."""
+
+        self._connection.execute(
+            "UPDATE discussions SET open_questions = ? WHERE thread_id = ?",
+            (json.dumps(questions, ensure_ascii=False), thread_id),
+        )
 
     def link_discussion_issue(self, thread_id: str, issue_number: int) -> None:
         self._connection.execute(
@@ -258,4 +285,17 @@ def _to_discussion(row: sqlite3.Row) -> Discussion:
         reporter=row["reporter"],
         source_file=row["source_file"],
         issue_number=int(row["issue_number"]) if row["issue_number"] is not None else None,
+        open_questions=_to_questions(row["open_questions"]),
     )
+
+
+def _to_questions(raw: str | None) -> tuple[str, ...]:
+    """Kolumna bywa pusta: sprzed migracji albo sprzed pierwszej rundy pytań."""
+
+    if not raw:
+        return ()
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return ()
+    return tuple(str(item) for item in parsed) if isinstance(parsed, list) else ()
