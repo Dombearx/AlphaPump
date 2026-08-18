@@ -19,9 +19,24 @@
  * Że w pliku nie ma haseł ani kluczy API i że dane wrócą na serwer dopiero po
  * synchronizacji. Jedno i drugie jest nieoczywiste, a błędne założenie w którymś
  * z tych miejsc kończy się utratą zaufania do kopii.
+ *
+ * ## Trzecia sekcja: FitNotes
+ *
+ * Eksport do kopii FitNotesa jest tutaj, a nie na osobnym ekranie, bo to ta sama
+ * sprawa: wyjęcie własnych treningów do pliku. Różni się jedną rzeczą, która
+ * wymaga rozmowy z użytkownikiem — kategorią, której w jego pliku nie ma i
+ * której darmowy FitNotes nie pozwala utworzyć. Dlatego ta sekcja ma dwa kroki:
+ * najpierw pokazuje, co się stanie, i dopiero potwierdzenie pisze do pliku.
  */
 
-import { archiveSummary, parseArchive, type Archive } from '@alphapump/core';
+import {
+  archiveSummary,
+  parseArchive,
+  planFitNotesExport,
+  type Archive,
+  type FitNotesSourceSet,
+  type FitNotesTarget,
+} from '@alphapump/core';
 import { Directory, File, Paths } from 'expo-file-system';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
@@ -30,11 +45,30 @@ import { useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../db/client';
+import {
+  pickFitNotesBackup,
+  readFitNotesState,
+  writeFitNotesState,
+  type OpenFitNotesBackup,
+} from '../fitnotes/expo';
+import { applyFitNotesPlan, readFitNotesTarget, type FitNotesWriteReport } from '../fitnotes/file';
+import { fitNotesSourceSets } from '../fitnotes/source';
+import { withCategoryChoices, withExportedKeys, type FitNotesState } from '../fitnotes/state';
 import { useLocalAuthor } from '../hooks';
 import { useRequestSync } from '../sync/provider';
 import { archiveFileName, exportLocalArchive } from '../transfer/export';
 import { importLocalArchive, type LocalImportReport } from '../transfer/import';
-import { Button, Card, Loading, SectionTitle } from '../ui/primitives';
+import { Button, Card, Chip, ChipRow, Loading, SectionTitle } from '../ui/primitives';
+
+/** Wybrany plik kopii razem ze wszystkim, z czego liczy się plan zapisu. */
+interface FitNotesSession {
+  backup: OpenFitNotesBackup;
+  target: FitNotesTarget;
+  registry: FitNotesState;
+  sets: FitNotesSourceSet[];
+  /** Wybory z tego podejścia: kategoria AlphaPump → kategoria z pliku. */
+  choices: Record<string, string>;
+}
 
 export function TransferScreen() {
   const author = useLocalAuthor();
@@ -44,6 +78,8 @@ export function TransferScreen() {
   const [problem, setProblem] = useState<string | null>(null);
   const [exported, setExported] = useState<Archive | null>(null);
   const [report, setReport] = useState<LocalImportReport | null>(null);
+  const [session, setSession] = useState<FitNotesSession | null>(null);
+  const [written, setWritten] = useState<FitNotesWriteReport | null>(null);
 
   if (author === null) return <Loading />;
 
@@ -108,6 +144,64 @@ export function TransferScreen() {
       requestSync();
     });
 
+  /**
+   * Plan liczy się przy każdym rysowaniu. Jest czysty i tani, a dzięki temu
+   * podgląd nadąża za wyborem kategorii bez drugiego stanu, który mógłby się
+   * rozjechać z tym, co za chwilę pojedzie do pliku.
+   */
+  const plan =
+    session === null
+      ? null
+      : planFitNotesExport({
+          sets: session.sets,
+          target: session.target,
+          categoryMapping: { ...session.registry.categories, ...session.choices },
+          exportedKeys: session.registry.exported,
+        });
+
+  const pickBackup = () =>
+    run(async () => {
+      setWritten(null);
+      await session?.backup.close();
+      setSession(null);
+
+      // Rejestr przed plikiem: gdy jest nieczytelny, lepiej odmówić od razu, niż
+      // po wyborze pliku zaproponować dopisanie całej historii po raz drugi.
+      const registry = await readFitNotesState();
+      const backup = await pickFitNotesBackup();
+      if (backup === null) return;
+
+      setSession({
+        backup,
+        target: await readFitNotesTarget(backup.database),
+        registry,
+        sets: await fitNotesSourceSets(db, author.userId),
+        choices: {},
+      });
+    });
+
+  const chooseCategory = (from: string, to: string) =>
+    setSession((current) =>
+      current === null ? null : { ...current, choices: { ...current.choices, [from]: to } },
+    );
+
+  const writeBackup = () =>
+    run(async () => {
+      if (session === null || plan === null) return;
+
+      const outcome = await applyFitNotesPlan(session.backup.database, session.target, plan);
+      // Rejestr dopiero po udanym zapisie — odhaczenie wcześniej zgubiłoby serie
+      // przy błędzie w transakcji, a tego już nic by nie naprawiło.
+      await writeFitNotesState(
+        withExportedKeys(withCategoryChoices(session.registry, session.choices), plan.keys),
+      );
+      await session.backup.share();
+      await session.backup.close();
+
+      setSession(null);
+      setWritten(outcome);
+    });
+
   return (
     <SafeAreaView className="flex-1 bg-base" edges={['bottom']}>
       <Stack.Screen options={{ title: 'Export and import' }} />
@@ -163,6 +257,73 @@ export function TransferScreen() {
                 </Text>
               ))}
             </View>
+          )}
+        </Card>
+
+        <Card className="gap-2">
+          <SectionTitle>Export to FitNotes</SectionTitle>
+          <Text className="text-muted">
+            Adds your sets to a FitNotes backup file — pick the file, see what will be written, then
+            share the result back to the folder FitNotes restores from. Sets that already went there
+            are skipped, so you can repeat it after every workout.
+          </Text>
+          <View className="mt-1">
+            <Button
+              variant="secondary"
+              label="Pick FitNotes backup"
+              busy={busy}
+              onPress={pickBackup}
+            />
+          </View>
+
+          {session !== null && plan !== null && (
+            <View className="gap-2">
+              <Text className="text-xs text-muted">{session.backup.name}</Text>
+              <Text className="text-text">
+                {String(plan.rows.length)} sets to add, {String(plan.alreadyExported)} already
+                there, {String(plan.exercisesToCreate.length)} exercises to create.
+              </Text>
+
+              {plan.missingCategories.length > 0 && (
+                <View className="gap-2">
+                  <Text className="text-muted">
+                    FitNotes can&apos;t create categories, so {String(plan.blocked)} sets are
+                    waiting. Pick an existing category to use instead — the choice is remembered.
+                  </Text>
+                  {plan.missingCategories.map((name) => (
+                    <View key={name} className="gap-1">
+                      <Text className="text-text">{name}</Text>
+                      <ChipRow wrap>
+                        {session.target.categories.map((category) => (
+                          <Chip
+                            key={category.id}
+                            label={category.name}
+                            selected={session.choices[name] === category.name}
+                            onPress={() => {
+                              chooseCategory(name, category.name);
+                            }}
+                          />
+                        ))}
+                      </ChipRow>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              <Button
+                label="Write to file"
+                busy={busy}
+                disabled={plan.missingCategories.length > 0 || plan.rows.length === 0}
+                onPress={writeBackup}
+              />
+            </View>
+          )}
+
+          {written !== null && (
+            <Text className="text-success">
+              Wrote {String(written.sets)} sets and {String(written.exercises)} new exercises.
+              Restore the shared file in FitNotes.
+            </Text>
           )}
         </Card>
 

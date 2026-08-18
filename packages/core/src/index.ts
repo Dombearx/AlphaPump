@@ -24,4 +24,5 @@ export * from './suggestions.js';
 export * from './schemas.js';
 export * from './sync.js';
 export * from './transfer.js';
+export * from './fitnotes.js';
 export * from './admin.js';
