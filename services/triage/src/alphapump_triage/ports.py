@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from .models import ChatMessage, ExistingIssue, IssueRef, PullRequestRef
+from .models import ChatMessage, ExistingIssue, IssueComment, IssueRef, PullRequestRef
 
 
 class Llm(Protocol):
@@ -31,7 +31,15 @@ class IssueTracker(Protocol):
 
     async def list_open_issues(self, label: str) -> list[ExistingIssue]: ...
 
-    async def comment(self, issue_number: int, body: str) -> None: ...
+    async def comment(self, issue_number: int, body: str) -> int: ...
+
+    """Dopisuje komentarz i zwraca jego numer.
+
+    Numer wraca po to, żeby usługa mogła odhaczyć własną wypowiedź i nie
+    przekazała jej z powrotem do wątku, w którym przed chwilą ją ogłosiła.
+    """
+
+    async def issue_comments(self, issue_number: int) -> list[IssueComment]: ...
 
     async def linked_pull_request(self, issue_number: int) -> PullRequestRef | None: ...
 

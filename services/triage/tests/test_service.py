@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import sqlite3
+
 import pytest
 
 from alphapump_triage.feedback import FeedbackReader
-from alphapump_triage.models import Discussion, ExistingIssue, Kind, PullRequestRef
+from alphapump_triage.models import Discussion, ExistingIssue, IssueComment, Kind, PullRequestRef
 from alphapump_triage.service import TriageService
 from alphapump_triage.state import State
 from fakes import FakeChat, FakeLlm, FakeTracker, chat_message, make_config
@@ -360,6 +362,117 @@ async def test_awaria_githuba_nie_przerywa_petli(reader):
 
     assert await service.poll_pull_requests() == 1
     assert chat.thread_posts[0][0] == "w2"
+
+
+# ------------------------------------------- komentarze pod issue -----------
+
+
+async def test_nowy_komentarz_pod_issue_trafia_do_watku(reader):
+    """Agent bywa odpowiada pytaniem zamiast PR-ką — pytanie ma trafić do ludzi."""
+
+    state = State(":memory:")
+    state.track_issue(101, Kind.BUG, "https://example/101", "Panel admina", "m1", "w1")
+    tracker = FakeTracker()
+    tracker.issue_threads[101] = [
+        IssueComment(
+            id=9100,
+            author="github-actions[bot]",
+            body="Zgłoszenie jest zbyt ogólne, żeby je zlokalizować — o którą zakładkę chodzi?",
+            url="https://example/101#c9100",
+        )
+    ]
+    service, tracker, chat, state = build(reader, [], tracker=tracker, state=state)
+
+    assert await service.poll_issue_comments() == 1
+
+    watek, tresc = chat.thread_posts[0]
+    assert watek == "w1"
+    assert "zbyt ogólne" in tresc
+    assert "github-actions[bot]" in tresc
+
+    # Drugi obieg milczy: komentarz ma paść raz, a nie co dwie minuty.
+    assert await service.poll_issue_comments() == 0
+    assert len(chat.thread_posts) == 1
+
+
+async def test_wlasny_komentarz_nie_wraca_do_watku(reader, write_feedback):
+    """Duplikat błędu dostaje komentarz na GitHubie i wpis w wątku — nie dwa wpisy."""
+
+    write_feedback("Znowu zero powtórzeń po zapisaniu serii.")
+    state = State(":memory:")
+    state.track_issue(55, Kind.BUG, "https://example/55", "Seria z zerem", "m1", "w1")
+    tracker = FakeTracker(
+        open_issues=[ExistingIssue(55, "Seria z zerem", "Zero powtórzeń", "https://example/55")]
+    )
+    service, tracker, chat, state = build(
+        reader, [BUG, {"duplicate_of": 55, "reason": "to samo"}], tracker=tracker, state=state
+    )
+
+    await service.run_daily()
+    wpisow_po_duplikacie = len(chat.thread_posts)
+
+    assert await service.poll_issue_comments() == 0
+    assert len(chat.thread_posts) == wpisow_po_duplikacie
+
+
+async def test_issue_z_pr_ka_nie_jest_juz_odpytywane(reader):
+    """Po powstaniu PR-ki rozmowa przenosi się do niej — nie ma po co pytać dalej."""
+
+    state = State(":memory:")
+    state.track_issue(101, Kind.BUG, "https://example/101", "Błąd", "m1", "w1")
+    state.mark_pull_request(101, 7, "https://example/pull/7")
+    tracker = FakeTracker()
+    tracker.issue_threads[101] = [
+        IssueComment(id=9100, author="domin", body="jeszcze jedno", url="https://example/c")
+    ]
+    service, tracker, chat, state = build(reader, [], tracker=tracker, state=state)
+
+    assert await service.poll_issue_comments() == 0
+    assert chat.thread_posts == []
+
+
+async def test_issue_sprzed_tej_funkcji_nie_wysypuje_historii(reader, tmp_path):
+    """Baza na minipc zna issue sprzed tej pętli — ich wątki nie mają dostać zaległości."""
+
+    sciezka = tmp_path / "stan.sqlite3"
+    stara = sqlite3.connect(sciezka)
+    stara.executescript(
+        """
+        CREATE TABLE issues (
+            number       INTEGER PRIMARY KEY,
+            kind         TEXT NOT NULL,
+            url          TEXT NOT NULL,
+            title        TEXT NOT NULL,
+            message_id   TEXT,
+            thread_id    TEXT,
+            created_at   TEXT NOT NULL,
+            pr_number    INTEGER,
+            pr_url       TEXT,
+            pr_linked_at TEXT
+        );
+        INSERT INTO issues (number, kind, url, title, message_id, thread_id, created_at)
+        VALUES (23, 'bug', 'https://example/23', 'Stare', 'm1', 'w1', '2026-08-01T00:00:00+00:00');
+        """
+    )
+    stara.commit()
+    stara.close()
+
+    tracker = FakeTracker()
+    tracker.issue_threads[23] = [
+        IssueComment(id=9001, author="domin", body="sprzed tygodnia", url="https://example/a"),
+        IssueComment(id=9002, author="domin", body="i wczorajszy", url="https://example/b"),
+    ]
+    service, tracker, chat, state = build(reader, [], tracker=tracker, state=State(sciezka))
+
+    assert await service.poll_issue_comments() == 0
+    assert chat.thread_posts == []
+
+    # Ale kolejny, prawdziwie nowy komentarz już przechodzi.
+    tracker.issue_threads[23].append(
+        IssueComment(id=9003, author="domin", body="a to jest nowe", url="https://example/c")
+    )
+    assert await service.poll_issue_comments() == 1
+    assert "a to jest nowe" in chat.thread_posts[0][1]
 
 
 # ---------------------------------------------------------- odporność -------

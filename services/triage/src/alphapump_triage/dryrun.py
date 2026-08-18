@@ -15,7 +15,7 @@ from __future__ import annotations
 import itertools
 import logging
 
-from .models import ChatMessage, ExistingIssue, IssueRef, PullRequestRef
+from .models import ChatMessage, ExistingIssue, IssueComment, IssueRef, PullRequestRef
 from .ports import Chat, IssueTracker
 
 logger = logging.getLogger(__name__)
@@ -41,8 +41,12 @@ class DryRunIssueTracker:
     async def list_open_issues(self, label: str) -> list[ExistingIssue]:
         return await self._inner.list_open_issues(label)
 
-    async def comment(self, issue_number: int, body: str) -> None:
+    async def comment(self, issue_number: int, body: str) -> int:
         logger.info("[próbnie] komentarz do #%d:\n%s", issue_number, body)
+        return next(self._numbers)
+
+    async def issue_comments(self, issue_number: int) -> list[IssueComment]:
+        return await self._inner.issue_comments(issue_number)
 
     async def linked_pull_request(self, issue_number: int) -> PullRequestRef | None:
         return await self._inner.linked_pull_request(issue_number)

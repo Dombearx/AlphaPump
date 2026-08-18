@@ -1125,9 +1125,12 @@ zgłoszenie z aplikacji  →  klasyfikacja (OpenRouter)
                        │
         etykieta `ai-triage` uruchamia Claude Code w Akcjach
                        │
-                  pull request
+          ┌────────────┴────────────┐
+     pull request            komentarz pod issue
+          │              (za ogólne albo przebieg padł)
+          └────────────┬────────────┘
                        │
-        bot dokleja link do PR-ki w wątku tego zgłoszenia
+     bot przekłada jedno i drugie do wątku tego zgłoszenia
 ```
 
 Podział na dwie ścieżki jest sednem: błąd ma jedno poprawne rozwiązanie i nie
@@ -1155,6 +1158,21 @@ czekać na webhooka. Minipc stoi za VPN-em i GitHub nie ma jak się do niego dob
 Skutek uboczny wychodzi na plus: PR-ka otwarta ręcznie zostanie zauważona tak
 samo jak ta z Akcji, bo liczy się powiązanie po stronie GitHuba (`Fixes #N`),
 a nie to, kto ją otworzył.
+
+**Komentarze pod issue też wracają do wątku.** Agent nie zawsze kończy PR-ką:
+gdy zgłoszenie jest zbyt ogólne, żeby je zlokalizować, ma o tym napisać
+w komentarzu zamiast zgadywać — i tak samo komentuje kontrola, kiedy przebieg
+padnie. Bez przekazywania taki komentarz byłby ślepym zaułkiem: powstaje na
+GitHubie, a rozmowa toczy się na Discordzie. Ta sama pętla co przy PR-kach
+przekłada więc każdy nowy komentarz do wątku, w całości, nie samym linkiem —
+pytanie agenta ma być widoczne tam, gdzie są ludzie zdolni odpowiedzieć.
+
+Dwa zastrzeżenia, oba celowe. Własne komentarze usługi (te przy duplikacie) są
+odhaczane w chwili wysłania, żeby nie wróciły do wątku, w którym za moment i tak
+zostaną ogłoszone. A issue, które usługa zna sprzed tej pętli, przy pierwszym
+obiegu tylko zapamiętuje swój stan i milczy — wysypanie całej zaległej historii
+komentarzy byłoby gorsze niż jej pominięcie. Po powstaniu PR-ki odpytywanie
+ustaje: rozmowa przenosi się do niej.
 
 **Modele.** Klasyfikacja idzie na `openai/gpt-5.6-terra` (decyzja binarna na
 krótkim tekście), pisanie treści issue na `anthropic/claude-sonnet-5` — bo tę
