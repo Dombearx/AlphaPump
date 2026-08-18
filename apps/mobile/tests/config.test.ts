@@ -77,6 +77,22 @@ describe('konfiguracja aplikacji', () => {
     expect(config.updateBaseUrl).toBe('http://wydania.local/apk');
   });
 
+  it('traktuje puste napisy z wydania CI jak brak konfiguracji Google', () => {
+    // GitHub Actions ustawia `env:` z nieistniejącego `vars.*` na pusty napis.
+    // Odrzucony przez schemat zabijał aplikację przy starcie — a to jest
+    // dokładnie ten przypadek, w którym Google ma być po prostu wyłączone.
+    const config = parseAppConfig({
+      apiUrl: 'http://alphapump.local:3000',
+      googleWebClientId: '',
+      googleIosClientId: '',
+      googleSignInEnabled: '',
+    });
+
+    expect(config.googleWebClientId).toBeNull();
+    expect(config.googleSignInEnabled).toBe(false);
+    expect(isGoogleSignInConfigured(config)).toBe(false);
+  });
+
   it('traktuje puste obiekty z manifestu Expo Go jak brak konfiguracji Google', () => {
     // Klasyczny protokół manifestu Expo Go serializuje `null` w `extra` jako `{}`.
     const config = parseAppConfig({

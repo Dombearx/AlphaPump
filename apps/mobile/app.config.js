@@ -17,11 +17,12 @@
  * `require`, więc `app.config.ts` nie mógłby sięgnąć po nic z `src/`.
  */
 
+const { envValue } = require('./config/env');
 const { atsExceptions, cleartextHost } = require('./config/network');
 const withCleartextHost = require('./config/with-cleartext-host');
 
 /** Adres API. Domyślny wskazuje na serwer uruchomiony lokalnie. */
-const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
+const API_URL = envValue('EXPO_PUBLIC_API_URL') ?? 'http://localhost:3000';
 
 /**
  * Katalog z wydaniami — stamtąd aplikacja bierze `latest.json` i plik `.apk`.
@@ -30,7 +31,7 @@ const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
  * wydania kiedyś pojechały gdzie indziej niż API.
  */
 const UPDATE_BASE_URL =
-  process.env.EXPO_PUBLIC_UPDATE_BASE_URL ?? `${API_URL.replace(/\/+$/, '')}/alphapump/download`;
+  envValue('EXPO_PUBLIC_UPDATE_BASE_URL') ?? `${API_URL.replace(/\/+$/, '')}/alphapump/download`;
 
 /**
  * Wersja dla człowieka — ta, którą widać w oknie „jest nowa wersja" i w
@@ -41,7 +42,7 @@ const UPDATE_BASE_URL =
  *
  * Wydania rozróżnia i tak `versionCode` niżej — `versionName` jest etykietą.
  */
-const VERSION_NAME = process.env.APP_VERSION_NAME ?? require('./package.json').version;
+const VERSION_NAME = envValue('APP_VERSION_NAME') ?? require('./package.json').version;
 
 /** @type {import('expo/config').ExpoConfig} */
 const config = {
@@ -76,7 +77,7 @@ const config = {
      * `.github/workflows/android-release.yml` podstawia numer przebiegu.
      * Domyślna jedynka wystarcza przy budowaniu na własnej maszynie.
      */
-    versionCode: Number(process.env.ANDROID_VERSION_CODE ?? 1),
+    versionCode: Number(envValue('ANDROID_VERSION_CODE') ?? 1),
     adaptiveIcon: { backgroundColor: '#232327', foregroundImage: './assets/icon.png' },
     /**
      * Aplikacja sama podmienia się na nowszą: pobiera `.apk` z minipc i oddaje
@@ -107,14 +108,14 @@ const config = {
   extra: {
     apiUrl: API_URL,
     updateBaseUrl: UPDATE_BASE_URL,
-    googleWebClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? null,
-    googleIosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? null,
+    googleWebClientId: envValue('EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID'),
+    googleIosClientId: envValue('EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID'),
     /**
      * Logowanie i rejestracja przez Google — domyślnie wyłączone, tak jak
      * `GOOGLE_SIGN_IN_ENABLED` po stronie serwera. Obie strony trzeba włączyć
      * razem: przycisk bez zgody serwera zawsze kończy się błędem.
      */
-    googleSignInEnabled: process.env.EXPO_PUBLIC_GOOGLE_SIGN_IN_ENABLED ?? 'false',
+    googleSignInEnabled: envValue('EXPO_PUBLIC_GOOGLE_SIGN_IN_ENABLED') ?? 'false',
   },
 };
 

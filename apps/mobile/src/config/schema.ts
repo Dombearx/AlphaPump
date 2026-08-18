@@ -20,15 +20,19 @@ const httpUrlSchema = z.url().regex(/^https?:\/\//i, {
 });
 
 /**
- * Manifest klasycznego protokołu Expo Go serializuje `extra` tak, że `null`
- * dochodzi do klienta jako `{}` (pusty obiekt), nie `null` — stąd normalizacja
- * przed właściwą walidacją stringa.
+ * „Nie podano" przychodzi tu w trzech postaciach i każda ma inne źródło:
+ * `undefined` (pola nie ma w manifeście), `{}` (klasyczny protokół manifestu
+ * Expo Go serializuje tak `null`) oraz pusty napis (zmienna środowiskowa
+ * ustawiona na pusto — tak wygląda `vars.*`, którego nie ma, w GitHub
+ * Actions). Wszystkie trzy sprowadzamy do `null` **przed** walidacją, bo
+ * odrzucone „nie podano" wywala aplikację przy starcie, zamiast po prostu
+ * schować przycisk logowania Google.
  */
-const nullableClientId = z.preprocess(
-  (value) =>
-    typeof value === 'object' && value !== null && Object.keys(value).length === 0 ? null : value,
-  z.string().min(1).nullable().default(null),
-);
+const nullableClientId = z.preprocess((value) => {
+  if (typeof value === 'object' && value !== null && Object.keys(value).length === 0) return null;
+  if (typeof value === 'string' && value.trim() === '') return null;
+  return value;
+}, z.string().min(1).nullable().default(null));
 
 export const appConfigSchema = z.object({
   /** Adres API wewnątrz VPN — bez końcowego ukośnika. */
@@ -49,7 +53,10 @@ export const appConfigSchema = z.object({
    * się w aplikacji, mimo że serwer metody nie przyjmuje. Rozjazd tych dwóch
    * stron kończy się przyciskiem, który wygląda normalnie i zawsze zwraca błąd.
    */
-  googleSignInEnabled: z.stringbool().default(false),
+  googleSignInEnabled: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z.stringbool().default(false),
+  ),
   /**
    * Katalog z wydaniami na minipc — stąd bierze się `latest.json` i sam plik
    * `.apk`. Pominięty wylicza się z `apiUrl`, bo w praktyce zawsze jest to ten
