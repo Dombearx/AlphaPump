@@ -21,6 +21,7 @@ import {
   exerciseSchema,
   feedbackTriageReportSchema,
   importReportSchema,
+  seedExportSchema,
   systemStatsSchema,
   tagSchema,
   type AdminUser,
@@ -29,6 +30,7 @@ import {
   type Exercise,
   type FeedbackTriageReport,
   type ImportReport,
+  type SeedExport,
   type SystemStats,
   type Tag,
   type UpdateExerciseInput,
@@ -236,6 +238,16 @@ export const renameTag = (id: string, name: string, fetchImpl?: typeof fetch): P
 export const deleteTag = async (id: string, fetchImpl?: typeof fetch): Promise<void> => {
   await request(`/tags/${id}`, z.null(), { method: 'DELETE', fetchImpl });
 };
+
+/**
+ * Treść `data.ts` złożona na nowo z aktualnej biblioteki konta systemowego —
+ * do pobrania i wklejenia z powrotem do repozytorium po edycji w tym panelu.
+ * Serwer niczego nie commituje: produkcja nie ma repozytorium pod ręką (obraz
+ * API niesie tylko skompilowane `dist/`), więc commit i push zostają po
+ * stronie osoby, która ten plik pobierze.
+ */
+export const exportSeedFile = (fetchImpl?: typeof fetch): Promise<SeedExport> =>
+  request('/admin/seed/export', seedExportSchema, { fetchImpl });
 
 /* ---------------------------------------------------------- transfer danych */
 

@@ -28,6 +28,10 @@ apps/mobile/ios/
 deploy/apk/*
 !deploy/apk/.gitkeep
 
+# Katalogi tymczasowe testu regeneracji seeda (packages/db/tests/render.test.ts) —
+# sprzątane w afterEach, wpis tu jest tylko siatką bezpieczeństwa po przerwanym biegu.
+packages/db/tests/.tmp-render-*/
+
 # Zgłoszenia zwrotne z aplikacji — dane użytkowników, nie kod. Patrz deploy/feedback/.gitkeep.
 deploy/feedback/*
 !deploy/feedback/.gitkeep

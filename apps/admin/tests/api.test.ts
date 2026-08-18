@@ -17,6 +17,7 @@ import {
   ApiError,
   createExercise,
   createTag,
+  exportSeedFile,
   listUsers,
   pruneTombstones,
   request,
@@ -198,5 +199,20 @@ describe('mutacje', () => {
 
     expect(fake.calls[0]?.init.body).toBe('{}');
     expect(result.removed.sets).toBe(2);
+  });
+
+  it('pobiera złożoną treść seeda, nie sam status operacji', async () => {
+    const fake = fakeFetch(200, {
+      fileName: 'data.ts',
+      content: "export const SEED_TAGS = [{ name: 'Chest' }];",
+      tags: 1,
+      exercises: 0,
+      warnings: [],
+    });
+
+    const result = await exportSeedFile(fake.impl);
+
+    expect(fake.calls[0]?.url).toMatch(/\/admin\/seed\/export$/);
+    expect(result.content).toContain('SEED_TAGS');
   });
 });

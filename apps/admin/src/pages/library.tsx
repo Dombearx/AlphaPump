@@ -37,11 +37,13 @@ import {
   createTag,
   deleteExercise,
   deleteTag,
+  exportSeedFile,
   listExercises,
   listTags,
   renameTag,
   updateExercise,
 } from '../lib/api';
+import { download } from '../lib/download';
 import { exerciseInput, exercisePatch, type ExerciseDraft } from '../lib/exercise-draft';
 
 /** Który formularz ćwiczenia jest otwarty; `null` — żaden. */
@@ -69,6 +71,13 @@ export function LibraryPage() {
   const mutate = useMutation({
     mutationFn: (action: () => Promise<unknown>) => action(),
     onSuccess: refresh,
+  });
+
+  const exportSeed = useMutation({
+    mutationFn: () => exportSeedFile(),
+    onSuccess: (result) => {
+      download(result.fileName, result.content, 'text/plain');
+    },
   });
 
   const tagNames = useMemo(
@@ -103,6 +112,38 @@ export function LibraryPage() {
   return (
     <div className="flex flex-col gap-6">
       {mutate.error !== null && <Problem error={mutate.error} />}
+
+      <Card className="flex flex-col gap-3">
+        <CardTitle>Seed startowy</CardTitle>
+        <p className="text-sm text-muted">
+          Ta biblioteka jest tym, co dostaje każde nowe urządzenie po zalogowaniu — sync jest
+          globalny dla tagów i ćwiczeń, więc zmiany powyżej trafiają do wszystkich już teraz. Ten
+          plik jest źródłem osobnego przypadku:{' '}
+          <strong className="text-text">startu od zera</strong> (świeży deployment albo telefon
+          offline przed pierwszym zalogowaniem), który dalej dostaje to, co jest zacommitowane w
+          repozytorium. Pobierz wygenerowaną treść, wklej ją do{' '}
+          <code className="text-text">packages/db/src/seed/data.ts</code> i zacommituj — serwer
+          niczego nie commituje sam, bo produkcja nie ma repozytorium pod ręką.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button disabled={exportSeed.isPending} onClick={() => exportSeed.mutate()}>
+            {exportSeed.isPending ? 'Składanie pliku…' : 'Pobierz data.ts'}
+          </Button>
+          {exportSeed.data !== undefined && (
+            <span className="text-sm text-success">
+              Pobrano: {exportSeed.data.tags} tagów, {exportSeed.data.exercises} ćwiczeń.
+            </span>
+          )}
+        </div>
+        {exportSeed.error !== null && <Problem error={exportSeed.error} />}
+        {exportSeed.data !== undefined && exportSeed.data.warnings.length > 0 && (
+          <div className="flex flex-col gap-1 rounded-lg border border-border bg-elevated p-3 text-xs text-muted">
+            {exportSeed.data.warnings.map((warning) => (
+              <p key={warning}>{warning}</p>
+            ))}
+          </div>
+        )}
+      </Card>
 
       <Card className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">

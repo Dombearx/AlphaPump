@@ -17,16 +17,7 @@ import { archiveSummary, type ImportReport } from '@alphapump/core';
 import { useState } from 'react';
 import { Button, Card, CardTitle, Problem } from '../components/ui';
 import { exportSystemArchive, importArchive } from '../lib/api';
-
-/** Zapis pliku bez pośrednika: archiwum jest już w pamięci przeglądarki. */
-function download(name: string, content: string): void {
-  const url = URL.createObjectURL(new Blob([content], { type: 'application/json' }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = name;
-  link.click();
-  URL.revokeObjectURL(url);
-}
+import { download } from '../lib/download';
 
 export function DataPage() {
   const [report, setReport] = useState<ImportReport | null>(null);

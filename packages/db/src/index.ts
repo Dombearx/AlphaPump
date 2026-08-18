@@ -16,3 +16,4 @@
 
 export * from './tables.js';
 export * from './seed/data.js';
+export * from './seed/render.js';

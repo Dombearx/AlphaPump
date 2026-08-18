@@ -28,11 +28,12 @@
  * wchodzi w klucz ich identyfikatorów.
  */
 
-import { SYSTEM_USER } from '@alphapump/db';
+import { renderSeedDataFile, SYSTEM_USER } from '@alphapump/db';
 import {
   adminUserListSchema,
   adminUserSchema,
   feedbackTriageReportSchema,
+  seedExportSchema,
   systemStatsSchema,
   updateUserInputSchema,
   type AdminUser,
@@ -40,6 +41,7 @@ import {
 import { and, asc, count, eq, isNotNull, isNull, max, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { loadSeedExport } from '../admin/seed-export.js';
 import type { AppDependencies, AppEnvironment } from '../context.js';
 import { NO_LAYERS, DEFAULT_CACHE_RETENTION_DAYS, pruneCache } from '../duplicates/index.js';
 import { conflict, forbidden, notFound, unavailable } from '../errors.js';
@@ -142,6 +144,24 @@ export const adminRoutes: RouteSpec[] = [
       { status: 200, description: 'Podsumowanie przebiegu', schema: feedbackTriageReportSchema },
       { status: 409, description: 'Przegląd już trwa' },
       { status: 503, description: 'Usługa triage nie jest skonfigurowana albo nieosiągalna' },
+    ],
+  },
+  {
+    method: 'get',
+    path: '/admin/seed/export',
+    summary: 'Treść seeda biblioteki wbudowanej',
+    description:
+      'Składa `packages/db/src/seed/data.ts` na nowo z aktualnej biblioteki konta ' +
+      'systemowego — do wklejenia z powrotem do repozytorium po edycji w panelu. ' +
+      'Produkcja nie ma repozytorium pod ręką (obraz API niesie tylko skompilowane ' +
+      '`dist/`), więc zamiast zapisywać plik na miejscu, endpoint oddaje gotową treść ' +
+      'do pobrania — commit i push zostają po stronie osoby, która go uruchamia. To samo ' +
+      'da się zrobić lokalnie poleceniem `pnpm --filter api regenerate-seed`, jeśli ktoś ' +
+      'ma bezpośredni dostęp do bazy przez VPN.',
+    tag: 'administracja',
+    security: 'admin',
+    responses: [
+      { status: 200, description: 'Treść pliku i ostrzeżenia', schema: seedExportSchema },
     ],
   },
 ];
@@ -323,6 +343,17 @@ export function createAdminRouter(dependencies: AppDependencies) {
       );
     }
     return context.json(await dependencies.triage.runDaily());
+  });
+
+  router.get('/admin/seed/export', async (context) => {
+    const { tagNames, exercises, warnings } = await loadSeedExport(db);
+    return context.json({
+      fileName: 'data.ts',
+      content: renderSeedDataFile({ tagNames, exercises }),
+      tags: tagNames.length,
+      exercises: exercises.length,
+      warnings,
+    });
   });
 
   return router;

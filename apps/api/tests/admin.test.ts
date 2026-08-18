@@ -223,6 +223,59 @@ describe('panel administracyjny', () => {
     });
     expect(response.status).toBe(503);
   });
+
+  it('eksport seeda jest zastrzeżony dla administratora', async () => {
+    const denied = await harness.json('GET', '/admin/seed/export', { headers: member.headers });
+    expect(denied.status).toBe(403);
+  });
+
+  it('eksport seeda odtwarza aktualną bibliotekę konta systemowego bez ostrzeżeń', async () => {
+    const response = await harness.json<{
+      fileName: string;
+      content: string;
+      tags: number;
+      exercises: number;
+      warnings: string[];
+    }>('GET', '/admin/seed/export', { headers: admin.headers });
+
+    expect(response.status).toBe(200);
+    expect(response.body.fileName).toBe('data.ts');
+    expect(response.body.exercises).toBeGreaterThan(0);
+    expect(response.body.content).toContain('export const SEED_TAGS');
+    expect(response.body.content).toContain('export const SEED_EXERCISES');
+    expect(response.body.content).toContain("name: 'Barbell bench press'");
+    // Nic w bibliotece nie zostało jeszcze zmienione po utworzeniu, więc
+    // identyfikatory wyliczone z nazwy dalej zgadzają się z bazą.
+    expect(response.body.warnings).toEqual([]);
+  });
+
+  it('eksport seeda ostrzega, gdy ćwiczenie wbudowane zostało przemianowane', async () => {
+    const builtIn = await harness.json<{ id: string; name: string }[]>('GET', '/exercises', {
+      headers: admin.headers,
+    });
+    const benchPress = builtIn.body.find((exercise) => exercise.name === 'Barbell bench press');
+    if (!benchPress) throw new Error('Seed nie zawiera „Barbell bench press"');
+
+    const renamed = await harness.json('PATCH', `/exercises/${benchPress.id}`, {
+      body: { name: 'Barbell bench press (flat)' },
+      headers: admin.headers,
+    });
+    expect(renamed.status).toBe(200);
+
+    const response = await harness.json<{ warnings: string[] }>('GET', '/admin/seed/export', {
+      headers: admin.headers,
+    });
+
+    expect(response.body.warnings).toHaveLength(1);
+    expect(response.body.warnings[0]).toContain('Barbell bench press (flat)');
+
+    // Reszta testów w tym pliku dzieli jedną instancję harnessu — zmiana wraca,
+    // żeby nie wyciekała do kolejnych testów w tym `describe`.
+    await harness.json('PATCH', `/exercises/${benchPress.id}`, {
+      body: { name: 'Barbell bench press' },
+      headers: admin.headers,
+    });
+  });
 });
 
 describe('ręczny przegląd zgłoszeń zwrotnych', () => {

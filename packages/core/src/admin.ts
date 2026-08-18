@@ -141,3 +141,22 @@ export const importReportSchema = z.object({
 });
 
 export type ImportReport = z.infer<typeof importReportSchema>;
+
+/* ---------------------------------------------------- regeneracja seeda */
+
+/**
+ * Treść `packages/db/src/seed/data.ts` złożona z żywej biblioteki konta
+ * systemowego — do pobrania w panelu i wklejenia z powrotem do repozytorium.
+ * Patrz `packages/db/src/seed/render.ts` po stronę generowania i
+ * `routes/admin.ts` po endpoint.
+ */
+export const seedExportSchema = z.object({
+  fileName: z.string(),
+  content: z.string(),
+  tags: z.int().min(0),
+  exercises: z.int().min(0),
+  /** Zmienione po utworzeniu nazwy — ich id w bazie nie zgadza się z tym, co da świeży seed. */
+  warnings: z.array(z.string()),
+});
+
+export type SeedExport = z.infer<typeof seedExportSchema>;
