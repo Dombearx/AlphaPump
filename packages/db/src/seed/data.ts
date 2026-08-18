@@ -69,16 +69,19 @@ export interface SeedExercise {
  * słownika od zera.
  */
 const TAG_NAMES = [
-  'abs',
-  'back',
-  'biceps',
-  'calves',
-  'chest',
-  'glutes',
-  'hamstrings',
-  'quads',
-  'shoulders',
-  'triceps',
+  'Chest',
+  'Back',
+  'Shoulders',
+  'Biceps',
+  'Triceps',
+  'Forearms',
+  'Abs',
+  'Legs',
+  'Glutes',
+  'Calves',
+  'Cardio',
+  'Full body',
+  'Mobility',
 ] as const;
 
 export type SeedTagName = (typeof TAG_NAMES)[number];
@@ -102,7 +105,99 @@ interface ExerciseDefinition {
  * tylko dla ciężaru z powtórzeniami.
  */
 const EXERCISE_DEFINITIONS: readonly ExerciseDefinition[] = [
+  // weight + reps
+  { name: 'Barbell bench press', loggingType: 'weight_reps', primaryTag: 'Chest' },
+  { name: 'Dumbbell bench press', loggingType: 'weight_reps', primaryTag: 'Chest' },
+  {
+    name: 'Incline barbell bench press',
+    loggingType: 'weight_reps',
+    primaryTag: 'Chest',
+  },
+  { name: 'Dumbbell flyes', loggingType: 'weight_reps', primaryTag: 'Chest' },
+  { name: 'Barbell row', loggingType: 'weight_reps', primaryTag: 'Back' },
+  { name: 'Dumbbell row', loggingType: 'weight_reps', primaryTag: 'Back' },
+  { name: 'Lat pulldown', loggingType: 'weight_reps', primaryTag: 'Back' },
+  {
+    name: 'Deadlift',
+    loggingType: 'weight_reps',
+    primaryTag: 'Back',
+    additionalTags: ['Legs', 'Full body'],
+  },
+  { name: 'Barbell squat', loggingType: 'weight_reps', primaryTag: 'Legs' },
+  { name: 'Front squat', loggingType: 'weight_reps', primaryTag: 'Legs' },
+  {
+    name: 'Dumbbell lunges',
+    loggingType: 'weight_reps',
+    primaryTag: 'Legs',
+    additionalTags: ['Glutes'],
+  },
+  { name: 'Leg press', loggingType: 'weight_reps', primaryTag: 'Legs' },
+  { name: 'Lying leg curl', loggingType: 'weight_reps', primaryTag: 'Legs' },
+  { name: 'Seated leg extension', loggingType: 'weight_reps', primaryTag: 'Legs' },
+  { name: 'Overhead press', loggingType: 'weight_reps', primaryTag: 'Shoulders' },
+  { name: 'Lateral raises', loggingType: 'weight_reps', primaryTag: 'Shoulders' },
+  { name: 'Bent-over rear delt raises', loggingType: 'weight_reps', primaryTag: 'Shoulders' },
+  { name: 'Barbell curl', loggingType: 'weight_reps', primaryTag: 'Biceps' },
+  { name: 'Dumbbell curl', loggingType: 'weight_reps', primaryTag: 'Biceps' },
+  {
+    name: 'Hammer curl',
+    loggingType: 'weight_reps',
+    primaryTag: 'Biceps',
+    additionalTags: ['Forearms'],
+  },
+  { name: 'Skull crushers', loggingType: 'weight_reps', primaryTag: 'Triceps' },
+  { name: 'Triceps pushdown', loggingType: 'weight_reps', primaryTag: 'Triceps' },
+  { name: 'Standing barbell calf raise', loggingType: 'weight_reps', primaryTag: 'Calves' },
 
+  // bodyweight + reps
+  { name: 'Pull-up', loggingType: 'bodyweight_reps', primaryTag: 'Back' },
+  {
+    name: 'Chin-up',
+    loggingType: 'bodyweight_reps',
+    primaryTag: 'Back',
+    additionalTags: ['Biceps'],
+  },
+  { name: 'Push-ups', loggingType: 'bodyweight_reps', primaryTag: 'Chest' },
+  {
+    name: 'Dips',
+    loggingType: 'bodyweight_reps',
+    primaryTag: 'Chest',
+    additionalTags: ['Triceps'],
+  },
+  { name: 'Sit-ups', loggingType: 'bodyweight_reps', primaryTag: 'Abs' },
+  { name: 'Hanging leg raise', loggingType: 'bodyweight_reps', primaryTag: 'Abs' },
+  { name: 'Bodyweight squats', loggingType: 'bodyweight_reps', primaryTag: 'Legs' },
+
+  // bodyweight + time
+  { name: 'Plank', loggingType: 'bodyweight_time', primaryTag: 'Abs' },
+  { name: 'Dead hang', loggingType: 'bodyweight_time', primaryTag: 'Forearms' },
+  { name: 'Stretching', loggingType: 'bodyweight_time', primaryTag: 'Mobility' },
+
+  // weight + time
+  {
+    name: "Farmer's walk",
+    loggingType: 'weight_time',
+    primaryTag: 'Full body',
+    additionalTags: ['Forearms'],
+  },
+  { name: 'Weighted wall sit', loggingType: 'weight_time', primaryTag: 'Legs' },
+
+  // distance + time
+  { name: 'Running', loggingType: 'distance_time', primaryTag: 'Cardio' },
+  { name: 'Walking', loggingType: 'distance_time', primaryTag: 'Cardio' },
+  { name: 'Cycling', loggingType: 'distance_time', primaryTag: 'Cardio' },
+  {
+    name: 'Rowing machine',
+    loggingType: 'distance_time',
+    primaryTag: 'Cardio',
+    additionalTags: ['Full body'],
+  },
+  {
+    name: 'Swimming',
+    loggingType: 'distance_time',
+    primaryTag: 'Cardio',
+    additionalTags: ['Full body'],
+  },
 ];
 
 export const SEED_EXERCISES: readonly SeedExercise[] = EXERCISE_DEFINITIONS.map((definition) => ({
