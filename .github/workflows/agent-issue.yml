@@ -119,26 +119,32 @@ jobs:
           # Token z subskrypcji, generowany lokalnie przez `claude setup-token`.
           # Nie jest kluczem API i nie obciąża rachunku za API.
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # Dwie osobne rzeczy, obie konieczne.
+          # `--allowedTools` **zastępuje** domyślne uprawnienia akcji, a nie
+          # dokłada się do nich — cokolwiek tu stoi, jest pełną listą tego, co
+          # agentowi wolno. Stąd `--permission-mode acceptEdits` obok: zapisy do
+          # plików przechodzą bez wyliczania narzędzi z nazwy, więc te, które
+          # dojdą w kolejnych wersjach akcji, też.
           #
-          # `--permission-mode acceptEdits` — bo `--allowedTools` **zastępuje**
-          # domyślne uprawnienia akcji, a nie dokłada się do nich. Lista
-          # z samym Bashem znaczyła więc „wolno wyłącznie te polecenia",
-          # i agent tracił `Edit` oraz `Write`: przez 53 tury czytał kod,
-          # odbił się od dziesięciu odmów i nie zmienił ani jednego pliku.
-          # Tryb `acceptEdits` przepuszcza zapisy do plików bez wyliczania
-          # narzędzi z nazwy — a te, które dojdą w kolejnych wersjach, też.
+          # Bash bez zawężenia, po dwóch przebiegach rozbitych o listę. Wąska
+          # lista wyglądała na ostrożność, ale nie była nią: `Bash(node:*)`
+          # przepuszcza `node -e "…"`, czyli dowolny kod, a `Bash(pnpm:*)` razem
+          # z prawem do edycji `package.json` daje to samo drugą drogą. Kosztem
+          # było za to zgadywanie, jakich poleceń agent użyje — Claude Code
+          # rozbija polecenie złożone po `;` i pyta o każdą część osobno, więc
+          # `gh issue view … ; echo "EXIT: $?"` odpadało przez samo `echo`.
+          # Agent nie mógł przeczytać komentarzy do zgłoszenia i utknął na
+          # sprawdzaniu, czy `gh` w ogóle działa.
           #
-          # `--allowedTools` zostaje przy samej powłoce i zostaje wąskie
-          # z rozmysłem. Treść issue pochodzi z opinii użytkowników aplikacji,
-          # więc jest tekstem z zewnątrz; szeroki Bash w tym samym przebiegu,
-          # w którym siedzi `GH_TOKEN`, byłby zaproszeniem. Katalog roboczy
-          # to i tak jednorazowa kopia, więc zapisy do plików są tańsze
-          # w skutkach niż dowolne polecenie.
+          # Granicą jest więc to, co nią było naprawdę od początku: blok
+          # `permissions:` tego zadania — zapis wyłącznie do treści, PR-ek
+          # i issues **tego** repozytorium — oraz runner, który znika razem
+          # z przebiegiem. Treść zgłoszenia pochodzi z opinii użytkowników
+          # aplikacji, czyli z zewnątrz; wąska lista nie była na to odpowiedzią,
+          # bo jej nie dawała. Odpowiedzią jest zakres tokenu.
           claude_args: |
             --model ${{ steps.zadanie.outputs.model }}
             --permission-mode acceptEdits
-            --allowedTools "Bash(pnpm:*),Bash(uv:*),Bash(node:*),Bash(npx:*),Bash(git:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(cd:*),Bash(ls:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(wc:*),Bash(find:*),Bash(grep:*),Bash(rg:*),Bash(mkdir:*)"
+            --allowedTools "Bash"
           prompt: |
             Zajmij się zgłoszeniem #${{ steps.zadanie.outputs.numer }}
             w repozytorium ${{ github.repository }}. Rodzaj zgłoszenia:
