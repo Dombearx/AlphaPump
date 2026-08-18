@@ -48,6 +48,31 @@ jobs:
       - name: Test
         run: pnpm test
 
+  wydania:
+    # Serwer aktualizacji stoi na gospodarzu, poza Composem i poza workspace
+    # pnpm, więc nie łapie go ani żaden test w repozytorium, ani `smoke.sh`
+    # (ten puka przez Caddy'ego do kontenerów). Bez tego zadania jedyne, co
+    # pilnuje sprzątania starych wydań na minipc, to czyjaś pamięć — a objawem
+    # regresji jest dysk pełny plików `.apk`, zauważony po fakcie.
+    name: Serwer aktualizacji (Python)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # Zależności serwera są zadeklarowane inline (PEP 723) w samym skrypcie;
+      # tutaj trzeba je wymienić z ręki, bo `uv run` bierze je stamtąd tylko
+      # wtedy, gdy uruchamia ten plik — a my uruchamiamy pytest.
+      - name: Test
+        run: >
+          uv run --with fastapi --with python-multipart --with uvicorn
+          --with httpx2 --with pytest
+          pytest deploy/tests -q
+
   triage:
     # Usługa segregacji zgłoszeń stoi poza workspace pnpm i ma własny zestaw
     # narzędzi, więc idzie osobnym zadaniem — równolegle, bo nie zależy od

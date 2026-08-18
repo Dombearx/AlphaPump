@@ -430,7 +430,15 @@ z manifestu jest sprawdzana wzorcem, a nie tylko oczyszczana — staje się
 Plik ląduje pod nazwą tymczasową i dopiero gotowy jest przenoszony na miejsce,
 a `latest.json` powstaje **po** nim: telefon nie ma jak zobaczyć manifestu
 wskazującego na plik, którego jeszcze nie ma, ani pobrać połówki pakietu.
-Starsze wydania są usuwane, zostają trzy ostatnie.
+Starsze wydania są usuwane, zostają trzy ostatnie — inaczej dysk minipc
+zapchałby się plikami, których nikomu już nie zaproponujemy.
+
+Osobno sprzątane są **przerwane wysyłki**. Plik pod nazwą tymczasową zostaje na
+dysku, gdy transfer urwie się w połowie — zerwane łącze VPN, restart usługi,
+proces ubity bez szansy na posprzątanie po sobie — a liczy się w dziesiątkach
+megabajtów tak samo jak gotowe wydanie. Sprzątanie idzie **przed** przyjęciem
+kolejnej wysyłki, nie po: na pełnym dysku każda wysyłka kończy się błędem, więc
+sprzątanie odpalane po udanej nie odpaliłoby się już nigdy.
 
 Stoi bezpośrednio na gospodarzu, nie w kontenerze, żeby móc wołać `git`
 i `docker` bez montowania gniazda Dockera do środka. To samodzielny skrypt
