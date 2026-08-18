@@ -16,13 +16,16 @@ name: Wydanie na Androida
 
 on:
   # Każde wejście na `main` daje nowe wydanie — inaczej „aktualizuje się samo"
-  # znaczyłoby „samo, ale po ręcznym kliknięciu".
+  # znaczyłoby „samo, ale po ręcznym kliknięciu". Ale tylko wtedy, gdy ruszyło
+  # się cokolwiek, co wchodzi do pliku `.apk`: zmiana w panelu, w API,
+  # w segregacji zgłoszeń albo w `deploy/` nie potrzebuje nowego wydania,
+  # a kosztuje kilkanaście minut gradle'a i numer wersji.
   #
-  # Bez zawężenia `paths`, choć kusi: zmiana w panelu albo w segregacji zgłoszeń
-  # nie potrzebuje nowego APK-a. Filtr ścieżek obejmuje jednak **każdy** push,
-  # także ten z tagiem — a tag postawiony na commicie, który ruszył wyłącznie
-  # `deploy/`, przestałby wtedy wydawać cokolwiek. Cicho pominięte wydanie jest
-  # droższe niż kilkanaście minut gradle'a.
+  # Rozstrzyga o tym zadanie `zmiany` niżej, a nie filtr `paths` tutaj, choć
+  # ten drugi kusi krótkością. `paths` obejmuje **każdy** push, także ten
+  # z tagiem — a tag postawiony na commicie, który ruszył wyłącznie `deploy/`,
+  # przestałby wtedy wydawać cokolwiek. Osobne zadanie potrafi zapytać
+  # o rodzaj zdarzenia, filtr ścieżek nie.
   push:
     branches: [main]
     tags: ['v*']
@@ -56,8 +59,66 @@ permissions:
   contents: write
 
 jobs:
+  # Bramka przed gradle'em: czy w tym wejściu na `main` ruszyło się cokolwiek,
+  # co trafia do pliku `.apk`. Wydanie z tagu i uruchomienie ręczne przechodzą
+  # tędy bez pytania — tam wydanie jest właśnie tym, po co ktoś przyszedł.
+  zmiany:
+    name: Czy wydanie jest potrzebne
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      wydawac: ${{ steps.sprawdz.outputs.wydawac }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Porównujemy z commitem sprzed pushu, a ten w płytkiej kopii nie
+          # istnieje.
+          fetch-depth: 0
+
+      - name: Sprawdź, czy ruszyło się coś z aplikacji
+        id: sprawdz
+        env:
+          PRZED: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+
+          if [ "$GITHUB_EVENT_NAME" != "push" ] || [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            echo "wydanie z tagu albo uruchomienie ręczne — buduję bez pytania"
+            echo "wydawac=tak" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Pierwsze wejście na gałąź, push wymuszony albo commit sprzed pushu
+          # przepadły — nie mamy z czym porównać. Wtedy budujemy: cicho
+          # pominięte wydanie jest droższe niż kilkanaście minut gradle'a.
+          if [ -z "$PRZED" ] || ! git cat-file -e "${PRZED}^{commit}" 2>/dev/null; then
+            echo "brak commita odniesienia ($PRZED) — buduję na wszelki wypadek"
+            echo "wydawac=tak" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          zmienione=$(git diff --name-only "$PRZED" "$GITHUB_SHA")
+          echo "zmienione pliki:"
+          printf '%s\n' "$zmienione" | sed 's/^/  /'
+
+          # Wszystko, co wchodzi do wydania: sama aplikacja, pakiety
+          # współdzielone, które Metro wciąga do bundla, manifesty decydujące
+          # o wersjach zależności i ten workflow. Lista jest szersza niż
+          # `apps/mobile`, bo `pnpm --filter "@alphapump/db..."` buduje też
+          # `packages/core`; obejmuje całe `packages/`, żeby dołożenie
+          # aplikacji mobilnej nowej zależności nie wymagało pamiętania o tym
+          # pliku.
+          if printf '%s\n' "$zmienione" | grep -qE '^(apps/mobile/|packages/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|tsconfig\.base\.json$|turbo\.json$|\.npmrc$|\.nvmrc$|\.github/workflows/android-release\.yml$)'; then
+            echo "wydawac=tak" >> "$GITHUB_OUTPUT"
+          else
+            echo "nic z aplikacji się nie zmieniło — pomijam wydanie"
+            echo "wydawac=nie" >> "$GITHUB_OUTPUT"
+          fi
+
   apk:
     name: Budowa pliku APK
+    needs: zmiany
+    if: needs.zmiany.outputs.wydawac == 'tak'
     runs-on: ubuntu-latest
     # Gradle z projektem React Native jedzie długo przy zimnym cache'u.
     timeout-minutes: 90

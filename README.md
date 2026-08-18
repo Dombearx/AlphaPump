@@ -74,7 +74,7 @@ złapać nie może:
 | `ios-simulator.yml` | PR dotykający aplikacji | że projekt na iOS wciąż się buduje, mimo że wydanie idzie na Androida |
 | `backup-restore.yml` | co miesiąc i przy zmianie kodu kopii | że kopia daje się odtworzyć, a dane po odtworzeniu zgadzają się z oryginałem |
 | `deploy-stack.yml` | PR dotykający wdrożenia, backendu lub panelu | że stos z `deploy/` wstaje na czystej bazie i odpowiada przez Caddy'ego |
-| `android-release.yml` | każdy merge do `main`, tag `v*` i ręcznie | zbudowanie `.apk` i położenie go na minipc, skąd telefony biorą aktualizację |
+| `android-release.yml` | merge do `main` ruszający aplikację, tag `v*` i ręcznie | zbudowanie `.apk` i położenie go na minipc, skąd telefony biorą aktualizację |
 
 ### Konfiguracja: pliki `.env` i klucze API
 
@@ -430,7 +430,15 @@ z manifestu jest sprawdzana wzorcem, a nie tylko oczyszczana — staje się
 Plik ląduje pod nazwą tymczasową i dopiero gotowy jest przenoszony na miejsce,
 a `latest.json` powstaje **po** nim: telefon nie ma jak zobaczyć manifestu
 wskazującego na plik, którego jeszcze nie ma, ani pobrać połówki pakietu.
-Starsze wydania są usuwane, zostają trzy ostatnie.
+Starsze wydania są usuwane, zostają trzy ostatnie — inaczej dysk minipc
+zapchałby się plikami, których nikomu już nie zaproponujemy.
+
+Osobno sprzątane są **przerwane wysyłki**. Plik pod nazwą tymczasową zostaje na
+dysku, gdy transfer urwie się w połowie — zerwane łącze VPN, restart usługi,
+proces ubity bez szansy na posprzątanie po sobie — a liczy się w dziesiątkach
+megabajtów tak samo jak gotowe wydanie. Sprzątanie idzie **przed** przyjęciem
+kolejnej wysyłki, nie po: na pełnym dysku każda wysyłka kończy się błędem, więc
+sprzątanie odpalane po udanej nie odpaliłoby się już nigdy.
 
 Stoi bezpośrednio na gospodarzu, nie w kontenerze, żeby móc wołać `git`
 i `docker` bez montowania gniazda Dockera do środka. To samodzielny skrypt
@@ -542,8 +550,16 @@ przestawienie czegoś w aplikacji.
 
 ##### Skąd biorą się wydania
 
-Wydanie robi `.github/workflows/android-release.yml` przy **każdym mergu do
-`main`**, przy tagu `v*` i na żądanie. Adres API bierze się ze zmiennej
+Wydanie robi `.github/workflows/android-release.yml` przy każdym mergu do
+`main`, **który ruszył cokolwiek wchodzącego do pliku `.apk`** — samą aplikację
+(`apps/mobile/`), pakiety współdzielone (`packages/`) albo manifesty decydujące
+o wersjach zależności. Zmiana w panelu, w API, w segregacji zgłoszeń czy
+w `deploy/` wydania nie wywołuje: nie zmieniłaby ani bajtu w pliku, a kosztuje
+kilkanaście minut gradle'a i numer wersji. Rozstrzyga o tym osobne zadanie
+`zmiany`, a nie filtr `paths` — ten obejmowałby także pushe z tagiem, więc tag
+postawiony na commicie ruszającym wyłącznie `deploy/` przestałby wydawać
+cokolwiek. Wydanie z tagu `v*` i uruchomienie ręczne przechodzą przez tę bramkę
+bez pytania. Adres API bierze się ze zmiennej
 repozytorium `EXPO_PUBLIC_API_URL` (przy uruchomieniu ręcznym — z pola
 `api_url`). Zadanie buduje `.apk`, opisuje go plikiem `latest.json`, wchodzi do
 NetBirda i wysyła oba na `POST /apk` serwera aktualizacji, który kładzie je
@@ -1091,9 +1107,14 @@ zgłoszenie z aplikacji  →  klasyfikacja (OpenRouter)
   wiadomość + wątek                                  │
   na Discordzie                            ktoś oznacza bota w wątku
         │                                            │
-        │                                  issue na GitHubie
-        │                                  (ai-triage + enhancement)
-        └──────────────┬─────────────────────────────┘
+        │                              ┌─────────────┴─────────────┐
+        │                    coś nierozstrzygnięte          wszystko jasne
+        │                              │                           │
+        │                   pytania wracają w wątek        issue na GitHubie
+        │                      (zespół odpowiada             (ai-triage +
+        │                    i oznacza bota znowu)           enhancement)
+        │                                                          │
+        └──────────────┬───────────────────────────────────────────┘
                        │
         etykieta `ai-triage` uruchamia Claude Code w Akcjach
                        │
@@ -1106,6 +1127,15 @@ Podział na dwie ścieżki jest sednem: błąd ma jedno poprawne rozwiązanie i 
 wymaga niczyjej decyzji, więc idzie prosto do naprawy. Prośba o zmianę wymaga
 ustalenia zakresu — a zakres ustala zespół w wątku, nie model na podstawie
 jednego zdania od użytkownika.
+
+**Pytania idą na Discorda, nie do issue.** Gdy po dyskusji zostaje coś, od czego
+zależy napisany kod, bot nie zakłada issue — wypisuje te pytania w wątku
+i czeka na kolejne oznaczenie. Powód jest mechaniczny: etykieta `ai-triage`
+uruchamia agenta w Akcjach natychmiast po założeniu issue, a agent nie ma jak
+dopytać, więc sekcja „Otwarte pytania" w treści byłaby pytaniem zadanym
+w próżnię — albo, gorzej, zaproszeniem do zgadywania. Zadane pytania zostają
+w stanie usługi, bo w kolejnej rundzie własne wypowiedzi bota wypadają
+z materiału dla modelu i odpowiedź „odrzucać" nie miałaby do czego się odnieść.
 
 **Wykrywanie duplikatów.** Przed założeniem issue usługa pokazuje modelowi
 otwarte zgłoszenia z etykietą `ai-triage` i pyta, czy to ta sama sprawa. Duplikat

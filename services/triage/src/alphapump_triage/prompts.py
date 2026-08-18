@@ -73,18 +73,29 @@ Dyskusja jest ważniejsza niż pierwotna prośba: to w niej zespół ustalił za
 Jeśli ustalenia zmieniły albo zawęziły pierwotny pomysł, obowiązuje ustalenie
 z dyskusji. Jeśli ktoś coś wprost odrzucił, wypisz to w sekcji „Poza zakresem".
 
+Zacznij od rozstrzygnięcia, czy dyskusja ustaliła wszystko, czego trzeba, żeby
+zacząć pisać kod. Czego brakuje — wypisz w `open_questions`. Te pytania wrócą
+do wątku na Discordzie, a issue nie powstanie, dopóki zespół nie odpowie.
+Treść issue czyta agent programistyczny, który nie ma jak dopytać: pytanie
+zostawione w treści jest pytaniem zadanym w próżnię.
+
+Pytaj wyłącznie o to, od czego zależy napisany kod. Szczegół, który wynika
+z reszty aplikacji albo ze zdrowego rozsądku, rozstrzygnij sam i opisz go
+w treści — pytanie zadane na wszelki wypadek wstrzymuje pracę bez powodu.
+Gdy nie ma o co pytać, zwróć `"open_questions": []`.
+
 Struktura treści (Markdown, bez nagłówka pierwszego poziomu):
 - **Kontekst** — skąd wziął się pomysł,
 - **Zakres** — co ma powstać, punktami,
 - **Wymagania szczegółowe** — wszystko, co padło w dyskusji: zachowania
   brzegowe, nazewnictwo, wygląd, ograniczenia,
-- **Poza zakresem** — co świadomie odrzucono (pomiń sekcję, jeśli nic nie padło),
-- **Otwarte pytania** — jeśli dyskusja czegoś nie rozstrzygnęła.
+- **Poza zakresem** — co świadomie odrzucono (pomiń sekcję, jeśli nic nie padło).
 
 Nie dopisuj wymagań, których nikt nie zgłosił.
 
 {_JSON_ONLY}
-Kształt: {{"title": "tytuł po polsku, maks. 80 znaków", "body": "treść w Markdownie"}}"""
+Kształt: {{"title": "tytuł po polsku, maks. 80 znaków", "body": "treść w Markdownie",
+"open_questions": ["pytanie po polsku", …]}}"""
 
 
 def _format_logs(feedback: Feedback) -> str:
@@ -145,7 +156,15 @@ def feature_issue_user_prompt(
     source_text: str,
     reporter: str,
     messages: list[ChatMessage],
+    asked_questions: tuple[str, ...] = (),
 ) -> str:
+    """Materiał do napisania issue: zgłoszenie, rozmowa i własne pytania sprzed rundy.
+
+    Pytania trzeba podać osobno, bo w `messages` ich nie ma — wypowiedzi bota
+    wypadają z materiału jako nieustalenia. Bez nich odpowiedź „odrzucać"
+    wisiałaby w powietrzu i model zadałby to samo pytanie drugi raz.
+    """
+
     if messages:
         discussion = "\n".join(
             f"[{message.at.isoformat()}] {message.author}: {message.content}"
@@ -154,10 +173,15 @@ def feature_issue_user_prompt(
         )
     else:
         discussion = "(w wątku nie padło nic poza zgłoszeniem)"
+    asked = ""
+    if asked_questions:
+        listing = "\n".join(f"- {question}" for question in asked_questions)
+        asked = f"\n\nPYTANIA, KTÓRE ZADAŁEŚ W TYM WĄTKU WCZEŚNIEJ:\n{listing}"
     return (
         f"TEMAT: {title}\n\n"
         f"ORYGINALNE ZGŁOSZENIE (od: {reporter}):\n{source_text}\n\n"
         f"DYSKUSJA W WĄTKU, chronologicznie:\n{discussion}"
+        f"{asked}"
     )
 
 
@@ -197,7 +221,8 @@ def change_request_announcement(title: str, feedback: Feedback, bot_mention: str
         f"> {_quote(feedback.message)}\n\n"
         f"_Zgłosił(a): {feedback.nickname} · {feedback.sent_at:%d.%m.%Y %H:%M}_\n"
         f"Przedyskutujcie zakres w wątku. Gdy dojdziecie do porozumienia, "
-        f"oznaczcie {bot_mention} w wątku — przeczytam całą rozmowę i założę issue."
+        f"oznaczcie {bot_mention} w wątku — przeczytam całą rozmowę i założę issue. "
+        "Jeśli coś zostanie nierozstrzygnięte, dopytam tutaj, zanim je założę."
     )
 
 
@@ -214,6 +239,22 @@ def duplicate_thread_note(feedback: Feedback) -> str:
         f"➕ Kolejne zgłoszenie w tym temacie, od **{feedback.nickname}** "
         f"({feedback.sent_at:%d.%m.%Y %H:%M}):\n\n"
         f"> {_quote(feedback.message)}"
+    )
+
+
+def open_questions_note(questions: list[str], bot_mention: str) -> str:
+    """Pytania wracające do wątku zamiast do issue.
+
+    Numerowane, bo odpowiedź „pierwsze tak, drugie nie" jest naturalna
+    i czytelna także dla modelu, który tę odpowiedź przeczyta w kolejnej rundzie.
+    """
+
+    listing = "\n".join(f"{index}. {question}" for index, question in enumerate(questions, 1))
+    return (
+        "❓ **Zanim założę issue** — bez tych ustaleń agent musiałby zgadywać:\n\n"
+        f"{listing}\n\n"
+        f"Odpowiedzcie w wątku i oznaczcie {bot_mention} jeszcze raz. "
+        "Issue powstanie wtedy, gdy nie zostanie już nic do ustalenia."
     )
 
 

@@ -37,6 +37,7 @@ import os
 import re
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -74,6 +75,16 @@ APK_NAME = re.compile(r"^alphapump-\d+\.apk$")
 # How many previous releases stay downloadable. Enough to put yesterday's build
 # back on a phone by hand; not so many that the minipc fills up with them.
 KEEP_RELEASES = 3
+
+# How long a staging file may sit in the release directory before it counts as
+# abandoned. An upload that dies halfway -- a dropped VPN link, a service
+# restarted mid-transfer -- leaves its `.part` behind, and a process killed
+# outright never gets to clean up after itself. Each one is a full-sized
+# release, and nothing else in here ever reclaims them: `_prune_old_releases`
+# counts releases, and a `.part` file is not one. An hour is far longer than an
+# upload takes over the VPN and far shorter than the gap between releases, so no
+# upload still in flight is ever mistaken for garbage.
+STALE_UPLOAD_SECONDS = 3600
 
 # Chunk size for hashing and copying the upload. Large enough that a 60 MB APK
 # is not ten thousand syscalls, small enough not to hold it all in memory.
@@ -159,6 +170,13 @@ async def publish_release(
     directory = apk_dir()
     directory.mkdir(parents=True, exist_ok=True)
 
+    # Swept before staging this upload rather than after publishing it: once the
+    # disk is full every upload fails, and a sweep that only ran on success
+    # would never run again -- exactly when it is needed most.
+    abandoned = _sweep_stale_uploads(directory)
+    if abandoned:
+        logger.info("Removed abandoned uploads: %s", ", ".join(abandoned))
+
     # Written under a temporary name and moved into place, so a download that
     # dies halfway cannot leave a truncated `.apk` at the address phones fetch.
     digest = hashlib.sha256()
@@ -166,9 +184,16 @@ async def publish_release(
         dir=directory, delete=False, suffix=".part"
     ) as staged:
         staging = Path(staged.name)
-        while chunk := await apk.read(CHUNK_BYTES):
-            digest.update(chunk)
-            staged.write(chunk)
+        try:
+            while chunk := await apk.read(CHUNK_BYTES):
+                digest.update(chunk)
+                staged.write(chunk)
+        except BaseException:
+            # A client that disappears mid-upload, or a shutdown signal, must
+            # not leave half a release on the disk. The sweep above is the
+            # backstop for the cases that never reach this line at all.
+            staging.unlink(missing_ok=True)
+            raise
 
     received = digest.hexdigest()
     if received != described["sha256"].lower():
@@ -238,6 +263,23 @@ def _write_manifest(directory: Path, described: dict[str, Any]) -> None:
     staging.write_text(json.dumps(described, indent=2, ensure_ascii=False) + "\n")
     staging.chmod(0o644)
     staging.replace(directory / MANIFEST_NAME)
+
+
+def _sweep_stale_uploads(directory: Path) -> list[str]:
+    """Removes staging files left behind by uploads that never finished."""
+    cutoff = time.time() - STALE_UPLOAD_SECONDS
+
+    removed = []
+    for path in directory.glob("*.part"):
+        try:
+            if path.stat().st_mtime > cutoff:
+                continue
+            path.unlink()
+        except FileNotFoundError:
+            # Another upload finished with it between the glob and here.
+            continue
+        removed.append(path.name)
+    return removed
 
 
 def _prune_old_releases(directory: Path, keep: str) -> list[str]:
