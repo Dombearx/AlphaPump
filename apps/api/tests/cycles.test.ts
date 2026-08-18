@@ -6,13 +6,13 @@
  * Testy tej reguły siedzą w `packages/core`, gdzie mieszka algorytm.
  */
 
-import { builtInExerciseId, tagId } from '@alphapump/core';
+import { tagId } from '@alphapump/core';
 import type { Cycle } from '@alphapump/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createHarness, type Harness, type TestUser } from './harness.js';
 
 const BICEPS = tagId('Biceps');
-const RUN = builtInExerciseId('Running');
+let RUN: string;
 
 describe('cykle', () => {
   let harness: Harness;
@@ -23,13 +23,21 @@ describe('cykle', () => {
     harness = await createHarness();
     user = await harness.signUp('cykle@example.com');
     other = await harness.signUp('cudze-cykle@example.com');
+
+    // Baza domyślna nie ma wbudowanego ćwiczenia „dystans + czas" — testujemy
+    // na własnym.
+    const run = await harness.json<{ id: string }>('POST', '/exercises', {
+      headers: user.headers,
+      body: { name: 'Bieganie', loggingType: 'distance_time', primaryTagId: tagId('quads') },
+    });
+    RUN = run.body.id;
   });
 
   afterAll(async () => {
     await harness.close();
   });
 
-  const sampleCycle = {
+  const sampleCycle = () => ({
     name: 'Sierpień na biceps',
     startsOn: '2026-08-01',
     endsOn: '2026-08-31',
@@ -37,12 +45,12 @@ describe('cykle', () => {
       { metric: 'sets' as const, target: 12, exerciseId: null, tagId: BICEPS },
       { metric: 'distance' as const, target: 10_000, exerciseId: RUN, tagId: null },
     ],
-  };
+  });
 
   it('tworzy cykl z wieloma pozycjami celu', async () => {
     const response = await harness.json<Cycle>('POST', '/cycles', {
       headers: user.headers,
-      body: sampleCycle,
+      body: sampleCycle(),
     });
 
     expect(response.status).toBe(201);
@@ -55,7 +63,7 @@ describe('cykle', () => {
     const response = await harness.json<{ error: { code: string } }>('POST', '/cycles', {
       headers: user.headers,
       body: {
-        ...sampleCycle,
+        ...sampleCycle(),
         goals: [{ metric: 'sets', target: 5, exerciseId: RUN, tagId: BICEPS }],
       },
     });
@@ -66,7 +74,7 @@ describe('cykle', () => {
     const response = await harness.json('POST', '/cycles', {
       headers: user.headers,
       body: {
-        ...sampleCycle,
+        ...sampleCycle(),
         goals: [{ metric: 'sets', target: 5, exerciseId: null, tagId: null }],
       },
     });
@@ -76,7 +84,7 @@ describe('cykle', () => {
   it('odrzuca koniec cyklu wcześniejszy niż początek', async () => {
     const response = await harness.json('POST', '/cycles', {
       headers: user.headers,
-      body: { ...sampleCycle, startsOn: '2026-08-31', endsOn: '2026-08-01' },
+      body: { ...sampleCycle(), startsOn: '2026-08-31', endsOn: '2026-08-01' },
     });
     expect(response.status).toBe(400);
   });
@@ -84,7 +92,7 @@ describe('cykle', () => {
   it('podmienia komplet pozycji przy edycji', async () => {
     const created = await harness.json<Cycle>('POST', '/cycles', {
       headers: user.headers,
-      body: sampleCycle,
+      body: sampleCycle(),
     });
 
     const updated = await harness.json<Cycle>('PATCH', `/cycles/${created.body.id}`, {
@@ -100,7 +108,7 @@ describe('cykle', () => {
   it('reset cyklu to przesunięcie daty początku', async () => {
     const created = await harness.json<Cycle>('POST', '/cycles', {
       headers: user.headers,
-      body: sampleCycle,
+      body: sampleCycle(),
     });
 
     const reset = await harness.json<Cycle>('PATCH', `/cycles/${created.body.id}`, {
@@ -117,7 +125,7 @@ describe('cykle', () => {
   it('archiwizuje i przywraca cykl', async () => {
     const created = await harness.json<Cycle>('POST', '/cycles', {
       headers: user.headers,
-      body: sampleCycle,
+      body: sampleCycle(),
     });
 
     const archived = await harness.json<Cycle>('PATCH', `/cycles/${created.body.id}`, {
@@ -144,7 +152,7 @@ describe('cykle', () => {
   it('usuwa cykl miękko', async () => {
     const created = await harness.json<Cycle>('POST', '/cycles', {
       headers: user.headers,
-      body: sampleCycle,
+      body: sampleCycle(),
     });
 
     const removed = await harness.json('DELETE', `/cycles/${created.body.id}`, {
@@ -161,7 +169,7 @@ describe('cykle', () => {
   it('nie pokazuje cykli innego użytkownika', async () => {
     const created = await harness.json<Cycle>('POST', '/cycles', {
       headers: user.headers,
-      body: sampleCycle,
+      body: sampleCycle(),
     });
 
     const read = await harness.json('GET', `/cycles/${created.body.id}`, {

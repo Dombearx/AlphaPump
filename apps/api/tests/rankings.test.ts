@@ -17,6 +17,7 @@ import {
   newDeviceId,
   newSetId,
   setVolume,
+  tagId,
   type GlobalRecordsResponse,
   type RankingResponse,
   type WorkoutSet,
@@ -24,9 +25,9 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createHarness, type Harness, type TestUser } from './harness.js';
 
-const BENCH = builtInExerciseId('Barbell bench press');
+const BENCH = builtInExerciseId('Flat barbell bench press');
 const SQUAT = builtInExerciseId('Barbell squat');
-const RUN = builtInExerciseId('Running');
+let RUN: string;
 
 const DAY = '2026-08-10';
 
@@ -87,6 +88,14 @@ describe('rekordy globalne i rankingi', () => {
     harness = await createHarness();
     ania = await harness.signUp('ania@example.com', 'haslo-testowe-123', 'ania');
     bartek = await harness.signUp('bartek@example.com', 'haslo-testowe-123', 'bartek');
+
+    // Baza domyślna nie ma wbudowanego ćwiczenia „dystans + czas" — testujemy
+    // na własnym.
+    const run = await harness.json<{ id: string }>('POST', '/exercises', {
+      headers: ania.headers,
+      body: { name: 'Bieganie', loggingType: 'distance_time', primaryTagId: tagId('quads') },
+    });
+    RUN = run.body.id;
   });
 
   afterEach(async () => {

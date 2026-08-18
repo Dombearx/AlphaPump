@@ -245,7 +245,7 @@ describe('serie w bazie lokalnej', () => {
       });
       await createSet(local.db, {
         ...AUTHOR,
-        exerciseId: EXERCISES.pullUps!.id,
+        exerciseId: EXERCISES.crunch!.id,
         performedOn: DAY,
         values: {
           weightG: null,
@@ -267,7 +267,7 @@ describe('serie w bazie lokalnej', () => {
 
       expect(groups.map((group) => group.exerciseId)).toEqual([
         EXERCISES.bench!.id,
-        EXERCISES.pullUps!.id,
+        EXERCISES.crunch!.id,
       ]);
       expect(groups[0]?.sets).toHaveLength(2);
     });

@@ -142,7 +142,11 @@ const EXERCISE_DEFINITIONS: readonly ExerciseDefinition[] = [
     primaryTag: 'hamstrings',
     additionalTags: ['glutes', 'back'],
   },
-  { name: 'Single leg seated hamstring curl', loggingType: 'weight_reps', primaryTag: 'hamstrings' },
+  {
+    name: 'Single leg seated hamstring curl',
+    loggingType: 'weight_reps',
+    primaryTag: 'hamstrings',
+  },
   {
     name: 'Dumbbell jefferson curl',
     loggingType: 'weight_reps',

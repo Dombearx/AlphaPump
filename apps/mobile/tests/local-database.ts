@@ -54,14 +54,14 @@ export async function insertTestUser(db: SqliteDatabase, at = new Date('2026-08-
 
 /** Ćwiczenia wbudowane, których używają testy — identyfikatory liczone tak jak w seedzie. */
 export const EXERCISES: Record<string, { id: string; loggingType: LoggingType }> = {
-  bench: { id: builtInExerciseId('Barbell bench press'), loggingType: 'weight_reps' },
-  pullUps: { id: builtInExerciseId('Pull-up'), loggingType: 'bodyweight_reps' },
-  // Tag główny „Chest", dodatkowy „Triceps" — jedyne wbudowane ćwiczenie z
-  // rozjazdem między tagiem liczącym się do cyklu a tagiem, po którym też je
-  // znajdzie filtr biblioteki.
-  dips: { id: builtInExerciseId('Dips'), loggingType: 'bodyweight_reps' },
+  bench: { id: builtInExerciseId('Flat barbell bench press'), loggingType: 'weight_reps' },
+  crunch: { id: builtInExerciseId("Mason's crunch"), loggingType: 'bodyweight_reps' },
+  // Tag główny „chest", dodatkowe „triceps" i „shoulders" — jedyne wbudowane
+  // ćwiczenie z rozjazdem między tagiem liczącym się do cyklu a tagami, po
+  // których też je znajdzie filtr biblioteki.
+  dips: { id: builtInExerciseId('Weighted dip'), loggingType: 'weight_reps' },
 };
 
 export const TAGS = {
-  chest: tagId('Chest'),
+  chest: tagId('chest'),
 } as const;

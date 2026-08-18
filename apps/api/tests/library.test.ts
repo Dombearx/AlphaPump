@@ -131,12 +131,12 @@ describe('biblioteka', () => {
         headers: author.headers,
       });
       const names = response.body.map((exercise) => exercise.name);
-      expect(names).toContain('Barbell row');
-      expect(names).not.toContain('Running');
+      expect(names).toContain('Dumbbell pullover');
+      expect(names).not.toContain('Lying dumbbell curl');
     });
 
     it('filtruje także po tagu dodatkowym', async () => {
-      // „Chin-up" ma tag główny „Back", a „Biceps" wyłącznie
+      // „Weighted pull up" ma tag główny „back", a „biceps" wyłącznie
       // jako dodatkowy — więc trafia tu przez skorelowane podzapytanie po
       // `exercise_tags`, a nie przez porównanie tagu głównego. Bez tej asercji
       // ta gałąź warunku nie byłaby w ogóle wykonywana przez testy.
@@ -145,9 +145,9 @@ describe('biblioteka', () => {
       });
 
       const names = response.body.map((exercise) => exercise.name);
-      expect(names).toContain('Chin-up');
-      expect(names).toContain('Barbell curl');
-      expect(names).not.toContain('Running');
+      expect(names).toContain('Weighted pull up');
+      expect(names).toContain('Lying dumbbell curl');
+      expect(names).not.toContain('Dumbbell pullover');
     });
 
     it('odróżnia ćwiczenia wbudowane od dodanych przez użytkowników', async () => {
