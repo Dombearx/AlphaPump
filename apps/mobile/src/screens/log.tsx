@@ -6,11 +6,11 @@
  * najkrótsza droga to jedno naciśnięcie „Dodaj serię". Reszta ekranu — lista
  * serii dnia, rekordy, zmiana kolejności — jest dookoła tego przycisku.
  *
- * Wejście w istniejącą serię robi obie rzeczy naraz, tak jak w FitNotes: jej
- * wartości lądują w formularzu, a użytkownik decyduje, czy zapisać zmianę
- * („Zapisz zmiany"), czy potraktować ją jako punkt startowy następnej
- * („Dodaj jako nową"). Dwa osobne tryby wymagałyby wybrania trybu, zanim wiadomo,
- * o co chodzi.
+ * Wejście w istniejącą serię wrzuca jej wartości do tego samego formularza, tak
+ * jak w FitNotes — osobny tryb edycji wymagałby wybrania trybu, zanim wiadomo,
+ * o co chodzi. Z edycji wychodzi się tapnięciem w tło, poza kartą formularza,
+ * i wpisane zmiany wtedy przepadają; przyciski pod formularzem opisuje
+ * `src/set-form.ts`.
  *
  * Informacja o rekordzie pojawia się natychmiast po zapisie i **bez sieci** —
  * liczy ją `@alphapump/core` z serii leżących w bazie lokalnej.
@@ -52,6 +52,7 @@ import {
   type MeasurementField,
 } from '../measurements';
 import { draftOf, readDraft, suggestedDraft, type SetDraft } from '../set-draft';
+import { setFormActions, type SetFormAction } from '../set-form';
 import { useRequestSync } from '../sync/provider';
 import {
   Button,
@@ -350,6 +351,44 @@ export function LogScreen({ day, exerciseId }: { day: IsoDate; exerciseId: strin
     setDraft(null);
   };
 
+  const renderAction = (action: SetFormAction) => {
+    switch (action) {
+      case 'create':
+        return (
+          <Button
+            key={action}
+            grow
+            label="Add set"
+            busy={busy}
+            disabled={author === null}
+            onPress={() => save('create')}
+          />
+        );
+      case 'update':
+        return (
+          <Button
+            key={action}
+            grow
+            label="Save changes"
+            busy={busy}
+            onPress={() => save('update')}
+          />
+        );
+      case 'delete':
+        return (
+          <Button
+            key={action}
+            grow
+            variant="danger"
+            label="Delete"
+            onPress={() => {
+              if (editing !== null) remove(editing);
+            }}
+          />
+        );
+    }
+  };
+
   return (
     <SafeAreaView className="flex-1 bg-base" edges={['bottom']}>
       <Stack.Screen
@@ -390,88 +429,74 @@ export function LogScreen({ day, exerciseId }: { day: IsoDate; exerciseId: strin
               {exercise.gym === null ? '' : ` · ${exercise.gym}`}
             </Text>
 
-            <Card className="gap-3">
-              <View className="gap-3">
-                {fieldsFor(loggingType).map((field) => {
-                  const steppable = field.kind === 'weight' || field.kind === 'reps';
+            {/* Karta formularza łyka tapnięcia, których nie wziął żaden `Field`
+                ani `Button` — inaczej trafienie w jej margines albo w odstęp
+                między polami spłynęłoby do tła i odrzuciło edycję razem
+                z wpisanymi zmianami. Odpowiedź w fazie bąbelkowania, więc pola
+                i przyciski w środku pytane są pierwsze i nadal dostają swój
+                dotyk, a przewijanie przechodzi do `ScrollView` przy ruchu. */}
+            <View onStartShouldSetResponder={() => true}>
+              <Card className="gap-3">
+                <View className="gap-3">
+                  {fieldsFor(loggingType).map((field) => {
+                    const steppable = field.kind === 'weight' || field.kind === 'reps';
 
-                  return (
-                    <View key={field.key} className="flex-row items-end gap-2">
-                      {steppable && (
-                        <IconButton
-                          size={STEP_BUTTON_SIZE}
-                          label={`${field.label} minus one`}
-                          glyph="−"
-                          onPress={() => step(field, -1)}
+                    return (
+                      <View key={field.key} className="flex-row items-end gap-2">
+                        {steppable && (
+                          <IconButton
+                            size={STEP_BUTTON_SIZE}
+                            label={`${field.label} minus one`}
+                            glyph="−"
+                            onPress={() => step(field, -1)}
+                          />
+                        )}
+                        <Field
+                          grow
+                          label={field.label}
+                          unit={field.unit}
+                          value={current.values[field.key] ?? ''}
+                          onChangeText={(value) => change(field.key, value)}
+                          placeholder={field.placeholder}
+                          keyboardType={keyboardFor(field.kind)}
                         />
-                      )}
-                      <Field
-                        grow
-                        label={field.label}
-                        unit={field.unit}
-                        value={current.values[field.key] ?? ''}
-                        onChangeText={(value) => change(field.key, value)}
-                        placeholder={field.placeholder}
-                        keyboardType={keyboardFor(field.kind)}
-                      />
-                      {steppable && (
-                        <IconButton
-                          size={STEP_BUTTON_SIZE}
-                          label={`${field.label} plus one`}
-                          glyph="+"
-                          onPress={() => step(field, 1)}
-                        />
-                      )}
-                    </View>
-                  );
-                })}
-              </View>
-
-              <Field
-                label="Note"
-                value={current.note}
-                onChangeText={(value) => setDraft({ ...current, note: value })}
-                placeholder="optional"
-              />
-
-              {problem !== null && <Text className="text-danger">{problem}</Text>}
-
-              {outcome !== null && RECORD_MESSAGE[outcome] !== undefined && (
-                <Text className="text-lg font-semibold text-success">
-                  {RECORD_MESSAGE[outcome]}
-                </Text>
-              )}
-
-              {editing === null && draft === null && suggestion?.reason != null && (
-                <Text className="text-xs text-muted">{SUGGESTION_MESSAGE[suggestion.reason]}</Text>
-              )}
-
-              {editing === null ? (
-                <Button
-                  label="Add set"
-                  busy={busy}
-                  disabled={author === null}
-                  onPress={() => save('create')}
-                />
-              ) : (
-                <View className="gap-2">
-                  <View className="flex-row gap-2">
-                    <Button grow label="Save changes" busy={busy} onPress={() => save('update')} />
-                    <Button
-                      grow
-                      variant="secondary"
-                      label="Add as new"
-                      busy={busy}
-                      onPress={() => save('create')}
-                    />
-                  </View>
-                  <View className="flex-row gap-2">
-                    <Button grow variant="danger" label="Delete" onPress={() => remove(editing)} />
-                    <Button grow variant="secondary" label="Cancel" onPress={cancel} />
-                  </View>
+                        {steppable && (
+                          <IconButton
+                            size={STEP_BUTTON_SIZE}
+                            label={`${field.label} plus one`}
+                            glyph="+"
+                            onPress={() => step(field, 1)}
+                          />
+                        )}
+                      </View>
+                    );
+                  })}
                 </View>
-              )}
-            </Card>
+
+                <Field
+                  label="Note"
+                  value={current.note}
+                  onChangeText={(value) => setDraft({ ...current, note: value })}
+                  placeholder="optional"
+                />
+
+                {problem !== null && <Text className="text-danger">{problem}</Text>}
+
+                {outcome !== null && RECORD_MESSAGE[outcome] !== undefined && (
+                  <Text className="text-lg font-semibold text-success">
+                    {RECORD_MESSAGE[outcome]}
+                  </Text>
+                )}
+
+                {editing === null && draft === null && suggestion?.reason != null && (
+                  <Text className="text-xs text-muted">
+                    {SUGGESTION_MESSAGE[suggestion.reason]}
+                  </Text>
+                )}
+
+                <View className="flex-row gap-2">{setFormActions(editing).map(renderAction)}</View>
+              </Card>
+            </View>
 
             <View className="gap-2">
               <SectionTitle>Today's sets</SectionTitle>

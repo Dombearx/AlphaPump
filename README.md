@@ -995,6 +995,13 @@ w jednej transakcji dzieją się trzy rzeczy: wiersz trafia do bazy, jego
 identyfikator do outboxu, a pomiary przez front Pareto z `@alphapump/core`.
 Dlatego informacja o rekordzie pojawia się natychmiast i **bez sieci**.
 
+Edycja serii nie ma własnego przycisku wyjścia: wejście w serię wypełnia ten sam
+formularz, zmianę zatwierdza „Save changes", a wychodzi się tapnięciem w tło poza
+kartą formularza — co **odrzuca** wpisane wartości. „Add as new" i „Cancel"
+zniknęły z tego widoku, bo pierwsze nie było używane, a drugie dublowało
+tapnięcie w tło. Sam zestaw przycisków wylicza `apps/mobile/src/set-form.ts`
+i ma test bez renderowania ekranu.
+
 Rekordy indywidualne nie są nigdzie trzymane — liczy je `@alphapump/core` przy
 rysowaniu ekranu, z serii leżących w bazie lokalnej. Tabela pochodna byłaby
 drugim źródłem prawdy o czymś, co i tak liczy się w milisekundach, i wymagałaby
