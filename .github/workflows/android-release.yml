@@ -353,8 +353,12 @@ jobs:
     needs: [zmiany, plan]
     if: needs.plan.outputs.wydanie == 'apk'
     runs-on: ubuntu-latest
-    # Gradle z projektem React Native jedzie długo przy zimnym cache'u.
-    timeout-minutes: 90
+    # Udane wydania mieszczą się w kwadransie–dwudziestu minutach, a od
+    # zawężenia architektur do jednej powinny w mniej. Limit jest więc ciasny
+    # **celowo**: gradle po padnięciu z braku pamięci potrafi nie wyjść wcale,
+    # a przy limicie 90 minut kosztowało to 79 minut wiszenia i wyglądało na
+    # zawieszone CI zamiast na błąd budowy. Lepiej dowiedzieć się szybko.
+    timeout-minutes: 45
 
     env:
       # Poza ręcznym uruchomieniem adres bierze się ze zmiennej repozytorium

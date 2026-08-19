@@ -20,8 +20,9 @@
 const { parseAbis } = require('./config/abis');
 const { envValue } = require('./config/env');
 const { atsExceptions, cleartextHost } = require('./config/network');
-const withAndroidAbis = require('./config/with-android-abis');
+const { GRADLE_JVM_ARGS } = require('./config/gradle-memory');
 const withCleartextHost = require('./config/with-cleartext-host');
+const withGradleProperties = require('./config/with-gradle-properties');
 
 /** Adres API. Domyślny wskazuje na serwer uruchomiony lokalnie. */
 const API_URL = envValue('EXPO_PUBLIC_API_URL') ?? 'http://localhost:3000';
@@ -144,7 +145,15 @@ const config = {
     'expo-sqlite',
     '@react-native-google-signin/google-signin',
     [withCleartextHost, { host: cleartextHost(API_URL) }],
-    [withAndroidAbis, { abis: ANDROID_ABIS }],
+    [
+      withGradleProperties,
+      {
+        properties: {
+          reactNativeArchitectures: ANDROID_ABIS.join(','),
+          'org.gradle.jvmargs': GRADLE_JVM_ARGS,
+        },
+      },
+    ],
   ],
 
   experiments: {
