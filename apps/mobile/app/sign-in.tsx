@@ -25,7 +25,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect } from 'expo-router';
 import { authClient, useSession } from '../src/auth/client';
-import { signInWithGoogle } from '../src/auth/google';
 import { appConfig, isGoogleSignInConfigured } from '../src/config/index';
 import { db } from '../src/db/client';
 import { cacheSessionUser } from '../src/db/users';
@@ -73,6 +72,10 @@ export default function SignInScreen() {
 
   const withGoogle = () =>
     run(async () => {
+      // Jak w `_layout.tsx`: moduł natywny wchodzi dopiero wtedy, gdy ktoś
+      // naprawdę klika „Continue with Google". Przycisku i tak nie ma, dopóki
+      // metoda nie jest włączona po obu stronach.
+      const { signInWithGoogle } = await import('../src/auth/google');
       const { cancelled } = await signInWithGoogle();
       if (cancelled) return;
       const current = await authClient.getSession();

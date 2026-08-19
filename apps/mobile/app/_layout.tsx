@@ -20,7 +20,6 @@ import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { installConsoleCapture } from '../src/app-log';
-import { configureGoogleSignIn } from '../src/auth/google';
 import { appConfig, isGoogleSignInConfigured } from '../src/config/index';
 import { DatabaseProvider } from '../src/db/provider';
 import { SyncProvider } from '../src/sync/provider';
@@ -33,7 +32,14 @@ installConsoleCapture();
 
 export default function RootLayout() {
   useEffect(() => {
-    if (isGoogleSignInConfigured(appConfig)) configureGoogleSignIn(appConfig);
+    // Import jest **leniwy**, i to jest różnica widoczna w każdym starcie:
+    // `@react-native-google-signin` to moduł natywny, a wpisany na górze pliku
+    // ładował się i inicjalizował przy każdym uruchomieniu aplikacji — także
+    // wtedy, gdy metoda jest wyłączona, czyli domyślnie i u nas.
+    if (!isGoogleSignInConfigured(appConfig)) return;
+    void import('../src/auth/google').then(({ configureGoogleSignIn }) => {
+      configureGoogleSignIn(appConfig);
+    });
   }, []);
 
   return (
