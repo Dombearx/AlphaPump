@@ -31,6 +31,7 @@ import type { AppDependencies, AppEnvironment, Principal } from '../context.js';
 import { toExerciseDto } from '../dto.js';
 import { NO_LAYERS, refreshEmbedding } from '../duplicates/index.js';
 import { conflict, forbidden, notFound } from '../errors.js';
+import { EXERCISE_IN_USE_MESSAGE, isExerciseInUse } from '../exercise-usage.js';
 import { validateJson, validateParam, validateQuery } from '../middleware/validate.js';
 import type { RouteSpec } from '../openapi.js';
 import {
@@ -91,7 +92,8 @@ export const exerciseRoutes: RouteSpec[] = [
     summary: 'Usunięcie ćwiczenia',
     description:
       'Usunięcie miękkie — wiersz zostaje z tombstonem, więc zapisane serie ' +
-      'nie tracą tego, na co wskazują.',
+      'nie tracą tego, na co wskazują. Odmawia, gdy ktokolwiek ma na tym ćwiczeniu ' +
+      'zapisaną serię: właściwą operacją jest wtedy scalenie z innym ćwiczeniem.',
     tag: 'ćwiczenia',
     security: 'user',
     params: idParamSchema,
@@ -99,6 +101,7 @@ export const exerciseRoutes: RouteSpec[] = [
       { status: 204, description: 'Ćwiczenie usunięte' },
       { status: 403, description: 'Usunąć może wyłącznie autor albo administrator' },
       { status: 404, description: 'Ćwiczenie nie istnieje' },
+      { status: 409, description: 'Ćwiczenie ma zapisane serie' },
     ],
   },
 ];
@@ -302,6 +305,10 @@ export function createExerciseRouter(dependencies: AppDependencies) {
     const existing = await loadOne(id);
     if (!existing || existing.row.deletedAt !== null) throw notFound('Ćwiczenie nie istnieje');
     assertMayModify(existing.row, principal);
+
+    // Ta sama reguła obowiązuje tombstone przyjeżdżający pushem — dlatego
+    // predykat mieszka osobno, a nie w ciele tego handlera.
+    if (await isExerciseInUse(db, id)) throw conflict(EXERCISE_IN_USE_MESSAGE);
 
     await db.update(exercises).set(stampDelete()).where(eq(exercises.id, id));
     return context.body(null, 204);

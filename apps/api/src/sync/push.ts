@@ -45,6 +45,7 @@ import {
 import { and, asc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import type { Principal } from '../context.js';
 import type { Database } from '../db.js';
+import { EXERCISE_IN_USE_MESSAGE, isExerciseInUse } from '../exercise-usage.js';
 import { cycleGoals, cycles, exerciseTags, exercises, tags, workoutSets } from '../schema.js';
 import { nextServerSeq } from '../sync-columns.js';
 import { TAG_IN_USE_MESSAGE, isTagInUse } from '../tag-usage.js';
@@ -247,6 +248,16 @@ export async function applyPush(
     }
 
     if (decision === 'delete') {
+      // „Ćwiczenia z zapisanymi seriami nie da się usunąć" obowiązuje tak samo
+      // tutaj, jak przy `DELETE /exercises/:id`. Telefon zna wyłącznie serie
+      // swojego właściciela, więc tombstone potrafi tu przyjechać dla ćwiczenia,
+      // na którym trenuje ktoś inny — odrzucenie oddaje wtedy wiersz serwerowy
+      // i ćwiczenie wraca na urządzenie, które je u siebie skasowało.
+      if (await isExerciseInUse(db, incoming.id)) {
+        await reject(EXERCISE_IN_USE_MESSAGE);
+        continue;
+      }
+
       const stamp = stampFrom(revision, deviceId);
       const [row] = await db
         .update(exercises)

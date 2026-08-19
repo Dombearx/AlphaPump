@@ -57,7 +57,7 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
   const remove = () => {
     Alert.alert(
       'Delete this exercise?',
-      'Logged sets stay, but the exercise disappears from the library on every device.',
+      'It disappears from the library on every device. Exercises with logged sets can’t be deleted.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -65,7 +65,16 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
           style: 'destructive',
           onPress: () => {
             void (async () => {
-              await deleteExercise(db, exerciseId, author);
+              try {
+                await deleteExercise(db, exerciseId, author);
+              } catch (error) {
+                // Reguła „ćwiczenia z seriami się nie usuwa" mieszka w warstwie
+                // zapisu, bo obowiązuje też zapis przychodzący skądinąd. Ekran
+                // ma ją tylko pokazać — przycisk niżej i tak jest wtedy nieaktywny,
+                // więc tu ląduje wyłącznie przypadek serii dopisanej w międzyczasie.
+                Alert.alert('Can’t delete', (error as Error).message);
+                return;
+              }
               requestSync();
               router.replace('/library');
             })();
@@ -146,7 +155,22 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
               label="Edit"
               onPress={() => router.push(`/library/${exerciseId}/edit`)}
             />
-            <Button variant="danger" label="Remove from library" onPress={remove} />
+            {/* Serie widoczne tu są wyłącznie własne, więc ćwiczenie, na którym
+                trenuje ktoś inny z grupy, dalej wygląda na usuwalne — odmówi
+                dopiero serwer. To jest ta sama granica, co przy każdej regule
+                sprawdzanej lokalnie: telefon nie ma cudzych danych. */}
+            <Button
+              variant="danger"
+              label="Remove from library"
+              disabled={sets.length > 0}
+              onPress={remove}
+            />
+            {sets.length > 0 && (
+              <Text className="text-xs text-muted">
+                Can’t be deleted — you have sets logged here. An admin can merge it into another
+                exercise, keeping every set.
+              </Text>
+            )}
           </View>
         )}
       </ScrollView>

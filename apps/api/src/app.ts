@@ -20,6 +20,7 @@ import { ApiError, toErrorResponse } from './errors.js';
 import { DERIVED_RECOMPUTATIONS } from './derived/index.js';
 import { authenticate } from './middleware/authenticate.js';
 import { buildOpenApiDocument, type RouteSpec } from './openapi.js';
+import { createAdminLibraryRouter, adminLibraryRoutes } from './routes/admin-library.js';
 import { createAdminRouter, adminRoutes } from './routes/admin.js';
 import { createCycleRouter, cycleRoutes } from './routes/cycles.js';
 import { createDuplicateRouter, duplicateRoutes } from './routes/duplicates.js';
@@ -55,6 +56,7 @@ export const documentedRoutes: RouteSpec[] = [
   ...syncRoutes,
   ...transferRoutes,
   ...adminRoutes,
+  ...adminLibraryRoutes,
   ...feedbackRoutes,
   ...updateRoutes,
 ];
@@ -130,6 +132,7 @@ export function createApp(dependencies: AppDependencies, config: AppConfig) {
   secured.route('/', createSyncRouter(resolved));
   secured.route('/', createTransferRouter(resolved));
   secured.route('/', createAdminRouter(resolved));
+  secured.route('/', createAdminLibraryRouter(resolved));
   secured.route('/', createFeedbackRouter(config.feedbackDir));
 
   app.route('/', secured);
