@@ -26,6 +26,7 @@ import { withTransaction } from '../db/transaction';
 import { applyChanges } from './apply';
 import { clearThrough, takeBatch } from './outbox';
 import { buildPushRequest, isEmptyPush, withoutIncompleteRows } from './payload';
+import { reconcile, recordRejections } from './reconcile';
 import { markPushed, readSyncState, writeCursor } from './state';
 import type { SyncTransport } from './transport';
 
@@ -49,6 +50,8 @@ export interface SyncRunResult {
   pulled: number;
   /** Wiersze, których serwer nie przyjął — patrz `SyncResult.reason`. */
   rejected: SyncResult[];
+  /** Wiersze wstawione z powrotem do kolejki przez `reconcile`. */
+  requeued: number;
   cursor: number;
 }
 
@@ -64,8 +67,11 @@ export async function runSync(options: SyncRunOptions): Promise<SyncRunResult> {
     transport,
     options.maxPullBatches ?? DEFAULT_MAX_PULL_BATCHES,
   );
+  // Dopiero po pullu: to on dowozi `server_seq` wierszom, które serwer już zna,
+  // więc przebieg przed nim kolejkowałby bibliotekę, która właśnie przyjechała.
+  const requeued = await reconcile(db, new Date());
 
-  return { pushed, pulled, rejected, cursor };
+  return { pushed, pulled, rejected, requeued, cursor };
 }
 
 /**
@@ -78,7 +84,8 @@ export async function runSync(options: SyncRunOptions): Promise<SyncRunResult> {
  * Wiersze odrzucone przez serwer i tak znikają z kolejki. Zostawienie ich
  * zatrzymałoby outbox na zawsze: skoro serwer odrzucił wiersz z powodu uprawnień
  * albo niespójnych danych, odrzuci go też za dziesiątym razem, a kolejka za nim
- * przestałaby się ruszać.
+ * przestałaby się ruszać. Nie znaczy to, że wiersz przepada — odrzucenie idzie
+ * do kwarantanny (`reconcile.ts`), skąd wraca do kolejki, gdy minie odstęp.
  */
 async function push(
   db: SqliteDatabase,
@@ -99,13 +106,15 @@ async function push(
   }
 
   const response = await transport.push(request);
-  rejected.push(...response.results.filter((result) => result.decision === 'rejected'));
+  const refused = response.results.filter((result) => result.decision === 'rejected');
+  rejected.push(...refused);
 
   const now = new Date(response.serverTime);
   await withTransaction(
     db,
     async () => {
       await applyChanges(db, response.changes);
+      await recordRejections(db, refused, now);
       await clearThrough(db, batch.highWater);
       await markPushed(db, now);
     },

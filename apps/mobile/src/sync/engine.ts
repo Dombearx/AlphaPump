@@ -30,6 +30,7 @@
 
 import type { SqliteDatabase } from '@alphapump/db/sqlite';
 import { pendingCount } from './outbox';
+import { stuckRows } from './reconcile';
 import { runSync, type SyncRunResult } from './run';
 import { markError, readSyncState } from './state';
 import { SyncAuthError, isOffline, type SyncTransport } from './transport';
@@ -52,8 +53,16 @@ export interface SyncSnapshot {
   pending: number;
   lastSyncedAt: Date | null;
   lastError: string | null;
-  /** Wiersze odrzucone przez serwer w ostatniej wymianie. */
+  /**
+   * Wiersze, których serwer nie przyjął i które czekają na kolejną próbę.
+   *
+   * Licznik jest **trwały**, a nie „z ostatniej wymiany": bierze się
+   * z kwarantanny (`reconcile.ts`), więc nie znika po pierwszej wymianie bez
+   * odrzuceń i nie da się przeoczyć zapisu, który utknął.
+   */
   rejected: number;
+  /** Powód pierwszego z nich — do pokazania wprost. */
+  rejectedReason: string | null;
 }
 
 export interface SyncEngine {
@@ -105,6 +114,7 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
     lastSyncedAt: null,
     lastError: null,
     rejected: 0,
+    rejectedReason: null,
   };
 
   const listeners = new Set<(snapshot: SyncSnapshot) => void>();
@@ -136,6 +146,15 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
 
   const countPending = async (): Promise<number> => pendingCount(options.db);
 
+  /** Stan kwarantanny — czytany z bazy, więc przeżywa restart aplikacji. */
+  const readStuck = async (): Promise<Pick<SyncSnapshot, 'rejected' | 'rejectedReason'>> => {
+    const rows = await stuckRows(options.db);
+    return {
+      rejected: rows.length,
+      rejectedReason: rows.find((row) => row.reason !== null)?.reason ?? null,
+    };
+  };
+
   async function exchange(): Promise<SyncRunResult | null> {
     emit({ phase: 'syncing' });
 
@@ -153,7 +172,7 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
         pending: await countPending(),
         lastSyncedAt: state.pulledAt ?? state.pushedAt,
         lastError: null,
-        rejected: result.rejected.length,
+        ...(await readStuck()),
       });
 
       // Kolejka nie musi być pusta: paczka ma limit, a serwer mógł w tym czasie
@@ -224,7 +243,7 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
     syncNow,
 
     async refresh() {
-      emit({ pending: await countPending() });
+      emit({ pending: await countPending(), ...(await readStuck()) });
     },
 
     stop() {

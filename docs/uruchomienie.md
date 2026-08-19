@@ -207,6 +207,13 @@ deploy/smoke.sh http://localhost
 `--wait` czeka na healthchecki, czyli na wykonane migracje, a nie na sam start
 kontenerów.
 
+Migracje i **dane startowe** (konto systemowe, tagi startowe, ćwiczenia
+wbudowane) wchodzą przy każdym starcie kontenera `api` — nie ma tu osobnego
+kroku do wyklikania i nie da się go pominąć. Seed wstawia wyłącznie to, czego
+brakuje, więc kolejne wdrożenia nie cofają zmian zrobionych w panelu. W logu
+(`docker compose -f deploy/docker-compose.yml logs api`) widać wiersz „Dane
+startowe: … tagów i … ćwiczeń wbudowanych w zestawie".
+
 ## D. minipc — serwer aktualizacji
 
 Przyjmuje wydania aplikacji z GitHub Actions i przebudowuje stos po mergu.
@@ -289,6 +296,12 @@ Biblioteka jest wspólna dla całej grupy, więc dodane pozycje zobaczą wszyscy
 Jedyna różnica między ćwiczeniem wbudowanym a dodanym przez Ciebie to autor
 (konto systemowe kontra Twoje) — na widoczność ani na filtrowanie po tagach nie
 wpływa to w żaden sposób.
+
+Panel pokazuje **tę samą** bibliotekę co telefony: obie strony seedują się z tego
+samego pliku i liczą identyfikatory z nazw tym samym kodem, a serwer robi to przy
+każdym starcie. Gdyby telefon miał u siebie ćwiczenie wbudowane, którego serwer
+nie zna (na przykład aplikacja wyprzedziła wdrożenie serwera), dośle je sam przy
+najbliższej synchronizacji — razem z serią, która na nie wskazuje.
 
 Kolejność ma znaczenie w jedną stronę: **najpierw tagi, potem ćwiczenia**. Tag
 główny jest wymagany, więc przy pustej liście tagów przycisk dodawania ćwiczenia
