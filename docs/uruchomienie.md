@@ -389,9 +389,11 @@ u zewnętrznego dostawcy to historia treningowa całej grupy.
 | Objaw | Przyczyna |
 | ----- | --------- |
 | zadanie wydania: „Brak sekretu ANDROID_KEYSTORE_BASE64" | krok A i B |
-| zadanie wydania: „nie zna trasy POST /apk" | `sudo systemctl restart alphapump-update-server` |
+| zadanie wydania: „nie zna trasy POST /apk" albo „POST /ota" | `sudo systemctl restart alphapump-update-server` |
 | aplikacja nie łączy się z serwerem | `EXPO_PUBLIC_API_URL` ≠ `BETTER_AUTH_URL`, albo telefon poza VPN |
-| telefon nie widzi nowej wersji | sprawdź `curl http://domin-server.iron.sq/alphapump/download/latest.json` |
+| telefon nie widzi nowego pakietu `.apk` | sprawdź `curl http://domin-server.iron.sq/alphapump/download/latest.json` |
+| telefon nie dostaje paczki JavaScriptu | sprawdź `curl http://<minipc>:40002/ota` — czy jest wpis dla odcisku, który ma telefon; zgodność odcisków: `curl .../alphapump/download/latest.json \| jq .runtimeVersion` |
+| każde wydanie idzie pełnym pakietem, choć nic natywnego się nie ruszyło | `latest.json` nie ma pola `runtimeVersion` (wydanie sprzed tej zmiany) — pierwszy `.apk` po niej naprawia to sam |
 | `docker compose logs triage` w pętli restartów | brak jednej z pięciu zmiennych z kroku C — log podaje nazwę |
 | `systemctl status alphapump-update-server`: `uv: command not found` | `uv` nie jest zainstalowany na użytkowniku z `User=` — patrz „Czego potrzebuje minipc" |
 | serwer aktualizacji: `dubious ownership` albo `Permission denied` przy `git pull` | repozytorium należy do innego użytkownika niż ten z `User=` — `sudo chown -R <user> <katalog>` |
