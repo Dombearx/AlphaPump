@@ -753,6 +753,7 @@ pliki `.env` i klucze API").
 | `/sync/push`, `/sync/pull` | wymiana danych z urządzeniem                      |
 | `/export`, `/import`     | eksport i import danych w JSON-ie                   |
 | `/admin/users`, `/admin/stats` | konta i dane systemowe (rola administratora)   |
+| `/admin/library/*` | porządkowanie biblioteki: użycie, scalanie, przywracanie |
 
 Uwierzytelnienie idzie dwiema drogami: nagłówkiem `Authorization: Bearer …`
 (sesja, tak korzysta aplikacja) albo `x-api-key` (token API, tak korzysta bot
@@ -961,6 +962,43 @@ dwie z nich są domenowe, a nie kosmetyczne: tag główny nie może się powtór
 wśród dodatkowych (inaczej ćwiczenie liczyłoby się do celu cyklu dwa razy),
 a `PATCH` niesie **wyłącznie** zmienione pola (komplet podbijałby `updatedAt`
 na wszystkich urządzeniach także wtedy, gdy nic się nie zmieniło).
+
+#### Porządkowanie biblioteki
+
+Sam CRUD nie wystarcza do posprzątania bazy, w której to samo ćwiczenie stoi dwa
+razy, a serie leżą w obu wierszach. Reguła jest jedna i obowiązuje wszędzie:
+**nic z zalogowanego nie ginie**.
+
+- **Usunąć nie da się** ćwiczenia, na którym ktokolwiek zapisał serię albo które
+  wskazuje cel żywego cyklu (`apps/api/src/exercise-usage.ts`), ani tagu, którego
+  używa jakiekolwiek żywe ćwiczenie albo cel cyklu (`apps/api/src/tag-usage.ts`).
+  Obie reguły obowiązują **oba wejścia**: `DELETE /…` i tombstone przyjeżdżający
+  w `POST /sync/push`. Telefon sprawdza je też u siebie, żeby odmowa nie
+  przyszła dopiero jako cicho odrzucony wiersz w kolejce.
+- **Scalenie** jest wyjściem, które te blokady zostawiają. `POST
+  /admin/library/exercises/:id/merge` przenosi serie (także te z tombstonem)
+  i cele cyklu na ćwiczenie docelowe, przelicza rekordy globalne po obu stronach
+  i dopiero puste źródło oznacza jako usunięte. Typ logowania musi się zgadzać —
+  serie są walidowane względem typu **ćwiczenia**. `POST
+  /admin/library/tags/:id/merge` robi to samo dla tagów: przepina ćwiczenia
+  (jako główny i jako dodatkowy) oraz cele, a ćwiczeniu, które miało oba tagi,
+  zostawia jeden.
+- **Przywrócenie** (`…/restore`) zdejmuje tombstone — usunięcie jest miękkie,
+  więc pomyłka jest odwracalna. Odmawia, gdy nazwa zdążyła zostać zajęta albo gdy
+  tag główny ćwiczenia leży usunięty.
+- **Podobne ćwiczenia** liczy w panelu to samo wyszukiwanie hybrydowe, które
+  w aplikacji ostrzega przed duplikatem przy tworzeniu ćwiczenia — tylko pytaniem
+  jest nazwa istniejącego wiersza. Wektory całej biblioteki przelicza `POST
+  /admin/library/embeddings/refresh`; bez tego lista widzi wyłącznie ćwiczenia
+  zapisane po włączeniu warstwy semantycznej.
+
+Lista ćwiczeń w panelu niesie przy każdym wierszu **co na nim wisi**: serie, ilu
+osób dotyczą, cele cyklu, datę ostatniego treningu i to, czy wiersz ma policzony
+wektor. To te liczby, a nie uprawnienia, decydują o tym, czy „Usuń" ma prawo
+zadziałać — więc stoją obok przycisku razem z powodem, dla którego jest wygaszony.
+Filtry po autorze (wbudowane kontra dodane przez ludzi), po stanie (żywe kontra
+usunięte) i po tagu są tam po to, żeby dało się odróżnić bibliotekę z seeda od
+tego, co doszło później.
 
 Kont panel nie usuwa i nie będzie: konto jest autorem ćwiczeń i właścicielem serii,
 więc jego usunięcie albo osieroca cudze dane, albo wymaga kaskady niszczącej
