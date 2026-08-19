@@ -17,8 +17,10 @@
  * `require`, więc `app.config.ts` nie mógłby sięgnąć po nic z `src/`.
  */
 
+const { parseAbis } = require('./config/abis');
 const { envValue } = require('./config/env');
 const { atsExceptions, cleartextHost } = require('./config/network');
+const withAndroidAbis = require('./config/with-android-abis');
 const withCleartextHost = require('./config/with-cleartext-host');
 
 /** Adres API. Domyślny wskazuje na serwer uruchomiony lokalnie. */
@@ -43,6 +45,14 @@ const UPDATE_BASE_URL =
  * Wydania rozróżnia i tak `versionCode` niżej — `versionName` jest etykietą.
  */
 const VERSION_NAME = envValue('APP_VERSION_NAME') ?? require('./package.json').version;
+
+/**
+ * Architektury procesora pakowane do pliku `.apk`. Domyślnie samo `arm64-v8a`,
+ * czyli każdy telefon z Androidem wydany po 2017 roku — komplet czterech
+ * architektur to trzykrotnie większy plik do pobrania przy pierwszej instalacji.
+ * Starszy sprzęt w grupie: `ANDROID_ABIS=arm64-v8a,armeabi-v7a`.
+ */
+const ANDROID_ABIS = parseAbis(envValue('ANDROID_ABIS'));
 
 /** @type {import('expo/config').ExpoConfig} */
 const config = {
@@ -99,6 +109,7 @@ const config = {
     'expo-sqlite',
     '@react-native-google-signin/google-signin',
     [withCleartextHost, { host: cleartextHost(API_URL) }],
+    [withAndroidAbis, { abis: ANDROID_ABIS }],
   ],
 
   experiments: {
