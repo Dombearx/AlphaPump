@@ -891,6 +891,45 @@ kanonicznej: nie sprawdzamy, czy import się wykonał, ale czy powiązania autor
 ćwiczeń i właścicieli serii są po odtworzeniu takie same. Dane próby są fikcyjne
 i powstają na miejscu; prawdziwy eksport nigdy nie trafia do CI.
 
+#### Eksport do kopii FitNotesa
+
+Osobna ścieżka w tej samej sekcji aplikacji, bo cel jest inny niż przy archiwum:
+nie odtworzenie danych, tylko oddanie ich aplikacji, której ktoś używa obok.
+Plik `FitNotes_Backup.fitnotes` jest nieszyfrowaną bazą SQLite, więc dopisujemy
+do niego wprost — do tabeli `training_log` — zamiast produkować trzeci format
+wymiany, którego i tak nie miałby kto zaimportować.
+
+| Warstwa | Gdzie | Co robi |
+| ------- | ----- | ------- |
+| plan    | `packages/core/src/fitnotes.ts`      | co dopisać, co pominąć, które ćwiczenie utworzyć |
+| zapis   | `apps/mobile/src/fitnotes/file.ts`   | jedna transakcja na pliku użytkownika |
+| rejestr | `apps/mobile/src/fitnotes/state.ts`  | co już poszło i czym zastąpić brakującą kategorię |
+| system  | `apps/mobile/src/fitnotes/expo.ts`   | wybór pliku, SQLite, oddanie go z powrotem |
+
+Trzy rzeczy są w tym nieoczywiste i wszystkie wynikają z FitNotesa, nie z nas:
+
+- **Kategorii nie tworzymy.** Darmowa wersja nie pozwala ich zakładać, więc tag
+  główny bez odpowiednika o tej samej nazwie zatrzymuje swoje serie i pyta
+  użytkownika, którą istniejącą kategorią je zastąpić. Wybór jest zapamiętywany —
+  pytanie ma paść raz, a nie po każdym treningu.
+- **Rejestr duplikatów jest po naszej stronie.** `training_log` zna dzień, ale nie
+  godzinę dodania wpisu, więc plik docelowy nie potrafi odpowiedzieć, czy tę serię
+  już dostał. Klucz (ćwiczenie + wartości serii + moment dodania w AlphaPump) leży
+  w pamięci aplikacji; bez niego drugi eksport dopisałby drugi komplet historii.
+  Nieczytelny rejestr jest **błędem**, a nie pustką — udawanie, że nic jeszcze nie
+  poszło, kosztowałoby użytkownika zdublowany dziennik, widoczny dopiero po
+  przywróceniu kopii.
+- **Piszemy do kopii roboczej, nie w pliku w miejscu.** Android oddaje wybrany plik
+  jako `content://`, pod którym SQLite nie ma czego otworzyć. Gotowy plik wraca
+  systemowym udostępnianiem, więc oryginał zostaje nietknięty, dopóki użytkownik
+  sam go nie podmieni.
+
+Poza zakresem są pomiary ciała (`BodyWeight`, `Measurement`) i szablony treningów
+(`Routine…`): eksportujemy dziennik, a nie całą bazę FitNotesa. Nowym ćwiczeniom
+nie ustawiamy też `exercise_type_id` — zostaje wartość domyślna ze schematu,
+bo znaczenia pozostałych typów FitNotes nigdzie nie deklaruje, a zgadnięty numer
+zmieniłby użytkownikowi wygląd formularza w cudzej aplikacji.
+
 ### Panel administracyjny
 
 ```
