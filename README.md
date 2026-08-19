@@ -232,10 +232,13 @@ imporcie. Dotyczyło to tak samo CLI eksportu i importu, więc ich warianty `:de
 też zniknęły; `pnpm --filter @alphapump/api build` trwa sekundy i nie kłamie
 o tym, co pojedzie na serwer.
 
-**5. Dane startowe.** Start serwera wykonuje migracje, ale **nie** seed — świeża
-baza nie ma ani konta systemowego, ani ćwiczeń wbudowanych. Do testów manualnych
-najkrócej jest wypełnić ją danymi próby (idempotentnie: konto systemowe,
-ćwiczenia wbudowane, dwie osoby, serie w dwóch dniach i cykl z celem):
+**5. Dane startowe.** Start serwera wykonuje migracje **i seed**, więc konto
+systemowe, tagi startowe i ćwiczenia wbudowane są w bazie od pierwszego
+uruchomienia — tak samo jak na telefonie, który seeduje swoją bazę sam. Seed
+wstawia wyłącznie brakujące wiersze, więc nie cofa zmian zrobionych w panelu
+i nie wskrzesza tego, co administrator usunął. Do testów manualnych przydają się
+jeszcze dane próby (idempotentnie: dwie osoby, serie w dwóch dniach i cykl
+z celem):
 
 ```
 pnpm --filter @alphapump/api build
@@ -1138,6 +1141,16 @@ się na zegarze telefonu. Każdy wiersz paczki jest rozstrzygany osobno i wraca
 w odpowiedzi ze stanem serwerowym — jedna odrzucona mutacja nie zatrzymuje
 outboxu, a wiersz, który przegrał, nie zostaje na urządzeniu w przegranej wersji.
 
+Paczka jest **domknięta referencyjnie**: telefon dokłada do niej wiersze, na
+które wskazuje, a których serwer jeszcze nie potwierdził (`server_seq` pusty) —
+ćwiczenia serii i celów, a za nimi ich tagi. Bez tego seria zapisana na
+ćwiczeniu wbudowanym odbijałaby się o „Ćwiczenie serii nie istnieje" wszędzie
+tam, gdzie serwer nie ma dokładnie tej samej biblioteki co telefon. Serwer
+przyjmuje takie **wstawienie** wiersza konta systemowego od zwykłego
+użytkownika, bo identyfikator ćwiczenia musi wynikać z pary autor + nazwa —
+podszycie się nie przechodzi, a istniejącego wiersza konta systemowego dalej nie
+ruszy nikt poza administratorem.
+
 `POST /sync/tombstones/prune` (administrator) zdejmuje stare tombstone'y. Okno
 retencji musi być dłuższe niż najdłuższa realna przerwa w synchronizacji —
 urządzenie, które przespało tombstone, przywiozłoby usuniętą serię z powrotem.
@@ -1239,8 +1252,8 @@ przy pierwszym pullu, bo serwer nigdy by o nich nie usłyszał.
 
 #### Wymiana danych
 
-Kolejka wysyłki (`outbox`) i kursor (`sync_state`) to tabele istniejące wyłącznie
-po stronie telefonu. Wpis w outboxie nie niesie treści mutacji, tylko wskazuje
+Kolejka wysyłki (`outbox`), kursor (`sync_state`) i kwarantanna odrzuceń
+(`sync_rejections`) to tabele istniejące wyłącznie po stronie telefonu. Wpis w outboxie nie niesie treści mutacji, tylko wskazuje
 zmieniony wiersz — treść czytamy dopiero przy składaniu paczki, żeby na serwer
 pojechało to, co użytkownik widzi na ekranie, a nie stan sprzed trzech edycji
 zrobionych w tunelu.
@@ -1254,6 +1267,18 @@ Wiersz przychodzący nie wygrywa automatycznie — przechodzi przez
 `resolveSyncConflict` z `@alphapump/core`, czyli tę samą funkcję, którą serwer
 rozstrzyga pushe. Bez tego odpowiedź na push cofałaby edycję zrobioną w trakcie
 wysyłki.
+
+Odrzucony wiersz schodzi z outboxu — inaczej jedna zatruta mutacja zatrzymałaby
+kolejkę na zawsze — ale **nie przepada**. Ląduje w `sync_rejections`, razem
+z powodem i licznikiem prób, a po każdej udanej wymianie `reconcile`
+(`src/sync/reconcile.ts`) szuka wierszy żywych, bez `server_seq` i bez wpisu
+w kolejce, i wstawia je z powrotem. `server_seq` jest tu wiarygodnym znacznikiem
+„serwer o tym wie", bo dostaje go nawet wiersz, który przegrał LWW. Dzięki temu
+każda ścieżka „ten wiersz tym razem nie pojedzie" kosztuje najwyżej jedną
+wymianę opóźnienia, a nie zapisaną serię. Odstęp przed kolejną próbą rośnie
+(minuta, pięć, pół godziny, dwie godziny, doba), więc wiersz, którego serwer nie
+przyjmie nigdy, nie kręci kolejką w kółko — a licznik takich wierszy widać
+w pigułce statusu.
 
 Brak łączności jest stanem pracy, a nie awarią: serwer stoi za NetBirdem, więc
 telefon z pełnym zasięgiem bywa poza VPN-em, a systemowy stan sieci i tak mówi

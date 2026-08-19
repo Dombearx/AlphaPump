@@ -1,11 +1,27 @@
 /**
  * Wejście serwera.
  *
- * Kolejność startu jest celowa: konfiguracja, potem migracje, dopiero potem
+ * Kolejność startu jest celowa: konfiguracja, migracje, seed, dopiero potem
  * nasłuch. Serwer, który przyjmuje żądania na niezmigrowanej bazie, oddaje
  * błędy zamiast po prostu poczekać kilka sekund na zakończenie migracji.
+ *
+ * ## Dlaczego seed jedzie przy każdym starcie
+ *
+ * Bo inaczej nie jedzie nigdy. Telefon seeduje swoją bazę sam, przy każdym
+ * uruchomieniu aplikacji (`apps/mobile/src/db/provider.tsx`) — jeśli serwer
+ * tego nie robi, obie biblioteki rozjeżdżają się od pierwszego dnia: aplikacja
+ * pokazuje ćwiczenia wbudowane, których panel administracyjny nie widzi, a push
+ * serii na takie ćwiczenie odbija się o „Ćwiczenie serii nie istnieje". Krok
+ * ręczny w instrukcji wdrożenia jest tu gorszy niż bezużyteczny — pominięcie go
+ * nie zgłasza się żadnym błędem, tylko cichym rozjazdem danych.
+ *
+ * Seed jest do tego przygotowany: wstawia wyłącznie brakujące wiersze
+ * (`onConflictDoNothing`), więc nie cofa zmian zrobionych w panelu i nie
+ * wskrzesza tego, co administrator usunął. Jego `updated_at` leży w przeszłości
+ * (`SEED_TIMESTAMP`), więc nigdy nie wygrywa LWW z edycją użytkownika.
  */
 
+import { seedPostgres } from '@alphapump/db/pg';
 import { serve } from '@hono/node-server';
 import { createApp } from './app.js';
 import { createAuth } from './auth.js';
@@ -27,6 +43,11 @@ export async function main(): Promise<void> {
   const connection = createDatabase(config.databaseUrl);
 
   await runMigrations(connection);
+  const seeded = await seedPostgres(connection.db);
+  console.warn(
+    `Dane startowe: ${String(seeded.tags)} tagów i ${String(seeded.exercises)} ćwiczeń wbudowanych ` +
+      'w zestawie (wstawione zostały tylko te, których brakowało).',
+  );
 
   const auth = createAuth(connection.db, config);
   // Warstwy wykrywania duplikatów powstają **tutaj**, z konfiguracji — nie

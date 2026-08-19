@@ -19,6 +19,7 @@ const snapshot = (patch: Partial<SyncSnapshot> = {}): SyncSnapshot => ({
   lastSyncedAt: NOW,
   lastError: null,
   rejected: 0,
+  rejectedReason: null,
   ...patch,
 });
 

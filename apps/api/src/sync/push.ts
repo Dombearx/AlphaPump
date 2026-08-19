@@ -33,6 +33,7 @@ import {
   resolveSyncConflict,
   setInputSchemaFor,
   slug,
+  SYSTEM_USER_ID,
   tagColor,
   tagId as deterministicTagId,
   type SyncChanges,
@@ -235,8 +236,26 @@ export async function applyPush(
     // Ćwiczenie może zmieniać wyłącznie jego autor albo administrator. Bez tego
     // wspólna biblioteka wchodzi w problemy rodem z wiki, a samo LWW przestaje
     // wystarczać do rozstrzygania konfliktów.
+    //
+    // Jeden wyjątek: **wstawienie** brakującego ćwiczenia wbudowanego. Telefon
+    // ma bibliotekę wbudowaną z własnego seeda od pierwszego uruchomienia i jest
+    // to jedyny zbiór wierszy, które legalnie zna, a których serwer może nie
+    // mieć — cudze ćwiczenia trafiają na urządzenie wyłącznie pullem, czyli już
+    // po zapisaniu ich na serwerze. Odrzucanie takiego wiersza kosztowałoby
+    // serie: seria wskazująca na nieistniejące ćwiczenie też zostaje odrzucona,
+    // a odrzucone wpisy schodzą telefonowi z kolejki.
+    //
+    // Podszycie się pod konto systemowe nie wchodzi w grę, bo identyfikator
+    // wiersza musi wynikać z pary autor + nazwa (+ siłownia) — sprawdza to
+    // niżej ta sama reguła, co dla ćwiczeń własnych. Autoryzacja zostaje więc
+    // nietknięta tam, gdzie ma znaczenie: **istniejącego** wiersza konta
+    // systemowego dalej nie ruszy nikt poza administratorem, a wyjątek dotyczy
+    // wyłącznie wiersza żywego — tombstone brakującego ćwiczenia wbudowanego
+    // znaczyłby „skasuj z biblioteki coś, czego serwer nigdy nie miał".
     const authorId = existing?.authorId ?? incoming.authorId;
-    if (!isAdmin && authorId !== principal.id) {
+    const missingBuiltIn =
+      !existing && incoming.authorId === SYSTEM_USER_ID && incoming.deletedAt === null;
+    if (!isAdmin && !missingBuiltIn && authorId !== principal.id) {
       await reject('Ćwiczenie może zmieniać wyłącznie jego autor albo administrator');
       continue;
     }

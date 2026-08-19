@@ -14,6 +14,7 @@
 import {
   builtInExerciseId,
   exerciseId,
+  SYSTEM_USER_ID,
   newCycleGoalId,
   newCycleId,
   newDeviceId,
@@ -22,8 +23,11 @@ import {
   type SyncPullResponse,
   type SyncPushResponse,
 } from '@alphapump/core';
+import { SEED_EXERCISES } from '@alphapump/db';
+import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createHarness, type Harness, type TestUser } from './harness.js';
+import { exercises } from '../src/schema.js';
 import type { AffectedScope } from '../src/sync/derived.js';
 
 const BENCH = builtInExerciseId('Flat barbell bench press');
@@ -635,6 +639,112 @@ describe('synchronizacja', () => {
       expect(response.body.results[0]?.decision).toBe('rejected');
       expect(response.body.results[0]?.reason).toContain('nieedytowalny');
     });
+  });
+
+  /* ------------------------------------------- brakująca biblioteka wbudowana */
+
+  /**
+   * Telefon zna bibliotekę wbudowaną z własnego seeda i jest to jedyny zbiór
+   * wierszy, które legalnie ma, a których serwer może nie mieć — wystarczy, że
+   * aplikacja wyprzedziła wdrożenie serwera. Odrzucenie takiego ćwiczenia
+   * kosztowałoby serie: seria wskazująca na nieistniejące ćwiczenie też leci
+   * do odrzuconych, a odrzucony wpis schodzi telefonowi z kolejki.
+   */
+  describe('ćwiczenie wbudowane, którego serwer nie ma', () => {
+    const definition = SEED_EXERCISES.find((exercise) => exercise.id === BENCH)!;
+
+    const benchPush = (patch: Record<string, unknown> = {}) => ({
+      id: BENCH,
+      name: definition.name,
+      authorId: SYSTEM_USER_ID,
+      loggingType: definition.loggingType,
+      primaryTagId: definition.primaryTagId,
+      additionalTagIds: [...definition.additionalTagIds],
+      note: null,
+      gym: null,
+      createdAt: T.early,
+      updatedAt: T.early,
+      deletedAt: null,
+      ...patch,
+    });
+
+    beforeEach(async () => {
+      await harness.db.delete(exercises).where(eq(exercises.id, BENCH));
+    });
+
+    it('powstaje razem z serią, zamiast ją odrzucić', async () => {
+      const id = newSetId();
+
+      const response = await phone.push({
+        exercises: [benchPush()],
+        sets: [weightReps({ id, kilograms: 80, reps: 8 })],
+      });
+
+      expect(response.body.results).toEqual([
+        { entity: 'exercise', id: BENCH, decision: 'insert', reason: null },
+        { entity: 'set', id, decision: 'insert', reason: null },
+      ]);
+
+      const [row] = await harness.db.select().from(exercises).where(eq(exercises.id, BENCH));
+      // Autorem zostaje konto systemowe, a nie ten, kto akurat pierwszy zapisał
+      // serię — inaczej to samo ćwiczenie stałoby w bibliotece raz na osobę.
+      expect(row?.authorId).toBe(SYSTEM_USER_ID);
+    });
+
+    it('nie przyjmuje tombstone’u ćwiczenia, którego nigdy nie miał', async () => {
+      // Wyjątek jest po to, żeby biblioteka **powstała**. Tombstone znaczyłby
+      // „skasuj z biblioteki coś, czego serwer nigdy nie widział" — a to już
+      // jest zmiana wspólnej biblioteki cudzą ręką.
+      const response = await phone.push({
+        exercises: [benchPush({ deletedAt: T.late, updatedAt: T.late })],
+      });
+
+      expect(response.body.results[0]?.decision).toBe('rejected');
+      expect(await harness.db.select().from(exercises).where(eq(exercises.id, BENCH))).toHaveLength(
+        0,
+      );
+    });
+
+    it('nie pozwala podszyć się pod konto systemowe', async () => {
+      // Identyfikator musi wynikać z pary autor + nazwa. Ten wynika z nazwy
+      // innej niż przysłana, więc wiersz nie jest tym, za co się podaje.
+      const response = await phone.push({
+        exercises: [benchPush({ name: 'Wyciskanie po mojemu' })],
+      });
+
+      expect(response.body.results[0]?.decision).toBe('rejected');
+      expect(response.body.results[0]?.reason).toContain('Identyfikator ćwiczenia');
+
+      const rows = await harness.db.select().from(exercises).where(eq(exercises.id, BENCH));
+      expect(rows).toHaveLength(0);
+    });
+  });
+
+  it('nie pozwala zwykłemu użytkownikowi zmienić istniejącego ćwiczenia wbudowanego', async () => {
+    // Wyjątek dotyczy wyłącznie **wstawienia** brakującego wiersza. Wiersz,
+    // który serwer ma, dalej należy do konta systemowego.
+    const response = await phone.push({
+      exercises: [
+        {
+          id: SQUAT,
+          name: 'Przysiad po mojemu',
+          authorId: SYSTEM_USER_ID,
+          loggingType: 'weight_reps' as const,
+          primaryTagId: tagId('quads'),
+          additionalTagIds: [],
+          note: null,
+          gym: null,
+          createdAt: T.early,
+          updatedAt: T.late,
+          deletedAt: null,
+        },
+      ],
+    });
+
+    expect(response.body.results[0]?.decision).toBe('rejected');
+
+    const [row] = await harness.db.select().from(exercises).where(eq(exercises.id, SQUAT));
+    expect(row?.name).toBe('Barbell squat');
   });
 
   /* --------------------------------------------------------------- pobieranie */

@@ -42,6 +42,7 @@ const IDLE: SyncSnapshot = {
   lastSyncedAt: null,
   lastError: null,
   rejected: 0,
+  rejectedReason: null,
 };
 
 const SyncContext = createContext<SyncEngine | null>(null);

@@ -262,10 +262,22 @@ wierszy na użytkownika, PowerSync staje się właściwym wyborem.
 
 - każdy synchronizowany wiersz ma `updated_at`, `deleted_at` i `server_seq`,
 - lokalna tabela `outbox` — append-only log mutacji,
-- push: batch mutacji z outboxu,
+- push: batch mutacji z outboxu, domknięty referencyjnie — paczka dokłada
+  wiersze, na które wskazuje, a których serwer nie potwierdził (`server_seq`
+  pusty),
 - pull: kursor po `server_seq`,
 - po każdym pullu przeliczane są dane pochodne (rekordy, cykle) dla dotkniętych
-  ćwiczeń.
+  ćwiczeń,
+- po każdej wymianie `reconcile` wraca po wiersze żywe, bez `server_seq` i bez
+  wpisu w kolejce; odrzucenia czekają w `sync_rejections` z rosnącym odstępem.
+
+`server_seq` pełni tu drugą rolę, obok kursora: jest odpowiedzią na pytanie „czy
+serwer o tym wierszu wie". Dostaje go **każdy** wiersz potwierdzony przez
+serwer, także ten, który przegrał LWW — a to znaczy, że wiersz żywy bez
+`server_seq` i bez wpisu w kolejce jest zapisem zgubionym, niezależnie od tego,
+na którym kroku się zgubił. Dopiero to pozwala mieć ścieżki „ten wiersz tym
+razem nie pojedzie" (odrzucenie przez serwer, przycięcie paczki do limitu)
+i nadal twierdzić, że żadna seria nie przepada.
 
 Paczka pullu jest posortowana po `server_seq`, czyli chronologicznie względem
 zapisu na serwerze — a nie topologicznie względem zależności. Ćwiczenie potrafi
