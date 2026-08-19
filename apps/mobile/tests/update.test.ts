@@ -1,22 +1,19 @@
 /**
- * Wykrywanie i instalacja nowego wydania.
+ * Wykrywanie nowego wydania **natywnego**.
  *
- * To jest ścieżka, która uruchamia się rzadko i na cudzym telefonie — czyli
- * dokładnie taka, przy której nie ma jak zauważyć, że przestała działać.
- * Stąd testowane jest wszystko, co da się sprawdzić bez emulatora: kształt
- * manifestu, porównanie wersji i kolejność kroków instalacji razem z tym, co
- * robi każdy nieudany.
+ * Dotyczy wyłącznie wydań ruszających warstwę natywną — te ruszające sam
+ * JavaScript jadą przez `expo-updates` i nie mają tu nic do sprawdzania.
+ * Czyli: ścieżka, która uruchamia się parę razy w roku i na cudzym telefonie,
+ * a więc dokładnie taka, przy której nie ma jak zauważyć, że przestała działać.
+ *
+ * Testowane jest wszystko, co da się sprawdzić bez emulatora: kształt
+ * manifestu, porównanie wersji i adres pliku. Pobieranie i instalacja nie są
+ * testowane, bo ich już nie ma — plik pobiera przeglądarka, a instaluje system.
  */
 
 import { describe, expect, it, vi } from 'vitest';
 import {
-  installUpdate,
-  UpdateInstallError,
-  type DownloadedApk,
-  type UpdateInstaller,
-} from '../src/update/install';
-import {
-  apkUrl,
+  releaseUrl,
   fetchUpdateManifest,
   formatBytes,
   isUpdateAvailable,
@@ -31,7 +28,6 @@ const MANIFEST = {
   versionName: '0.2.0',
   file: 'alphapump-42.apk',
   size: 62_400_000,
-  md5: '0123456789abcdef0123456789abcdef',
   releasedAt: '2026-08-15T10:00:00Z',
   notes: 'Poprawki synchronizacji.',
 } satisfies UpdateManifest;
@@ -59,20 +55,30 @@ describe('manifest wydania', () => {
     expect(() => parseUpdateManifest(withoutCode)).toThrow(UpdateCheckError);
   });
 
-  it('odrzuca sumę kontrolną, która nie jest sumą MD5', () => {
-    // Rozjazd długości hasha znaczy, że wydanie i aplikacja liczą co innego —
-    // wtedy każde pobranie wyglądałoby na uszkodzone.
-    expect(() => parseUpdateManifest({ ...MANIFEST, md5: 'nie-hash' })).toThrow(UpdateCheckError);
+  it('odrzuca manifest bez nazwy pliku', () => {
+    // Bez nazwy nie ma z czego złożyć adresu, więc okno proponowałoby wydanie,
+    // którego nie da się pobrać.
+    const { file: _file, ...withoutFile } = MANIFEST;
+    expect(() => parseUpdateManifest(withoutFile)).toThrow(UpdateCheckError);
+  });
+
+  it('nie przejmuje się polami, których już nie używa', () => {
+    // `latest.json` niesie dalej sumy kontrolne — zostały przy pliku dla
+    // człowieka i skryptów na minipc. Aplikacja ich nie sprawdza, odkąd
+    // pobiera przeglądarka, ale manifest z nimi musi dalej przechodzić.
+    expect(parseUpdateManifest({ ...MANIFEST, md5: 'cokolwiek', sha256: 'cokolwiek' })).toEqual(
+      MANIFEST,
+    );
   });
 
   it('składa adres pliku z katalogu wydań', () => {
-    expect(apkUrl('http://minipc/alphapump/download', MANIFEST)).toBe(
+    expect(releaseUrl('http://minipc/alphapump/download', MANIFEST)).toBe(
       'http://minipc/alphapump/download/alphapump-42.apk',
     );
   });
 
   it('nie gubi ukośnika, gdy katalog wydań ma go na końcu', () => {
-    expect(apkUrl('http://minipc/alphapump/download/', MANIFEST)).toBe(
+    expect(releaseUrl('http://minipc/alphapump/download/', MANIFEST)).toBe(
       'http://minipc/alphapump/download/alphapump-42.apk',
     );
   });
@@ -140,123 +146,6 @@ describe('porównanie wersji', () => {
     expect(parseInstalledVersionCode(null)).toBeNull();
     expect(parseInstalledVersionCode('')).toBeNull();
     expect(parseInstalledVersionCode('1.0.0')).toBe(1);
-  });
-});
-
-describe('instalacja', () => {
-  /** Atrapa systemu: zapisuje, co dostała, i oddaje to, co jej kazano. */
-  function installerSpy(downloaded: Partial<DownloadedApk> = {}) {
-    const installed: string[] = [];
-    const installer: UpdateInstaller = {
-      download: vi.fn(async () => ({
-        contentUri: 'content://app.alphapump.mobile.FileSystemFileProvider/updates/a.apk',
-        md5: MANIFEST.md5,
-        ...downloaded,
-      })),
-      install: vi.fn(async (contentUri: string) => {
-        installed.push(contentUri);
-      }),
-      openUnknownSourcesSettings: vi.fn(async () => undefined),
-    };
-    return { installer, installed };
-  }
-
-  it('pobiera plik z katalogu wydań i oddaje go instalatorowi', async () => {
-    const { installer, installed } = installerSpy();
-
-    await installUpdate({
-      manifest: MANIFEST,
-      baseUrl: 'http://minipc/alphapump/download',
-      installer,
-    });
-
-    expect(installer.download).toHaveBeenCalledWith(
-      'http://minipc/alphapump/download/alphapump-42.apk',
-      expect.anything(),
-    );
-    expect(installed).toEqual([
-      'content://app.alphapump.mobile.FileSystemFileProvider/updates/a.apk',
-    ]);
-  });
-
-  it('nie oddaje instalatorowi pliku o niezgodnej sumie', async () => {
-    // Pakiet ucięty w połowie system też odrzuci, ale komunikatem o błędzie
-    // parsowania — po którym nie widać, że problem był w pobieraniu.
-    const { installer } = installerSpy({ md5: 'ffffffffffffffffffffffffffffffff' });
-
-    await expect(
-      installUpdate({ manifest: MANIFEST, baseUrl: 'http://minipc/alphapump/download', installer }),
-    ).rejects.toMatchObject({ reason: 'checksum' });
-    expect(installer.install).not.toHaveBeenCalled();
-  });
-
-  it('przechodzi dalej, gdy sumy nie dało się policzyć', async () => {
-    const { installer } = installerSpy({ md5: null });
-
-    await expect(
-      installUpdate({ manifest: MANIFEST, baseUrl: 'http://minipc/alphapump/download', installer }),
-    ).resolves.toBeUndefined();
-    expect(installer.install).toHaveBeenCalled();
-  });
-
-  it('rozpoznaje platformę bez instalatora pakietów', async () => {
-    const { installer } = installerSpy({ contentUri: null });
-
-    await expect(
-      installUpdate({ manifest: MANIFEST, baseUrl: 'http://minipc/alphapump/download', installer }),
-    ).rejects.toMatchObject({ reason: 'unsupported' });
-  });
-
-  it('odróżnia nieudane pobranie od odmowy instalatora', async () => {
-    const failing: UpdateInstaller = {
-      download: vi.fn(async () => {
-        throw new Error('Network request failed');
-      }),
-      install: vi.fn(),
-      openUnknownSourcesSettings: vi.fn(),
-    };
-
-    const error = await installUpdate({
-      manifest: MANIFEST,
-      baseUrl: 'http://minipc/alphapump/download',
-      installer: failing,
-    }).catch((thrown: unknown) => thrown);
-
-    expect(error).toBeInstanceOf(UpdateInstallError);
-    expect((error as UpdateInstallError).reason).toBe('download');
-  });
-
-  it('zgłasza odmowę instalatora osobno', async () => {
-    const { installer } = installerSpy();
-    installer.install = vi.fn(async () => {
-      throw new Error('No Activity found to handle Intent');
-    });
-
-    await expect(
-      installUpdate({ manifest: MANIFEST, baseUrl: 'http://minipc/alphapump/download', installer }),
-    ).rejects.toMatchObject({ reason: 'install' });
-  });
-
-  it('melduje postęp pobierania', async () => {
-    const progress: number[] = [];
-    const installer: UpdateInstaller = {
-      download: vi.fn(async (_url, options) => {
-        options.onProgress?.({ bytesWritten: 1_000, totalBytes: MANIFEST.size });
-        options.onProgress?.({ bytesWritten: MANIFEST.size, totalBytes: MANIFEST.size });
-        return { contentUri: 'content://x', md5: MANIFEST.md5 };
-      }),
-      install: vi.fn(async () => undefined),
-      openUnknownSourcesSettings: vi.fn(async () => undefined),
-    };
-
-    await installUpdate({
-      manifest: MANIFEST,
-      baseUrl: 'http://minipc/alphapump/download',
-      installer,
-      onProgress: ({ bytesWritten }) => progress.push(bytesWritten),
-    });
-
-    expect(progress).toEqual([1_000, MANIFEST.size]);
   });
 });
 

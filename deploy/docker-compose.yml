@@ -66,6 +66,8 @@ services:
       # Ścieżka w kontenerze jest stała — host decyduje, co się pod nią kryje,
       # przez wolumin niżej. Aplikacja nie musi znać żadnej z tych decyzji.
       FEEDBACK_DIR: /data/feedback
+      # Wydania OTA — patrz wolumin niżej i `deploy/update_server.py`.
+      OTA_DIR: /data/ota
       # Adres usługi `triage` **w sieci Compose** — nazwa serwisu niżej jest
       # jednocześnie nazwą hosta, bez żadnego portu na gospodarzu. Puste znaczy
       # „panel administracyjny nie może wyzwolić przeglądu ręcznie"; endpoint
@@ -81,6 +83,10 @@ services:
       # `cat`-em na minipc. Ten sam wzorzec co `APK_DIR` u `web` niżej: katalog
       # gospodarza wchodzi z `deploy/.env`, żeby przetrwał `docker compose down`.
       - ${FEEDBACK_DIR:-./feedback}:/data/feedback
+      # Wydania OTA **tylko do odczytu**: pisze je proces na gospodarzu
+      # (`update_server.py`), API wyłącznie czyta. Pomyłka w kodzie API nie ma
+      # więc jak skasować paczki, która jest w tej chwili jedyną działającą.
+      - ${OTA_DIR:-./ota}:/data/ota:ro
     healthcheck:
       # Obraz jest oparty na `node:alpine` i nie ma `curl`-a ani `wget`-a
       # z HTTP-em — a Node ma `fetch` w standardzie. `/health` odpytuje bazę,
@@ -120,6 +126,9 @@ services:
       # czegokolwiek poza VPN. Caddy serwuje go zwykłym `file_server`, więc żadna
       # zmiana w `Caddyfile` nie jest do tego potrzebna.
       - ${APK_DIR:-./apk}:/srv/alphapump/download:ro
+      # Pliki wydań OTA — Caddy oddaje je pod `/alphapump/ota/`. Sam manifest
+      # obsługuje API, bo zależy od nagłówków żądania.
+      - ${OTA_DIR:-./ota}:/srv/alphapump/ota:ro
     healthcheck:
       # `wget -q -O -` zamiast `--spider`: obraz Caddy'ego stoi na Alpine,
       # a wget z busyboksa ma krótkie flagi zawsze, długie zależnie od budowy.

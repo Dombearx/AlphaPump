@@ -79,6 +79,7 @@ Zakładka **Secrets**:
 | `NETBIRD_ACCESS_KEY` | panel NetBirda → *Setup Keys* (te same, których używa `deploy.yml`) |
 | `NETBIRD_MANAGEMENT_URL` | panel NetBirda → adres instancji zarządzającej |
 | `ALPHAPUMP_UPDATE_SERVER_URL` | `http://domin-server.iron.sq:40002/update` |
+| `ALPHAPUMP_PUBLISH_TOKEN` | wymyśl długi losowy napis: `openssl rand -hex 32`. **Ten sam** wpisujesz na minipc w kroku D |
 | `CLAUDE_CODE_OAUTH_TOKEN` | na własnej maszynie: `claude setup-token`. Token z subskrypcji, nie klucz API — nie obciąża rachunku za API |
 | `AGE_CI_IDENTITY` | **opcjonalny**, i przy kopiach lokalnych z kroku H niepotrzebny: klucz prywatny `age` dla CI. Bez niego comiesięczna próba odtworzenia generuje parę jednorazową i nadal sprawdza cały łańcuch |
 
@@ -219,6 +220,23 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now alphapump-update-server
 systemctl status alphapump-update-server
 ```
+
+Token wydawniczy wchodzi w **drop-inie**, a nie w pliku jednostki — ten jest
+w repozytorium:
+
+```bash
+sudo systemctl edit alphapump-update-server
+# [Service]
+# Environment=UPDATE_SERVER_PUBLISH_TOKEN=<ten sam napis co sekret ALPHAPUMP_PUBLISH_TOKEN>
+sudo systemctl restart alphapump-update-server
+```
+
+Bez niego `POST /apk` i `POST /ota` oddają 503 i mówią, czego brakuje —
+publikowanie jest **wyłączone**, a nie otwarte. Czytanie manifestów przez telefony
+i `/update` działają dalej, więc pominięcie tego kroku nie odcina wdrożeń, tylko
+wydania. Token jest jedyną rzeczą stojącą między dostępem do VPN-u a możliwością
+wysłania dowolnego JavaScriptu na wszystkie telefony w grupie: paczka OTA, w
+odróżnieniu od pliku `.apk`, nie ma podpisu, który sprawdzałby system.
 
 Użytkownik z `User=` musi należeć do grupy `docker`, mieć `uv` w profilu i być
 **właścicielem katalogu repozytorium**: usługa robi w nim `git pull` i
@@ -389,9 +407,14 @@ u zewnętrznego dostawcy to historia treningowa całej grupy.
 | Objaw | Przyczyna |
 | ----- | --------- |
 | zadanie wydania: „Brak sekretu ANDROID_KEYSTORE_BASE64" | krok A i B |
-| zadanie wydania: „nie zna trasy POST /apk" | `sudo systemctl restart alphapump-update-server` |
+| zadanie wydania: „nie zna trasy POST /apk" albo „POST /ota" | `sudo systemctl restart alphapump-update-server` |
+| zadanie wydania: „Brak sekretu ALPHAPUMP_PUBLISH_TOKEN" | ustaw sekret repozytorium — patrz krok D |
+| serwer aktualizacji oddaje 503 „Publishing is disabled" | brak `UPDATE_SERVER_PUBLISH_TOKEN` w drop-inie systemd — `sudo systemctl edit alphapump-update-server` |
+| serwer aktualizacji oddaje 401 przy wydaniu | token w drop-inie systemd ≠ sekret `ALPHAPUMP_PUBLISH_TOKEN` w repozytorium |
 | aplikacja nie łączy się z serwerem | `EXPO_PUBLIC_API_URL` ≠ `BETTER_AUTH_URL`, albo telefon poza VPN |
-| telefon nie widzi nowej wersji | sprawdź `curl http://domin-server.iron.sq/alphapump/download/latest.json` |
+| telefon nie widzi nowego pakietu `.apk` | sprawdź `curl http://domin-server.iron.sq/alphapump/download/latest.json` |
+| telefon nie dostaje paczki JavaScriptu | sprawdź `curl http://<minipc>:40002/ota` — czy jest wpis dla odcisku, który ma telefon; zgodność odcisków: `curl .../alphapump/download/latest.json \| jq .runtimeVersion` |
+| każde wydanie idzie pełnym pakietem, choć nic natywnego się nie ruszyło | `latest.json` nie ma pola `runtimeVersion` (wydanie sprzed tej zmiany) — pierwszy `.apk` po niej naprawia to sam |
 | `docker compose logs triage` w pętli restartów | brak jednej z pięciu zmiennych z kroku C — log podaje nazwę |
 | `systemctl status alphapump-update-server`: `uv: command not found` | `uv` nie jest zainstalowany na użytkowniku z `User=` — patrz „Czego potrzebuje minipc" |
 | serwer aktualizacji: `dubious ownership` albo `Permission denied` przy `git pull` | repozytorium należy do innego użytkownika niż ten z `User=` — `sudo chown -R <user> <katalog>` |

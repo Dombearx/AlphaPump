@@ -74,7 +74,7 @@ złapać nie może:
 | `ios-simulator.yml` | PR dotykający aplikacji | że projekt na iOS wciąż się buduje, mimo że wydanie idzie na Androida |
 | `backup-restore.yml` | co miesiąc i przy zmianie kodu kopii | że kopia daje się odtworzyć, a dane po odtworzeniu zgadzają się z oryginałem |
 | `deploy-stack.yml` | PR dotykający wdrożenia, backendu lub panelu | że stos z `deploy/` wstaje na czystej bazie i odpowiada przez Caddy'ego |
-| `android-release.yml` | merge do `main` ruszający aplikację, tag `v*` i ręcznie | zbudowanie `.apk` i położenie go na minipc, skąd telefony biorą aktualizację |
+| `android-release.yml` | merge do `main` ruszający aplikację, tag `v*` i ręcznie | wydanie aplikacji na minipc: paczka JavaScriptu, a gdy ruszyła warstwa natywna — pełny `.apk` |
 
 ### Konfiguracja: pliki `.env` i klucze API
 
@@ -305,6 +305,7 @@ Wszystko, co potrzebne, leży w `deploy/`:
 | `smoke.sh` | sprawdzenie działającego stosu z zewnątrz |
 | `update_server.py`, `alphapump-update-server.service` | automatyczne wdrożenie po mergu do `main` i przyjmowanie wydań aplikacji — patrz „Serwer aktualizacji" niżej |
 | `apk/` | wydania na Androida: pliki `.apk` i manifest `latest.json`, oddawane pod `/alphapump/download` |
+| `ota/` | paczki JavaScriptu i ich pliki, oddawane pod `/alphapump/ota`; opisy wydań czyta z nich API |
 
 Kontenery są trzy, nie cztery: panel to zbiór plików statycznych, a nie proces,
 więc jest wpieczony w obraz Caddy'ego. Osobny kontener musiałby albo uruchomić
@@ -415,7 +416,7 @@ która później pozwala powiedzieć, *co* dokładnie stoi na minipc.
 #### Serwer aktualizacji
 
 Powyższe kroki da się też wywołać zdalnie, zamiast wpisywać je ręcznie po SSH.
-`deploy/update_server.py` wystawia na porcie 40002 cztery trasy:
+`deploy/update_server.py` wystawia na porcie 40002 sześć tras:
 
 | Trasa | Co robi |
 | ----- | ------- |
@@ -423,6 +424,8 @@ Powyższe kroki da się też wywołać zdalnie, zamiast wpisywać je ręcznie po
 | `GET /update` | `git pull`, a potem `docker compose -f deploy/docker-compose.yml up -d --build --force-recreate` |
 | `POST /apk` | przyjmuje wydanie aplikacji: plik `.apk` i manifest, kładzie oba w katalogu `/alphapump/download` |
 | `GET /apk` | oddaje manifest wydania, które telefony widzą w tej chwili |
+| `POST /ota` | przyjmuje paczkę JavaScriptu (wynik `expo export`) dla jednej pary platforma/odcisk |
+| `GET /ota` | oddaje listę paczek, które telefony dostają w tej chwili |
 
 `POST /apk` woła `android-release.yml` po zbudowaniu pliku. Nazwa pliku
 z manifestu jest sprawdzana wzorcem, a nie tylko oczyszczana — staje się
@@ -432,6 +435,43 @@ a `latest.json` powstaje **po** nim: telefon nie ma jak zobaczyć manifestu
 wskazującego na plik, którego jeszcze nie ma, ani pobrać połówki pakietu.
 Starsze wydania są usuwane, zostają trzy ostatnie — inaczej dysk minipc
 zapchałby się plikami, których nikomu już nie zaproponujemy.
+
+**Publikowanie wymaga tokenu**, czytanie nie. Ta asymetria jest sednem: `POST /apk`
+i `POST /ota` sprawdzają `Authorization: Bearer …` przeciwko
+`UPDATE_SERVER_PUBLISH_TOKEN`, a telefony czytają manifesty bez niczego.
+
+Powód jest konkretny i pojawił się razem z OTA. Przy plikach `.apk`
+autoryzacja nigdy nie była jedyną linią: Android odmawia podmiany pakietu
+podpisanego innym kluczem, więc plik podłożony przez kogokolwiek innego niż
+workflow po prostu się nie instaluje. Paczka JavaScriptu nie ma odpowiednika
+tego sprawdzenia — aplikacja uruchamia to, co serwer poda dla jej odcisku. Bez
+tokenu każdy, kto dosięgnie tego portu w VPN, wysłałby dowolny kod na wszystkie
+telefony w grupie; przy pakietach było to niemożliwe. Token przywraca własność,
+którą wcześniej dawał podpis, za darmo.
+
+Nieustawiony token znaczy **wyłączone publikowanie**, a nie otwarte: obie trasy
+oddają 503 i mówią, czego brakuje. Czytanie i `/update` działają dalej, więc
+zapomnienie o nim nie odcina kanału wdrożeniowego. Sekret trzyma się w drop-inie
+systemd (`sudo systemctl edit alphapump-update-server`), nie w pliku jednostki,
+bo ten jest w repozytorium.
+
+Token leży na minipc, więc nie przeżywa przejęcia samego minipc. Zamknięcie
+także tego znaczy podpisywanie paczek tam, gdzie jest klucz — w workflow wydania,
+nie tutaj — a to pociąga za sobą budowanie manifestu też tam. To zmiana kształtu,
+nie flaga, i nie jest tego warta, dopóki całość stoi na jednym minipc, który i
+tak trzyma bazę.
+
+`POST /ota` działa podobnie do `POST /apk`, tylko na katalogu `/alphapump/ota`. Archiwum
+rozpakowuje się plik po pliku, z limitem liczonym **po** rozpakowaniu i z
+odrzuceniem wszystkiego, co nie jest zwykłym plikiem — `extractall` nie jest
+użyte nigdzie, bo pisze przez ścieżki bezwzględne, segmenty `..` i dowiązania
+wychodzące z drzewa, a archiwum przychodzi siecią. Pliki paczki nazywają się
+hashem własnej treści i leżą wspólnie dla wszystkich wydań, więc dwie kolejne
+paczki różniące się samym JavaScriptem współdzielą komplet obrazków i czcionek.
+Sprzątanie jest „znacz i zamiataj" po wszystkich opublikowanych opisach, a nie
+„skasuj to, czego używało poprzednie wydanie": ten sam plik bywa potrzebny
+kilku odciskom naraz. Opis, którego nie da się odczytać, wstrzymuje sprzątanie
+w całości — pełny dysk jest odwracalny, skasowany plik paczki nie.
 
 Osobno sprzątane są **przerwane wysyłki**. Plik pod nazwą tymczasową zostaje na
 dysku, gdy transfer urwie się w połowie — zerwane łącze VPN, restart usługi,
@@ -561,10 +601,38 @@ postawiony na commicie ruszającym wyłącznie `deploy/` przestałby wydawać
 cokolwiek. Wydanie z tagu `v*` i uruchomienie ręczne przechodzą przez tę bramkę
 bez pytania. Adres API bierze się ze zmiennej
 repozytorium `EXPO_PUBLIC_API_URL` (przy uruchomieniu ręcznym — z pola
-`api_url`). Zadanie buduje `.apk`, opisuje go plikiem `latest.json`, wchodzi do
-NetBirda i wysyła oba na `POST /apk` serwera aktualizacji, który kładzie je
-w katalogu oddawanym pod `/alphapump/download`. Nic nie trzeba kopiować ręcznie i nikt nie
-potrzebuje konta w GitHubie.
+`api_url`).
+
+Dalej workflow rozdziela się na dwie drogi, a wybiera między nimi zadanie
+`plan`:
+
+| | Paczka JavaScriptu (OTA) | Pełny pakiet `.apk` |
+| --- | --- | --- |
+| Kiedy | warstwa natywna bez zmian — prawie zawsze | podbicie SDK, nowa zależność natywna, zmiana wtyczki konfiguracyjnej |
+| Ile waży | ~7 MB | ~35 MB |
+| Ile trwa wydanie | kilka minut | kilkanaście minut gradle'a |
+| Co robi użytkownik | nic; aplikacja podmienia się sama przy następnym otwarciu | pobiera przeglądarką i instaluje |
+
+O drodze nie decyduje ani człowiek, ani lista ścieżek, tylko **odcisk warstwy
+natywnej**: `runtimeVersion` liczony przez `expo-updates` z konfiguracji
+i wtyczek. `plan` porównuje odcisk bieżącego commita z odciskiem wydania
+stojącego w tej chwili na minipc (`runtimeVersion` w `latest.json`, czytany
+przez `GET /apk`). Równe odciski znaczą, że telefony mają odpowiedni pakiet
+i wystarczy im paczka. Brak odpowiedzi z minipc znaczy „nie wiem" i wypada na
+`.apk`: wydanie pełne jest wolniejsze, ale zawsze poprawne, a paczka wydana pod
+nieznany odcisk kończy się aplikacją, która nie wstaje.
+
+Odcisk jest **przypięty** dla obu budów zmienną
+`EXPO_UPDATES_FINGERPRINT_OVERRIDE`, i to jest konieczne, nie ostrożnościowe:
+`plan` liczy go w projekcie zarządzanym, a w zadaniu `apk` `prebuild` tworzy
+katalog `android/` i odcisk zaczyna się liczyć z plików natywnego projektu,
+czyli wychodzi inny. Pakiet niósłby wtedy jedną wartość, `latest.json` drugą,
+a następne wydanie porównałoby się z drugą i błędnie uznało, że wystarczy
+paczka.
+
+Zadanie wchodzi do NetBirda i wysyła wynik na `POST /ota` albo `POST /apk`
+serwera aktualizacji. Nic nie trzeba kopiować ręcznie i nikt nie potrzebuje
+konta w GitHubie.
 
 Ta sama droga co wdrożenie backendu (`deploy.yml`), więc żaden nowy kanał ani
 sekret nie przybywa. Ręcznie, gdyby zaszła potrzeba, wygląda to tak:
@@ -593,23 +661,50 @@ Katalog `/alphapump/download` zawiera, obok plików `.apk`, manifest `latest.jso
   "size": 62443008,
   "md5": "…",
   "sha256": "…",
+  "runtimeVersion": "8b28169f06ae982e63c7e60fa2817c53a8fb72d7",
   "releasedAt": "2026-08-15T09:12:44Z",
   "notes": "Poprawki synchronizacji"
 }
 ```
 
-Aplikacja pyta o niego przy starcie i przy każdym powrocie na wierzch (nie
-częściej niż raz na kwadrans), porównuje `versionCode` z własnym i przy nowszym
-pokazuje okno „Wersja X — zainstaluj / nie teraz". „Nie teraz" wycisza **to
-jedno** wydanie; kolejne pyta od nowa. Po zgodzie plik pobiera się w aplikacji
-z paskiem postępu, sprawdzana jest suma MD5 i dopiero wtedy plik idzie do
-instalatora systemu. Nieudane sprawdzenie manifestu nie pokazuje niczego —
-minipc bywa poza zasięgiem częściej, niż jest w nim.
+(`runtimeVersion` służy tu wyłącznie **następnemu przebiegowi** workflow —
+telefony odczytują swój odcisk z własnego pakietu.)
 
-Kod: `apps/mobile/src/update/` (`manifest.ts` — kształt i porównanie wersji,
-`install.ts` — przebieg, `expo.ts` — jedyna warstwa dotykająca systemu)
-i `src/ui/update-prompt.tsx`. Trasa `/alphapump/download/*` nie wymaga zmian w
-`Caddyfile`: wpada do `file_server`, tak jak wszystko spoza listy `@api`.
+Aplikacja pyta o ten plik przy starcie i przy każdym powrocie na wierzch (nie
+częściej niż raz na kwadrans), porównuje `versionCode` z własnym i przy nowszym
+pokazuje okno „Version X — Download / Not now". „Nie teraz" wycisza **to jedno**
+wydanie; kolejne pyta od nowa. Po zgodzie otwiera się przeglądarka i dalej
+prowadzi już system: pobranie, zgoda na nieznane źródła, instalator. Aplikacja
+nie bierze w tym udziału i nie ma po temu żadnego uprawnienia. Nieudane
+sprawdzenie manifestu nie pokazuje niczego — minipc bywa poza zasięgiem
+częściej, niż jest w nim.
+
+##### Jak telefon dostaje paczkę JavaScriptu
+
+Osobną drogą i bez pytania kogokolwiek o cokolwiek. `expo-updates` pyta przy
+starcie o `/updates/manifest`, podając w nagłówkach platformę i swój odcisk
+warstwy natywnej; API składa odpowiedź z opisu leżącego w `deploy/ota/`
+i oddaje ją w formacie protokołu Expo Updates. Paczka pobiera się w tle,
+a aplikacja **nie czeka** na to przy starcie (`fallbackToCacheTimeout: 0`) —
+ta sama zasada, na której stoi baza lokalna: ekran nigdy nie czeka na sieć.
+
+Pobrana paczka nie uruchamia się natychmiast: podmiana kodu pod palcami kogoś,
+kto właśnie zapisuje serię, jest gorsza niż aktualizacja godzinę później.
+`expo-updates` uruchomi ją przy następnym otwarciu aplikacji, a kto chce
+wcześniej, dostaje okno „Update ready — Restart".
+
+Brak paczki dla danego odcisku **nie jest błędem**: to normalny stan telefonu
+z wydaniem natywnym, do którego nikt jeszcze nie wypuścił poprawki. Aplikacja
+uruchamia wtedy paczkę wbudowaną w `.apk`. Tak samo kończy się uszkodzony opis
+wydania — i to jest celowe, bo alternatywą byłaby aplikacja, która nie wstaje.
+
+Kod: `apps/mobile/src/update/` (`manifest.ts` — kształt i porównanie wersji
+wydania natywnego, `ota.ts` i `expo.ts` — jedyne warstwy dotykające systemu,
+`use-update.ts` — wpięcie w cykl życia) i `src/ui/update-prompt.tsx`; po stronie
+serwera `apps/api/src/updates/` i `apps/api/src/routes/updates.ts`. Trasa
+`/alphapump/download/*` nie wymaga zmian w `Caddyfile`: wpada do `file_server`,
+tak jak wszystko spoza listy `@api`. `/updates/*` wymaga — jest obsługiwana
+przez API, więc jest na liście `@api`, czego pilnuje `apps/api/tests/deploy.test.ts`.
 
 ##### Pierwsze uruchomienie, po kolei
 
@@ -617,7 +712,9 @@ i `src/ui/update-prompt.tsx`. Trasa `/alphapump/download/*` nie wymaga zmian w
    przerywa się celowo (szczegóły niżej).
 2. **Zmienna repozytorium `EXPO_PUBLIC_API_URL`** = adres stosu w VPN.
 3. **Merge do `main`.** `deploy.yml` woła `/update`, więc stos wstaje z nowym
-   `Caddyfile` i nowym woluminem `/srv/alphapump/download`.
+   `Caddyfile` i nowymi woluminami `/srv/alphapump/download` oraz
+   `/srv/alphapump/ota` (ten drugi wchodzi też do kontenera API jako `/data/ota`,
+   tylko do odczytu — API składa z niego manifest, ale nigdy w nim nie pisze).
 4. **Restart serwera aktualizacji na minipc:**
 
    ```bash
@@ -627,19 +724,25 @@ i `src/ui/update-prompt.tsx`. Trasa `/alphapump/download/*` nie wymaga zmian w
    Tego kroku **nie da się pominąć przy tym jednym wdrożeniu**. `/update` robi
    `git pull` i przestawia kontenery, ale nie przeładowuje samego siebie —
    usługa systemd trzyma w pamięci kod sprzed aktualizacji repozytorium, więc
-   trasy `POST /apk` jeszcze nie zna. Restart wciąga też nową zależność
-   (`python-multipart`), bo `uv run` czyta deklarację z nagłówka skryptu.
-   Zadanie wydania sprawdza to przed wysłaniem pliku i mówi wprost, co zrobić,
-   zamiast zwrócić niejasne 404.
+   tras `POST /apk` i `POST /ota` jeszcze nie zna. Restart wciąga też nową
+   zależność (`python-multipart`), bo `uv run` czyta deklarację z nagłówka
+   skryptu. Zadanie wydania sprawdza to przed wysłaniem pliku i mówi wprost, co
+   zrobić, zamiast zwrócić niejasne 404.
 5. **Pierwsza instalacja ręcznie** — z telefonu w VPN wejdź na
    `http://<adres-w-vpn>/alphapump/download/` i pobierz `.apk` z listy.
    Aktualizuje się aplikacja, która już umie się aktualizować; do wersji sprzed
    tej zmiany nie ma się co dobijać.
 
-Od tego momentu każdy merge do `main` daje wydanie, które telefony **proponują**
-przy najbliższym otwarciu. Instalacja nie jest cicha i nie będzie: użytkownik
-potwierdza ją w oknie aplikacji, a potem system pyta o zgodę na podmianę
+Od tego momentu każdy merge do `main` daje wydanie. Prawie każde jedzie paczką
+JavaScriptu i podmienia się samo przy następnym otwarciu aplikacji — bez pytania
+i bez instalatora. Wydanie ruszające warstwę natywną telefony **proponują**,
+a instalacja nie jest cicha i nie będzie: użytkownik potwierdza ją w oknie
+aplikacji, potem pobiera plik przeglądarką, a system pyta o zgodę na podmianę
 pakietu. Androida nie da się o to nie zapytać i nie jest to nasza decyzja.
+
+Pierwsze wydanie po tej zmianie musi iść pełnym pakietem — `plan` nie ma z czym
+porównać odcisku, więc wybierze `.apk` sam. Dopiero telefony z tym pakietem
+zaczną dostawać paczki.
 
 ##### Rzeczy, które trzeba ogarnąć raz
 
@@ -662,14 +765,17 @@ pakietu. Androida nie da się o to nie zapytać i nie jest to nasza decyzja.
   `ANDROID_KEY_ALIAS` i `ANDROID_KEY_PASSWORD`. Sam plik `.keystore` trzeba
   zachować poza repozytorium — razem z kluczem `age` od kopii zapasowych.
 
-- **Zgoda na „nieznane źródła" jest jednorazowa.** Przy pierwszej instalacji
-  Android zapyta o nią dla aplikacji, która plik podaje (przy pierwszym
-  rozdaniu — przeglądarki; potem AlphaPumpa, bo od tej wersji podmienia się
-  sam). Sama aplikacja deklaruje w tym celu `REQUEST_INSTALL_PACKAGES`; to
-  uprawnienie **nie** daje cichej instalacji — system i tak pyta o każdą
-  podmianę.
+- **Zgoda na „nieznane źródła" jest jednorazowa i dotyczy przeglądarki.**
+  Android pyta o nią dla aplikacji, która plik podaje — a plik `.apk` podaje
+  zawsze przeglądarka, także przy aktualizacji warstwy natywnej. AlphaPump
+  **nie** deklaruje `REQUEST_INSTALL_PACKAGES` i nie oddaje niczego
+  instalatorowi: odkąd zwykłe wydania jadą paczką JavaScriptu, uprawnienie
+  obsługiwałoby parę zdarzeń w roku, a jest najgroźniejszym, o jakie ta
+  aplikacja mogłaby poprosić.
 
-- **`versionCode` musi rosnąć.** W CI to numer przebiegu; przy budowaniu
+- **`versionCode` musi rosnąć** (dotyczy wyłącznie wydań `.apk` — paczki
+  JavaScriptu rozróżnia identyfikator liczony z ich treści). W CI to numer
+  przebiegu; przy budowaniu
   lokalnym ustaw `ANDROID_VERSION_CODE` sam, i to wyżej niż ostatni z CI —
   inaczej telefon odmówi instalacji, a komunikat mówi o niezgodności, nie
   o numerze.

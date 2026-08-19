@@ -28,6 +28,10 @@ apps/mobile/ios/
 deploy/apk/*
 !deploy/apk/.gitkeep
 
+# Wydania OTA — paczki JavaScriptu i ich pliki. Patrz deploy/ota/.gitkeep.
+deploy/ota/*
+!deploy/ota/.gitkeep
+
 # Zgłoszenia zwrotne z aplikacji — dane użytkowników, nie kod. Patrz deploy/feedback/.gitkeep.
 deploy/feedback/*
 !deploy/feedback/.gitkeep
