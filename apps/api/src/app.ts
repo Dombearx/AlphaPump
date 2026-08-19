@@ -33,6 +33,7 @@ import { createSetRouter, setRoutes } from './routes/sets.js';
 import { createSyncRouter, syncRoutes } from './routes/sync.js';
 import { createTagRouter, tagRoutes } from './routes/tags.js';
 import { createTransferRouter, transferRoutes } from './routes/transfer.js';
+import { createUpdateRouter, updateRoutes } from './routes/updates.js';
 
 /** Wersja wystawiana w OpenAPI i w healthchecku. */
 export const API_VERSION = '0.1.0';
@@ -55,6 +56,7 @@ export const documentedRoutes: RouteSpec[] = [
   ...transferRoutes,
   ...adminRoutes,
   ...feedbackRoutes,
+  ...updateRoutes,
 ];
 
 export function createApp(dependencies: AppDependencies, config: AppConfig) {
@@ -103,6 +105,13 @@ export function createApp(dependencies: AppDependencies, config: AppConfig) {
       }),
     ),
   );
+
+  /**
+   * Manifest aktualizacji OTA. Przed uwierzytelnieniem świadomie: telefon pyta
+   * o niego przy starcie, zanim ktokolwiek się zaloguje — a wydanie naprawiające
+   * logowanie musi dojechać właśnie do telefonu, który zalogować się nie potrafi.
+   */
+  app.route('/', createUpdateRouter(config.otaDir));
 
   /** better-auth obsługuje rejestrację, logowanie, sesje i klucze API. */
   app.all('/api/auth/*', (context) => dependencies.auth.handler(context.req.raw));

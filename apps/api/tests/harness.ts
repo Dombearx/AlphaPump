@@ -46,6 +46,9 @@ export const TEST_CONFIG: AppConfig = {
   // tymczasowym — testy zgłoszeń piszą naprawdę na dysk i nie mogą dzielić
   // katalogu między sobą.
   feedbackDir: './data/feedback',
+  // Jak `feedbackDir` wyżej: własny katalog na uruchomienie, bo testy
+  // aktualizacji OTA kładą na dysku prawdziwe opisy wydań.
+  otaDir: './data/ota',
   // Domyślnie wyłączony jak `llm` wyżej — testy podstawiają atrapę klienta
   // przez `HarnessOptions.triage`, kiedy sprawdzają `POST /admin/feedback/run`.
   triage: null,
@@ -75,6 +78,8 @@ export interface Harness {
   db: Database;
   /** Katalog na zgłoszenia zwrotne tego uruchomienia — świeży, tylko jego. */
   feedbackDir: string;
+  /** Katalog z wydaniami OTA tego uruchomienia — świeży, tylko jego. */
+  otaDir: string;
   request: (path: string, init?: RequestInit) => Promise<Response>;
   /** Żądanie JSON-owe z podanymi nagłówkami uwierzytelnienia. */
   json: <T = unknown>(
@@ -100,7 +105,8 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
   await seedPostgres(db);
 
   const feedbackDir = mkdtempSync(path.join(tmpdir(), 'alphapump-feedback-'));
-  const config = { ...TEST_CONFIG, feedbackDir };
+  const otaDir = mkdtempSync(path.join(tmpdir(), 'alphapump-ota-'));
+  const config = { ...TEST_CONFIG, feedbackDir, otaDir };
 
   const auth = createAuth(db, config);
   const app = createApp(
@@ -183,6 +189,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
   return {
     db,
     feedbackDir,
+    otaDir,
     request,
     json,
     signUp,
@@ -191,6 +198,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
     promoteToAdmin,
     close: async () => {
       await rm(feedbackDir, { recursive: true, force: true });
+      await rm(otaDir, { recursive: true, force: true });
       await client.close();
     },
   };

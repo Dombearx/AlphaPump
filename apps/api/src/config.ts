@@ -55,6 +55,17 @@ const environmentSchema = z.object({
   FEEDBACK_DIR: nonEmpty.default('./data/feedback'),
 
   /**
+   * Katalog z wydaniami OTA — paczkami JavaScriptu, które telefon pobiera
+   * zamiast całego pliku `.apk`. Zapisuje go `deploy/update_server.py` na
+   * gospodarzu, API wyłącznie z niego czyta (wolumin tylko do odczytu).
+   *
+   * Wartość domyślna wskazuje na katalog obok tego ze zgłoszeniami zwrotnymi:
+   * brak katalogu nie jest awarią, tylko stanem „nikt jeszcze nie wydał paczki",
+   * a wtedy telefony uruchamiają tę wbudowaną w `.apk`.
+   */
+  OTA_DIR: nonEmpty.default('./data/ota'),
+
+  /**
    * Adres usługi `services/triage` w sieci Compose (np. `http://triage:8090`)
    * i token, którym panel administracyjny wyzwala u niej przegląd na żądanie —
    * patrz `POST /admin/feedback/run`. Bez obu naraz endpoint istnieje, ale
@@ -148,6 +159,8 @@ export interface AppConfig {
   llm: LlmConfig | null;
   /** Katalog na zgłoszenia zwrotne — patrz `FEEDBACK_DIR`. */
   feedbackDir: string;
+  /** Katalog z wydaniami OTA — patrz `OTA_DIR`. */
+  otaDir: string;
   /** `null`, gdy panel nie ma jak wyzwolić przeglądu zgłoszeń ręcznie — patrz `TRIAGE_URL`. */
   triage: TriageConfig | null;
 }
@@ -210,6 +223,7 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
     google,
     llm,
     feedbackDir: environmentVariables.FEEDBACK_DIR,
+    otaDir: environmentVariables.OTA_DIR,
     triage,
   };
 }
