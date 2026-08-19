@@ -11,6 +11,9 @@ WorkingDirectory=/home/domin/AlphaPump
 # w compose — odkomentuj i ustaw ścieżkę bezwzględną, jeśli zmieniasz `APK_DIR`
 # w `deploy/.env`. Patrz komentarz przy tej zmiennej w `deploy/.env.example`.
 # Environment=UPDATE_SERVER_APK_DIR=/home/domin/AlphaPump/deploy/apk
+# To samo dla katalogu z wydaniami OTA (`OTA_DIR` w `deploy/.env`), z którego
+# compose montuje `/srv/alphapump/ota` Caddy'emu i `/data/ota` API.
+# Environment=UPDATE_SERVER_OTA_DIR=/home/domin/AlphaPump/deploy/ota
 # Login shell so uv is picked up from the profile wherever its installer put
 # it, rather than hardcoding a path here. exec replaces the shell, so systemd
 # supervises uv itself instead of a wrapper.
