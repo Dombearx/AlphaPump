@@ -436,7 +436,32 @@ wskazującego na plik, którego jeszcze nie ma, ani pobrać połówki pakietu.
 Starsze wydania są usuwane, zostają trzy ostatnie — inaczej dysk minipc
 zapchałby się plikami, których nikomu już nie zaproponujemy.
 
-`POST /ota` działa podobnie, tylko na katalogu `/alphapump/ota`. Archiwum
+**Publikowanie wymaga tokenu**, czytanie nie. Ta asymetria jest sednem: `POST /apk`
+i `POST /ota` sprawdzają `Authorization: Bearer …` przeciwko
+`UPDATE_SERVER_PUBLISH_TOKEN`, a telefony czytają manifesty bez niczego.
+
+Powód jest konkretny i pojawił się razem z OTA. Przy plikach `.apk`
+autoryzacja nigdy nie była jedyną linią: Android odmawia podmiany pakietu
+podpisanego innym kluczem, więc plik podłożony przez kogokolwiek innego niż
+workflow po prostu się nie instaluje. Paczka JavaScriptu nie ma odpowiednika
+tego sprawdzenia — aplikacja uruchamia to, co serwer poda dla jej odcisku. Bez
+tokenu każdy, kto dosięgnie tego portu w VPN, wysłałby dowolny kod na wszystkie
+telefony w grupie; przy pakietach było to niemożliwe. Token przywraca własność,
+którą wcześniej dawał podpis, za darmo.
+
+Nieustawiony token znaczy **wyłączone publikowanie**, a nie otwarte: obie trasy
+oddają 503 i mówią, czego brakuje. Czytanie i `/update` działają dalej, więc
+zapomnienie o nim nie odcina kanału wdrożeniowego. Sekret trzyma się w drop-inie
+systemd (`sudo systemctl edit alphapump-update-server`), nie w pliku jednostki,
+bo ten jest w repozytorium.
+
+Token leży na minipc, więc nie przeżywa przejęcia samego minipc. Zamknięcie
+także tego znaczy podpisywanie paczek tam, gdzie jest klucz — w workflow wydania,
+nie tutaj — a to pociąga za sobą budowanie manifestu też tam. To zmiana kształtu,
+nie flaga, i nie jest tego warta, dopóki całość stoi na jednym minipc, który i
+tak trzyma bazę.
+
+`POST /ota` działa podobnie do `POST /apk`, tylko na katalogu `/alphapump/ota`. Archiwum
 rozpakowuje się plik po pliku, z limitem liczonym **po** rozpakowaniu i z
 odrzuceniem wszystkiego, co nie jest zwykłym plikiem — `extractall` nie jest
 użyte nigdzie, bo pisze przez ścieżki bezwzględne, segmenty `..` i dowiązania

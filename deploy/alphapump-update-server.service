@@ -14,6 +14,19 @@ WorkingDirectory=/home/domin/AlphaPump
 # To samo dla katalogu z wydaniami OTA (`OTA_DIR` w `deploy/.env`), z którego
 # compose montuje `/srv/alphapump/ota` Caddy'emu i `/data/ota` API.
 # Environment=UPDATE_SERVER_OTA_DIR=/home/domin/AlphaPump/deploy/ota
+#
+# Publishing secret. Deliberately NOT written here -- this file is in the
+# repository, and the token is what stops anyone who can reach this port inside
+# the VPN from handing every phone in the group arbitrary JavaScript. Put it in
+# a drop-in instead, which lives outside the repo:
+#
+#   sudo systemctl edit alphapump-update-server
+#   # [Service]
+#   # Environment=UPDATE_SERVER_PUBLISH_TOKEN=<ten sam co sekret ALPHAPUMP_PUBLISH_TOKEN>
+#
+# Unset means publishing is disabled, not open: POST /apk and POST /ota answer
+# 503 and say so. Reading and /update keep working, so forgetting it cannot
+# brick the deploy channel.
 # Login shell so uv is picked up from the profile wherever its installer put
 # it, rather than hardcoding a path here. exec replaces the shell, so systemd
 # supervises uv itself instead of a wrapper.

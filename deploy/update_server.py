@@ -28,19 +28,31 @@ Packages land in the directory Caddy serves under `/alphapump/download`;
 over-the-air updates land in the one it serves under `/alphapump/ota`, whose
 manifests the API reads -- see `deploy/docker-compose.yml`.
 
-No endpoint is authenticated, matching the trust model the rest of the
+Reading is not authenticated, matching the trust model the rest of the
 deployment already uses: reachability inside the VPN *is* the authorization
-(`docs/stack_technologiczny.md`). For the `.apk` upload that is a deliberate
-second line rather than the only one -- Android refuses to replace an installed
-package unless the new file carries the same signature, so an APK published
-here by anyone but the release workflow does not install over the real app.
+(`docs/stack_technologiczny.md`). **Publishing is**, and that asymmetry is the
+point.
 
-An over-the-air update has no such second line: it is JavaScript, and the app
-runs whatever this directory offers for its runtime version. What limits the
-damage is on the client instead -- `expo-updates` falls back to the bundle built
-into the `.apk` when a downloaded one fails to launch, so a broken publish costs
-a restart rather than the app. Signing updates would close the gap properly and
-is the obvious next step if this ever leaves the VPN.
+For `.apk` uploads authorization was never the only line -- Android refuses to
+replace an installed package unless the new file carries the same signature, so
+a package published here by anyone but the release workflow does not install
+over the real app. An over-the-air update has no equivalent: it is JavaScript,
+and the app runs whatever this directory offers for its runtime version. Without
+a token, anyone who can reach this port inside the VPN could hand every phone in
+the group arbitrary code -- something that was simply not possible while releases
+were packages. `UPDATE_SERVER_PUBLISH_TOKEN` restores the property that the
+signature used to provide for free.
+
+What limits the damage of a *bad* publish, as opposed to a hostile one, is on
+the client: `expo-updates` falls back to the bundle built into the `.apk` when a
+downloaded one fails to launch, so a broken release costs a restart rather than
+the app.
+
+The token lives on this host, so it does not survive the host being taken over.
+Closing that too means signing updates where the key is -- in the release
+workflow, not here -- which also means building the manifest there. That is a
+real change in shape, not a flag, and it is not worth it while the whole stack
+is one minipc that already holds the database.
 """
 
 import base64
@@ -50,6 +62,7 @@ import logging
 import mimetypes
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import tarfile
@@ -60,7 +73,7 @@ from pathlib import Path, PurePosixPath
 from typing import Annotated, Any
 
 import uvicorn
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import JSONResponse, PlainTextResponse
 
 logging.basicConfig(level=logging.INFO)
@@ -130,6 +143,13 @@ RUNTIME_VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 # the client keys off this string, not off the file extension.
 LAUNCH_CONTENT_TYPE = "application/javascript"
 
+# Shared secret the release workflow proves it holds before publishing anything.
+# Deliberately *not* optional-if-unset: an unset token disables publishing with
+# a loud 503 rather than quietly accepting uploads from anyone. It gates only
+# publishing, so `/update` keeps working and the deploy channel cannot be bricked
+# by forgetting to set it.
+PUBLISH_TOKEN_VARIABLE = "UPDATE_SERVER_PUBLISH_TOKEN"
+
 # An export is single-digit megabytes. The ceiling is not tuning, it is the
 # bound that stops a malformed or hostile archive from filling the disk while
 # it decompresses -- the compressed size says nothing about the unpacked one.
@@ -144,6 +164,29 @@ def apk_dir() -> Path:
 
 def ota_dir() -> Path:
     return Path(os.environ.get("UPDATE_SERVER_OTA_DIR", DEFAULT_OTA_DIR))
+
+
+def require_publish_token(authorization: str | None) -> None:
+    """Refuses the request unless it carries the publishing secret.
+
+    Compared with `compare_digest` rather than `==`: the difference is
+    theoretical over a VPN link, but a token check written the obvious way is
+    the kind of thing that gets copied into somewhere it matters.
+    """
+    expected = os.environ.get(PUBLISH_TOKEN_VARIABLE, "")
+    if expected == "":
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"Publishing is disabled: {PUBLISH_TOKEN_VARIABLE} is not set on the "
+                "update server. Set it in a systemd drop-in "
+                "(sudo systemctl edit alphapump-update-server) and restart the service."
+            ),
+        )
+
+    presented = authorization[7:] if (authorization or "").startswith("Bearer ") else ""
+    if not secrets.compare_digest(presented, expected):
+        raise HTTPException(status_code=401, detail="Missing or wrong publishing token")
 
 
 @app.get("/health", response_class=PlainTextResponse)
@@ -204,6 +247,7 @@ def current_release() -> JSONResponse:
 async def publish_release(
     manifest: Annotated[str, Form()],
     apk: Annotated[UploadFile, File()],
+    authorization: Annotated[str | None, Header()] = None,
 ) -> PlainTextResponse:
     """Publishes an Android release: the `.apk` plus the manifest describing it.
 
@@ -212,6 +256,8 @@ async def publish_release(
     only the build knows it, and a value guessed from the filename would be a
     second source of truth for the one number that decides what is newer.
     """
+    require_publish_token(authorization)
+
     described = _validated_manifest(manifest)
     name = described["file"]
     logger.info("Receiving release %s (versionCode %s)", name, described["versionCode"])
@@ -383,6 +429,7 @@ async def publish_update(
     runtime_version: Annotated[str, Form(alias="runtimeVersion")],
     platform: Annotated[str, Form()],
     export: Annotated[UploadFile, File()],
+    authorization: Annotated[str | None, Header()] = None,
 ) -> PlainTextResponse:
     """Publishes an over-the-air update: the output of `expo export`, as a tarball.
 
@@ -393,6 +440,8 @@ async def publish_update(
     crashes on launch -- so it is checked here and checked again by the API,
     which refuses a pointer that does not describe its own location.
     """
+    require_publish_token(authorization)
+
     if platform not in OTA_PLATFORMS:
         raise HTTPException(
             status_code=400,

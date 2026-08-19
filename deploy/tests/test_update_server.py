@@ -25,6 +25,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import update_server  # noqa: E402
 
 
+PUBLISH_TOKEN = "testowy-token-wydawniczy"
+
+
+@pytest.fixture(autouse=True)
+def publishing_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Publishing is token-gated; without this every upload here would 503."""
+    monkeypatch.setenv(update_server.PUBLISH_TOKEN_VARIABLE, PUBLISH_TOKEN)
+
+
+AUTHORIZED = {"Authorization": f"Bearer {PUBLISH_TOKEN}"}
+
+
 @pytest.fixture
 def releases(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     directory = tmp_path / "apk"
@@ -101,6 +113,7 @@ def test_publishing_sweeps_and_prunes(releases: Path):
     with TestClient(update_server.app) as client:
         response = client.post(
             "/apk",
+            headers=AUTHORIZED,
             data={"manifest": json.dumps(manifest)},
             files={"apk": ("alphapump-63.apk", content, "application/vnd.android.package-archive")},
         )
@@ -113,3 +126,54 @@ def test_publishing_sweeps_and_prunes(releases: Path):
     ]
     assert list(releases.glob("*.part")) == []
     assert json.loads((releases / "latest.json").read_text())["versionCode"] == 63
+
+
+def test_publishing_a_package_needs_the_token(releases: Path):
+    content = b"podlozony pakiet"
+    manifest = {
+        "versionCode": 99,
+        "versionName": "9.9.9",
+        "file": "alphapump-99.apk",
+        "size": len(content),
+        "md5": hashlib.md5(content).hexdigest(),
+        "sha256": hashlib.sha256(content).hexdigest(),
+    }
+    files = {"apk": ("alphapump-99.apk", content, "application/vnd.android.package-archive")}
+
+    with TestClient(update_server.app) as client:
+        anonymous = client.post("/apk", data={"manifest": json.dumps(manifest)}, files=files)
+        wrong = client.post(
+            "/apk",
+            headers={"Authorization": "Bearer nie-ten-token"},
+            data={"manifest": json.dumps(manifest)},
+            files=files,
+        )
+
+    assert anonymous.status_code == 401
+    assert wrong.status_code == 401
+    assert list(releases.glob("*.apk")) == []
+
+
+def test_publishing_is_refused_loudly_when_no_token_is_configured(
+    releases: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Unset means disabled, not open -- and says so, rather than 401-ing forever."""
+    monkeypatch.delenv(update_server.PUBLISH_TOKEN_VARIABLE)
+
+    with TestClient(update_server.app) as client:
+        response = client.post(
+            "/apk",
+            headers=AUTHORIZED,
+            data={"manifest": "{}"},
+            files={"apk": ("alphapump-1.apk", b"x", "application/octet-stream")},
+        )
+
+    assert response.status_code == 503
+    assert update_server.PUBLISH_TOKEN_VARIABLE in response.text
+
+
+def test_reading_the_current_release_stays_open(releases: Path):
+    """Phones read this without a token; only publishing is gated."""
+    with TestClient(update_server.app) as client:
+        assert client.get("/health").status_code == 200
+        assert client.get("/apk").status_code == 404

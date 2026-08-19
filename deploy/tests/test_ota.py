@@ -30,6 +30,17 @@ RUNTIME = "a1b2c3d4e5f6"
 BUNDLE_PATH = "_expo/static/js/android/entry-6f1c.hbc"
 
 
+PUBLISH_TOKEN = "testowy-token-wydawniczy"
+
+AUTHORIZED = {"Authorization": f"Bearer {PUBLISH_TOKEN}"}
+
+
+@pytest.fixture(autouse=True)
+def publishing_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Publishing is token-gated; without this every upload here would 503."""
+    monkeypatch.setenv(update_server.PUBLISH_TOKEN_VARIABLE, PUBLISH_TOKEN)
+
+
 @pytest.fixture
 def updates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     directory = tmp_path / "ota"
@@ -82,6 +93,7 @@ def publish(archive: bytes, runtime_version: str = RUNTIME, platform: str = "and
     with TestClient(update_server.app) as client:
         return client.post(
             "/ota",
+            headers=AUTHORIZED,
             data={"runtimeVersion": runtime_version, "platform": platform},
             files={"export": ("export.tar.gz", archive, "application/gzip")},
         )
@@ -262,3 +274,38 @@ def test_listing_reports_what_phones_are_offered(updates: Path):
 
     assert body["android"][RUNTIME]["id"] == pointer(updates)["id"]
     assert body["android"][RUNTIME]["assetCount"] == 1
+
+
+def test_publishing_a_package_needs_the_token(updates: Path):
+    """The property the `.apk` signature used to provide for free.
+
+    A package published by anyone but the release workflow simply would not
+    install, because Android checks its signature. An over-the-air update has no
+    such check -- the app runs whatever this directory offers -- so the token is
+    the only thing standing between VPN access and arbitrary code on every phone.
+    """
+    archive = build_export()
+
+    with TestClient(update_server.app) as client:
+        anonymous = client.post(
+            "/ota",
+            data={"runtimeVersion": RUNTIME, "platform": "android"},
+            files={"export": ("export.tar.gz", archive, "application/gzip")},
+        )
+        wrong = client.post(
+            "/ota",
+            headers={"Authorization": f"Bearer {PUBLISH_TOKEN}x"},
+            data={"runtimeVersion": RUNTIME, "platform": "android"},
+            files={"export": ("export.tar.gz", archive, "application/gzip")},
+        )
+
+    assert anonymous.status_code == 401
+    assert wrong.status_code == 401
+    assert list(updates.glob("**/*.json")) == []
+
+
+def test_reading_stays_open(updates: Path):
+    """Phones read manifests without a token; only publishing is gated."""
+    publish(build_export())
+    with TestClient(update_server.app) as client:
+        assert client.get("/ota").status_code == 200

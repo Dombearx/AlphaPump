@@ -296,9 +296,19 @@ jobs:
         if: ${{ env.PUBLIKUJ == 'true' }}
         env:
           ALPHAPUMP_UPDATE_SERVER_URL: ${{ secrets.ALPHAPUMP_UPDATE_SERVER_URL }}
+          # Dowód, że to wydanie idzie stąd, a nie od kogokolwiek innego w VPN.
+          # Przy paczce JavaScriptu jest to jedyny taki dowód: pakiet `.apk`
+          # broni się jeszcze podpisem sprawdzanym przez Androida, paczka nie ma
+          # czym — aplikacja uruchamia to, co serwer poda dla jej odcisku.
+          ALPHAPUMP_PUBLISH_TOKEN: ${{ secrets.ALPHAPUMP_PUBLISH_TOKEN }}
         run: |
           set -euo pipefail
           base="${ALPHAPUMP_UPDATE_SERVER_URL%/update}"
+
+          [ -n "${ALPHAPUMP_PUBLISH_TOKEN}" ] || {
+            echo "::error::Brak sekretu ALPHAPUMP_PUBLISH_TOKEN — serwer aktualizacji odrzuci wydanie." >&2
+            exit 1
+          }
 
           for i in $(seq 1 30); do
             curl -fsS -o /dev/null "${base}/health" && break
@@ -317,6 +327,7 @@ jobs:
           fi
 
           curl -fsS --max-time 300 \
+            -H "Authorization: Bearer ${ALPHAPUMP_PUBLISH_TOKEN}" \
             -F "runtimeVersion=${ODCISK}" \
             -F "platform=android" \
             -F "export=@export.tar.gz;type=application/gzip" \
@@ -554,12 +565,18 @@ jobs:
         if: ${{ env.PUBLIKUJ == 'true' }}
         env:
           ALPHAPUMP_UPDATE_SERVER_URL: ${{ secrets.ALPHAPUMP_UPDATE_SERVER_URL }}
+          ALPHAPUMP_PUBLISH_TOKEN: ${{ secrets.ALPHAPUMP_PUBLISH_TOKEN }}
           NAZWA: ${{ steps.plik.outputs.nazwa }}
         run: |
           set -euo pipefail
           # Sekret trzyma pełny adres z `/update` na końcu — pozostałe trasy
           # tego samego serwera wyliczamy z niego, żeby nie mnożyć sekretów.
           base="${ALPHAPUMP_UPDATE_SERVER_URL%/update}"
+
+          [ -n "${ALPHAPUMP_PUBLISH_TOKEN}" ] || {
+            echo "::error::Brak sekretu ALPHAPUMP_PUBLISH_TOKEN — serwer aktualizacji odrzuci wydanie." >&2
+            exit 1
+          }
 
           for i in $(seq 1 30); do
             curl -fsS -o /dev/null "${base}/health" && break
@@ -586,6 +603,7 @@ jobs:
           # `-F "pole=@plik"` — sam plik jako załącznik. Manifest jedzie więc
           # pierwszym zapisem, a APK drugim.
           curl -fsS --max-time 600 \
+            -H "Authorization: Bearer ${ALPHAPUMP_PUBLISH_TOKEN}" \
             -F "manifest=<wydanie/latest.json" \
             -F "apk=@wydanie/${NAZWA};type=application/vnd.android.package-archive" \
             "${base}/apk"
