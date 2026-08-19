@@ -5,8 +5,7 @@ Trzy przebiegi, każdy uruchamiany przez kogoś innego:
 * `run_daily()` — planista, raz na dobę. Czyta nowe zgłoszenia, klasyfikuje je
   i albo zakłada issue (błąd), albo otwiera dyskusję na Discordzie (zmiana).
 * `handle_mention()` — bot, gdy ktoś oznaczy go w wątku dyskusyjnym. Czyta całą
-  rozmowę i zamienia ustalenia w issue — albo odsyła do wątku pytania, na które
-  rozmowa nie odpowiedziała.
+  rozmowę i zamienia ustalenia w issue.
 * `poll_pull_requests()` — pętla co kilka minut. Dokleja link do PR-ki w wątku
   tego issue, którego PR-ka dotyczy.
 * `poll_issue_comments()` — ta sama pętla. Przekłada do wątku komentarze, które
@@ -34,11 +33,6 @@ logger = logging.getLogger(__name__)
 # kilkudziesięciu otwartych zgłoszeniach starsze i tak nie są już kandydatami,
 # a każde kosztuje miejsce w oknie kontekstu.
 DUPLICATE_CANDIDATE_LIMIT = 30
-
-# Ile pytań bot odsyła do wątku za jednym razem. Lista dłuższa niż kilka pozycji
-# przestaje być prośbą o rozstrzygnięcie, a staje się ankietą, na którą nikt nie
-# odpowiada — a rozmowa i tak wraca tu w kolejnej rundzie.
-MAX_OPEN_QUESTIONS = 5
 
 
 class TriageService:
@@ -296,11 +290,10 @@ class TriageService:
     async def handle_mention(self, thread_id: str) -> None:
         """Ktoś oznaczył bota w wątku — czas zamienić ustalenia w issue.
 
-        Chyba że ustalenia mają dziury. Issue z etykietą `ai-triage` uruchamia
-        agenta w Akcjach **od razu**, a agent nie ma jak dopytać — pytanie
-        zostawione w treści issue jest pytaniem zadanym w próżnię. Dlatego
-        brakujące rozstrzygnięcia wracają tam, gdzie są ludzie, i issue czeka na
-        kolejne oznaczenie.
+        Bez etapu dopytywania: rolą bota jest pośredniczyć między Discordem
+        a GitHubem, więc issue powstaje z tego, co w wątku padło, nawet gdy
+        rozmowa nie rozstrzygnęła wszystkiego. Czego nie ustalono, model opisuje
+        w treści issue, a dalsze ustalenia idą już w wątku albo pod issue.
         """
 
         discussion = self._state.discussion(thread_id)
@@ -329,24 +322,8 @@ class TriageService:
                 discussion.source_text,
                 discussion.reporter,
                 human_messages,
-                discussion.open_questions,
             ),
         )
-
-        questions = _as_question_list(data.get("open_questions"))
-        if questions:
-            # Zapis idzie przed wysłaniem: gdyby Discord odmówił, kolejna runda
-            # i tak zobaczy, o co bot już pytał, zamiast pytać od zera.
-            self._state.record_open_questions(thread_id, questions)
-            await self._chat.post_in_thread(
-                thread_id, prompts.open_questions_note(questions, self._chat.mention())
-            )
-            logger.info(
-                "dyskusja %s wraca do zespołu z %d pytaniami — issue jeszcze nie powstaje",
-                thread_id,
-                len(questions),
-            )
-            return
 
         title = str(data.get("title") or "").strip() or discussion.title
         body = str(data.get("body") or "").strip() or discussion.source_text
@@ -460,23 +437,6 @@ def _discussion_footer(discussion: Discussion, message_count: int) -> str:
         "<details><summary>Oryginalne zgłoszenie</summary>\n\n"
         f"```\n{discussion.source_text}\n```\n\n</details>"
     )
-
-
-def _as_question_list(value: object) -> list[str]:
-    """`open_questions` bywa listą, pojedynczym napisem albo `null`.
-
-    Puste napisy wypadają: model potrafi zwrócić `[""]` zamiast `[]`, a pusta
-    pozycja zatrzymałaby issue pytaniem, którego nikt nie zadał.
-    """
-
-    if isinstance(value, str):
-        items = [value]
-    elif isinstance(value, list):
-        items = [str(item) for item in value]
-    else:
-        return []
-    questions = [item.strip() for item in items if item.strip()]
-    return questions[:MAX_OPEN_QUESTIONS]
 
 
 def _as_optional_int(value: object) -> int | None:

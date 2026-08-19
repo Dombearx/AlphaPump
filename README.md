@@ -1114,14 +1114,10 @@ zgłoszenie z aplikacji  →  klasyfikacja (OpenRouter)
   wiadomość + wątek                                  │
   na Discordzie                            ktoś oznacza bota w wątku
         │                                            │
-        │                              ┌─────────────┴─────────────┐
-        │                    coś nierozstrzygnięte          wszystko jasne
-        │                              │                           │
-        │                   pytania wracają w wątek        issue na GitHubie
-        │                      (zespół odpowiada             (ai-triage +
-        │                    i oznacza bota znowu)           enhancement)
-        │                                                          │
-        └──────────────┬───────────────────────────────────────────┘
+        │                                   issue na GitHubie
+        │                              (ai-triage + enhancement)
+        │                                            │
+        └──────────────┬─────────────────────────────┘
                        │
         etykieta `ai-triage` uruchamia Claude Code w Akcjach
                        │
@@ -1138,14 +1134,14 @@ wymaga niczyjej decyzji, więc idzie prosto do naprawy. Prośba o zmianę wymaga
 ustalenia zakresu — a zakres ustala zespół w wątku, nie model na podstawie
 jednego zdania od użytkownika.
 
-**Pytania idą na Discorda, nie do issue.** Gdy po dyskusji zostaje coś, od czego
-zależy napisany kod, bot nie zakłada issue — wypisuje te pytania w wątku
-i czeka na kolejne oznaczenie. Powód jest mechaniczny: etykieta `ai-triage`
-uruchamia agenta w Akcjach natychmiast po założeniu issue, a agent nie ma jak
-dopytać, więc sekcja „Otwarte pytania" w treści byłaby pytaniem zadanym
-w próżnię — albo, gorzej, zaproszeniem do zgadywania. Zadane pytania zostają
-w stanie usługi, bo w kolejnej rundzie własne wypowiedzi bota wypadają
-z materiału dla modelu i odpowiedź „odrzucać" nie miałaby do czego się odnieść.
+**Bot nie dopytuje o szczegóły.** Po oznaczeniu w wątku issue powstaje od razu,
+także wtedy, gdy dyskusja czegoś nie rozstrzygnęła — rolą bota jest
+pośredniczyć między Discordem a GitHubem: założyć issue i odesłać link, a nie
+prowadzić rundy pytań. Czego zespół nie ustalił, model opisuje w treści issue
+jako nieustalone, zamiast zostawiać tam pytanie: etykieta `ai-triage` uruchamia
+agenta w Akcjach natychmiast po założeniu issue, a agent nie ma jak dopytać.
+Dalsze ustalenia idą w wątku albo w komentarzu pod issue — te i tak wracają na
+Discorda (patrz niżej).
 
 **Wykrywanie duplikatów.** Przed założeniem issue usługa pokazuje modelowi
 otwarte zgłoszenia z etykietą `ai-triage` i pyta, czy to ta sama sprawa. Duplikat
