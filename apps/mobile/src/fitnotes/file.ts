@@ -19,7 +19,12 @@
  * jej i przy kolejnym podejściu ta połowa wjechałaby drugi raz.
  */
 
-import { fitNotesNameKey, type FitNotesExportPlan, type FitNotesTarget } from '@alphapump/core';
+import {
+  fitNotesNameKey,
+  type FitNotesExportPlan,
+  type FitNotesLogEntry,
+  type FitNotesTarget,
+} from '@alphapump/core';
 
 export type FitNotesValue = string | number;
 
@@ -51,18 +56,21 @@ export interface FitNotesWriteReport {
 const REQUIRED_TABLES = ['category', 'exercise', 'training_log'];
 
 /**
- * Czyta z pliku to, od czego zależy plan: kategorie i ćwiczenia.
- *
- * Sprawdzenie tabel jest pierwsze, bo bez niego użytkownik, który wskazał zły
- * plik, zobaczyłby komunikat sterownika o nieistniejącej tabeli — a wskazanie
- * złego pliku jest tu pomyłką najbardziej prawdopodobną.
+ * Sprawdzenie tabel jest pierwsze przy każdym odczycie, bo bez niego użytkownik,
+ * który wskazał zły plik, zobaczyłby komunikat sterownika o nieistniejącej
+ * tabeli — a wskazanie złego pliku jest tu pomyłką najbardziej prawdopodobną.
  */
-export async function readFitNotesTarget(file: FitNotesDatabase): Promise<FitNotesTarget> {
+async function assertFitNotesBackup(file: FitNotesDatabase): Promise<void> {
   const tables = await file.all<{ name: string }>(
     "select name from sqlite_master where type = 'table'",
   );
   const present = new Set(tables.map((table) => table.name.toLowerCase()));
   if (!REQUIRED_TABLES.every((table) => present.has(table))) throw new NotAFitNotesBackupError();
+}
+
+/** Czyta z pliku to, od czego zależy plan eksportu: kategorie i ćwiczenia. */
+export async function readFitNotesTarget(file: FitNotesDatabase): Promise<FitNotesTarget> {
+  await assertFitNotesBackup(file);
 
   const categories = await file.all<{ id: number; name: string }>(
     'select _id as id, name from Category order by sort_order, name',
@@ -72,6 +80,28 @@ export async function readFitNotesTarget(file: FitNotesDatabase): Promise<FitNot
   );
 
   return { categories, exercises };
+}
+
+const SELECT_LOG =
+  'select e.name as exerciseName, c.name as categoryName, l.date as date, ' +
+  'l.metric_weight as metricWeight, l.reps as reps, l.distance as distance, ' +
+  'l.duration_seconds as durationSeconds ' +
+  'from training_log l ' +
+  'join exercise e on e._id = l.exercise_id ' +
+  'join Category c on c._id = e.category_id ' +
+  'order by l.date, l._id';
+
+/**
+ * Czyta cały dziennik z pliku — wpisy razem z nazwą ćwiczenia i jego kategorią.
+ *
+ * Złączenie jest wewnętrzne celowo: wpis wskazujący na nieistniejące ćwiczenie
+ * nie ma nazwy, a więc i tak nie miałby jak trafić do biblioteki. Kolejność jest
+ * chronologiczna, żeby serie z jednego dnia wylądowały w AlphaPump w tej samej
+ * kolejności, w której są w pliku.
+ */
+export async function readFitNotesLog(file: FitNotesDatabase): Promise<FitNotesLogEntry[]> {
+  await assertFitNotesBackup(file);
+  return file.all<FitNotesLogEntry>(SELECT_LOG);
 }
 
 const INSERT_EXERCISE = 'insert into exercise (name, category_id) values (?, ?)';
