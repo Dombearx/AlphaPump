@@ -1,6 +1,20 @@
 name: Wydanie na Androida
 
-# Buduje plik `.apk` i kładzie go na minipc, skąd biorą go telefony.
+# Wydaje aplikację na minipc, skąd biorą ją telefony — jedną z dwóch dróg.
+#
+# **Paczka JavaScriptu (OTA).** Zwykłe wydanie: kilka megabajtów, minuty
+# zamiast kwadransa gradle'a, aplikacja podmienia się sama. Tędy idzie wszystko,
+# co nie rusza warstwy natywnej — czyli prawie każda zmiana.
+#
+# **Pełny pakiet `.apk`.** Kilkadziesiąt megabajtów do pobrania przeglądarką
+# i zainstalowania ręcznie. Potrzebny wyłącznie wtedy, gdy ruszyła warstwa
+# natywna: podbicie SDK, nowa zależność z kodem natywnym, zmiana wtyczki
+# konfiguracyjnej.
+#
+# O tym, która to droga, nie decyduje człowiek ani lista ścieżek, tylko odcisk
+# warstwy natywnej (`runtimeVersion` z polityką `fingerprint`) porównany z tym,
+# który niesie wydanie stojące w tej chwili na minipc. Zadanie `plan` niżej robi
+# dokładnie to i nic więcej.
 #
 # Adres API jest **wkompilowany w wydanie**, a nie ustawiany po instalacji:
 # zmienne `EXPO_PUBLIC_*` wchodzą do bundla, a z adresu wyliczają się jeszcze
@@ -115,10 +129,218 @@ jobs:
             echo "wydawac=nie" >> "$GITHUB_OUTPUT"
           fi
 
-  apk:
-    name: Budowa pliku APK
+  # Odcisk warstwy natywnej dla tego commita i decyzja, co z niego wynika.
+  #
+  # Odcisk liczy `expo-updates` z konfiguracji i z wtyczek — ta sama wartość,
+  # którą aplikacja poda w nagłówku, pytając o manifest. Porównujemy ją
+  # z odciskiem wydania stojącego na minipc, bo to on mówi, co telefony mają
+  # **zainstalowane**: równe odciski znaczą, że paczka JavaScriptu wystarczy.
+  #
+  # Brak odpowiedzi z minipc znaczy „nie wiem" i wypada na `.apk`. Wydanie
+  # pełne jest wolniejsze, ale zawsze poprawne; paczka wydana pod nieznany
+  # odcisk kończy się aplikacją, która nie wstaje.
+  plan:
+    name: Odcisk warstwy natywnej
     needs: zmiany
     if: needs.zmiany.outputs.wydawac == 'tak'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      EXPO_PUBLIC_API_URL: ${{ inputs.api_url || vars.EXPO_PUBLIC_API_URL }}
+      EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ vars.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID }}
+      EXPO_PUBLIC_GOOGLE_SIGN_IN_ENABLED: ${{ vars.EXPO_PUBLIC_GOOGLE_SIGN_IN_ENABLED || 'false' }}
+      EXPO_NO_TELEMETRY: 1
+      DO_NOT_TRACK: 1
+
+    outputs:
+      odcisk: ${{ steps.odcisk.outputs.odcisk }}
+      wydanie: ${{ steps.decyzja.outputs.wydanie }}
+
+    steps:
+      - name: Sprawdź adres API
+        run: |
+          [ -n "${EXPO_PUBLIC_API_URL}" ] || {
+            echo "::error::Brak adresu API. Uruchom zadanie ręcznie z polem api_url albo ustaw zmienną repozytorium EXPO_PUBLIC_API_URL." >&2
+            exit 1
+          }
+
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Adres API wchodzi do konfiguracji, a konfiguracja wchodzi do odcisku —
+      # więc odcisk liczony z innym adresem byłby innym odciskiem. Zmienne są
+      # w `env:` zadania z tego właśnie powodu, a nie dla wygody.
+      - name: Policz odcisk
+        id: odcisk
+        working-directory: apps/mobile
+        run: |
+          set -euo pipefail
+          odcisk="$(npx expo-updates runtimeversion:resolve --platform android | jq -r .runtimeVersion)"
+          [ -n "$odcisk" ] && [ "$odcisk" != "null" ] || {
+            echo "::error::Nie udało się policzyć odcisku warstwy natywnej." >&2
+            exit 1
+          }
+          echo "odcisk=${odcisk}" >> "$GITHUB_OUTPUT"
+          echo "Odcisk tego commita: ${odcisk}"
+
+      - name: Wejdź do sieci NetBird
+        uses: hackiron/public-actions/netbird-connect@main
+        with:
+          setup-key: ${{ secrets.NETBIRD_ACCESS_KEY }}
+          hostname: github-actions-plan-alphapump
+          management-url: ${{ secrets.NETBIRD_MANAGEMENT_URL }}
+
+      - name: Rozstrzygnij, czy potrzebny jest nowy pakiet
+        id: decyzja
+        env:
+          ALPHAPUMP_UPDATE_SERVER_URL: ${{ secrets.ALPHAPUMP_UPDATE_SERVER_URL }}
+          ODCISK: ${{ steps.odcisk.outputs.odcisk }}
+        run: |
+          set -euo pipefail
+          base="${ALPHAPUMP_UPDATE_SERVER_URL%/update}"
+
+          # `GET /apk` oddaje manifest wydania stojącego na minipc. 404 znaczy
+          # „nikt jeszcze nic nie wydał", więc pierwszy przebieg buduje pakiet —
+          # nie ma czego aktualizować paczką.
+          wydane="$(curl -fsS --max-time 30 "${base}/apk" 2>/dev/null || echo '{}')"
+          poprzedni="$(printf '%s' "$wydane" | jq -r '.runtimeVersion // ""')"
+
+          echo "Odcisk wydania na minipc: ${poprzedni:-(brak)}"
+
+          if [ -n "$poprzedni" ] && [ "$poprzedni" = "$ODCISK" ]; then
+            echo "Warstwa natywna bez zmian — wystarczy paczka JavaScriptu."
+            echo "wydanie=ota" >> "$GITHUB_OUTPUT"
+          else
+            echo "Warstwa natywna inna niż wydana — potrzebny pełny pakiet."
+            echo "wydanie=apk" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Podsumowanie
+        run: |
+          {
+            echo "### Plan wydania"
+            echo
+            echo "- odcisk: \`${{ steps.odcisk.outputs.odcisk }}\`"
+            echo "- droga: **${{ steps.decyzja.outputs.wydanie }}**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Szybka ścieżka: sam JavaScript. Bez gradle'a, bez Javy, bez klucza
+  # podpisującego — bo nie powstaje tu nic, co system miałby instalować.
+  ota:
+    name: Wydanie paczki JavaScriptu
+    needs: [zmiany, plan]
+    if: needs.plan.outputs.wydanie == 'ota'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      EXPO_PUBLIC_API_URL: ${{ inputs.api_url || vars.EXPO_PUBLIC_API_URL }}
+      EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ vars.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID }}
+      EXPO_PUBLIC_GOOGLE_SIGN_IN_ENABLED: ${{ vars.EXPO_PUBLIC_GOOGLE_SIGN_IN_ENABLED || 'false' }}
+      PUBLIKUJ: ${{ github.event_name != 'workflow_dispatch' || inputs.opublikuj }}
+      ODCISK: ${{ needs.plan.outputs.odcisk }}
+      # Odcisk **przypięty**, nie liczony ponownie. Liczenie go drugi raz
+      # w innym zadaniu jest zaproszeniem do rozjazdu — a paczka opisana cudzą
+      # warstwą natywną to kod zbudowany dla innego pakietu, czyli awaria,
+      # której nie da się już naprawić zdalnie.
+      EXPO_UPDATES_FINGERPRINT_OVERRIDE: ${{ needs.plan.outputs.odcisk }}
+      EXPO_NO_TELEMETRY: 1
+      TURBO_TELEMETRY_DISABLED: 1
+      DO_NOT_TRACK: 1
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Metro rozwiązuje `@alphapump/core` i `@alphapump/db` do ich `dist/`,
+      # więc pakiety muszą być zbudowane, zanim zacznie pakować bundle.
+      - name: Zbuduj pakiety współdzielone
+        run: pnpm --filter "@alphapump/db..." run build
+
+      - name: Zbuduj paczkę
+        run: pnpm --filter @alphapump/mobile run build
+
+      - name: Spakuj wynik eksportu
+        run: tar -czf export.tar.gz -C apps/mobile/dist .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: alphapump-ota-${{ needs.plan.outputs.odcisk }}-${{ github.run_number }}
+          path: export.tar.gz
+          retention-days: 30
+
+      - name: Wejdź do sieci NetBird
+        if: ${{ env.PUBLIKUJ == 'true' }}
+        uses: hackiron/public-actions/netbird-connect@main
+        with:
+          setup-key: ${{ secrets.NETBIRD_ACCESS_KEY }}
+          hostname: github-actions-ota-alphapump
+          management-url: ${{ secrets.NETBIRD_MANAGEMENT_URL }}
+
+      - name: Wyślij paczkę na minipc
+        if: ${{ env.PUBLIKUJ == 'true' }}
+        env:
+          ALPHAPUMP_UPDATE_SERVER_URL: ${{ secrets.ALPHAPUMP_UPDATE_SERVER_URL }}
+        run: |
+          set -euo pipefail
+          base="${ALPHAPUMP_UPDATE_SERVER_URL%/update}"
+
+          for i in $(seq 1 30); do
+            curl -fsS -o /dev/null "${base}/health" && break
+            echo "Czekam na serwer aktualizacji..."
+            sleep 10
+            [ "$i" -lt 30 ] || { echo "::error::Serwer aktualizacji nie odpowiedział przez 5 minut"; exit 1; }
+          done
+
+          # Ten sam powód co przy `POST /apk`: `/update` robi `git pull`, ale nie
+          # przeładowuje samego siebie, więc po wdrożeniu dokładającym trasę
+          # serwer odpowiada na `/health` jak gdyby nigdy nic i zwraca 404 na
+          # nową trasę — co wygląda na błąd wydania, nie na nieodświeżony proces.
+          if ! curl -fsS --max-time 20 "${base}/openapi.json" | jq -e '.paths."/ota".post' >/dev/null; then
+            echo "::error::Serwer aktualizacji nie zna trasy POST /ota — chodzi na kodzie sprzed wdrożenia. Na minipc: sudo systemctl restart alphapump-update-server"
+            exit 1
+          fi
+
+          curl -fsS --max-time 300 \
+            -F "runtimeVersion=${ODCISK}" \
+            -F "platform=android" \
+            -F "export=@export.tar.gz;type=application/gzip" \
+            "${base}/ota"
+
+      - name: Podsumowanie
+        run: |
+          {
+            echo "### Paczka JavaScriptu"
+            echo
+            echo "- adres API: \`${EXPO_PUBLIC_API_URL}\`"
+            echo "- odcisk warstwy natywnej: \`${ODCISK}\`"
+            echo "- rozmiar: $(du -h export.tar.gz | cut -f1)"
+            if [ "${PUBLIKUJ}" = "true" ]; then
+              echo "- na minipc: wysłane, telefony pobiorą ją przy najbliższym otwarciu aplikacji"
+            else
+              echo "- na minipc: pominięte"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  apk:
+    name: Budowa pliku APK
+    needs: [zmiany, plan]
+    if: needs.plan.outputs.wydanie == 'apk'
     runs-on: ubuntu-latest
     # Gradle z projektem React Native jedzie długo przy zimnym cache'u.
     timeout-minutes: 90
@@ -138,6 +360,18 @@ jobs:
       # wydaniami, inaczej telefon odmówi aktualizacji. To także numer, po
       # którym aplikacja rozpoznaje, że `latest.json` opisuje coś nowszego.
       ANDROID_VERSION_CODE: ${{ github.run_number }}
+      # Odcisk warstwy natywnej policzony w zadaniu `plan`. Wchodzi do
+      # `latest.json`, dzięki czemu **następne** wydanie ma z czym porównać swój
+      # i rozstrzygnąć, czy wystarczy paczka JavaScriptu.
+      ODCISK: ${{ needs.plan.outputs.odcisk }}
+      # Ten sam odcisk **przypięty** dla budowy, i to jest konieczne, a nie
+      # ostrożnościowe: `plan` liczy go w projekcie zarządzanym, a tutaj
+      # `prebuild` tworzy katalog `android/` i odcisk zaczyna się liczyć z pliku
+      # natywnego projektu — czyli wychodzi inny. Pakiet niósłby wtedy jedną
+      # wartość, `latest.json` drugą, a następne wydanie porównałoby się z tą
+      # drugą i uznało, że wystarczy paczka. Telefony dostałyby paczkę zbudowaną
+      # dla warstwy, której nie mają.
+      EXPO_UPDATES_FINGERPRINT_OVERRIDE: ${{ needs.plan.outputs.odcisk }}
       # Ręczne uruchomienie może chcieć samego pliku, bez rozdawania go grupie.
       # Zapis przez `github.event_name` jest celowy: dla `push` `inputs.*` jest
       # pustym napisem, a ten w porównaniu z wartością logiczną wychodzi na
@@ -279,6 +513,11 @@ jobs:
           # pobraniu, bo tę sumę `expo-file-system` liczy natywnie.
           sha256sum "${nazwa}" > "${nazwa}.sha256"
 
+          # `runtimeVersion` jest tu **nie** dla telefonów — te odczytują swój
+          # odcisk z własnego pakietu. Jest dla następnego przebiegu tego
+          # workflow: to jedyne miejsce, w którym zapisany jest odcisk wydania,
+          # które ludzie naprawdę mają zainstalowane, a bez niego zadanie `plan`
+          # nie ma z czym porównać i każde wydanie musiałoby iść pełnym pakietem.
           jq -n \
             --argjson versionCode "${ANDROID_VERSION_CODE}" \
             --arg versionName "${APP_VERSION_NAME:-$(jq -r .version ../apps/mobile/package.json)}" \
@@ -286,9 +525,10 @@ jobs:
             --argjson size "$(stat -c%s "${nazwa}")" \
             --arg md5 "$(md5sum "${nazwa}" | cut -d' ' -f1)" \
             --arg sha256 "$(cut -d' ' -f1 "${nazwa}.sha256")" \
+            --arg runtimeVersion "${ODCISK}" \
             --arg releasedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --arg notes "$(git -C .. log -1 --pretty=%s)" \
-            '{versionCode:$versionCode, versionName:$versionName, file:$file, size:$size, md5:$md5, sha256:$sha256, releasedAt:$releasedAt, notes:$notes}' \
+            '{versionCode:$versionCode, versionName:$versionName, file:$file, size:$size, md5:$md5, sha256:$sha256, runtimeVersion:$runtimeVersion, releasedAt:$releasedAt, notes:$notes}' \
             > latest.json
 
           cat latest.json
@@ -371,6 +611,7 @@ jobs:
             echo
             echo "- adres API: \`${EXPO_PUBLIC_API_URL}\`"
             echo "- versionCode: \`${ANDROID_VERSION_CODE}\`"
+            echo "- odcisk warstwy natywnej: \`${ODCISK}\`"
             echo "- podpis: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && 'własny klucz' || '⚠️ klucz deweloperski — pliku nie rozdawaj' }}"
             if [ "${PUBLIKUJ}" = "true" ]; then
               echo "- na minipc: wysłane, telefony zobaczą je przy najbliższym otwarciu aplikacji"
