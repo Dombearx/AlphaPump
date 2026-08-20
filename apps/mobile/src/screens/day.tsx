@@ -14,13 +14,14 @@
 import { addDays, type IsoDate } from '@alphapump/core';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { Redirect, Stack, useRouter } from 'expo-router';
-import { useMemo } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { useCallback, useMemo } from 'react';
+import { PanResponder, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSession } from '../auth/client';
 import { db } from '../db/client';
 import { daySets, groupDaySets, localUser, type DayExerciseGroup } from '../db/queries';
 import { formatDaySubtitle, formatDayTitle, setsPlural, today as currentDay } from '../day-labels';
+import { shouldCaptureSwipe, swipeTargetDay } from '../day-swipe';
 import { formatSet } from '../measurements';
 import {
   Avatar,
@@ -47,12 +48,40 @@ export function DayScreen({ day }: { day: IsoDate }) {
   const account = useLiveQuery(localUser(db, userId));
   const nickname = account.data[0]?.nickname ?? session?.user.email ?? '';
 
+  const goToDay = useCallback(
+    (target: IsoDate) => {
+      router.push(target === today ? '/' : `/day/${target}`);
+    },
+    [router, today],
+  );
+
+  /**
+   * Przesunięcie palca zmienia dzień — ten sam ruch, którym przewija się
+   * kalendarz. Na gołym `PanResponder`, tak jak przeciąganie serii w widoku
+   * ćwiczenia: gest liczy się na wątku JS, bez workletów Reanimated, które
+   * w tym projekcie potrafiły skończyć czarnym ekranem bez śladu w logu.
+   *
+   * `…Capture` zamiast zwykłego `onMoveShouldSetPanResponder`, bo gest trzeba
+   * odebrać liście serii, zanim ta zacznie przewijać. Warunek jest wąski
+   * (patrz `day-swipe.ts`), więc przewijanie w pionie zostaje przewijaniem.
+   *
+   * Przejście nie ma własnej animacji: cały stos ma `animation: 'fade'` i to
+   * ono decyduje — dzień po swipie pojawia się tak samo szybko jak po strzałce.
+   */
+  const swipe = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponderCapture: (_event, gesture) => shouldCaptureSwipe(gesture),
+        onPanResponderRelease: (_event, gesture) => {
+          const target = swipeTargetDay(day, today, gesture);
+          if (target !== null) goToDay(target);
+        },
+      }),
+    [day, today, goToDay],
+  );
+
   if (isPending) return <Loading />;
   if (!session) return <Redirect href="/sign-in" />;
-
-  const goToDay = (target: IsoDate) => {
-    router.push(target === today ? '/' : `/day/${target}`);
-  };
 
   return (
     <SafeAreaView className="flex-1 bg-base" edges={['bottom']}>
@@ -100,58 +129,67 @@ export function DayScreen({ day }: { day: IsoDate }) {
         }}
       />
 
-      <ScrollView contentContainerClassName="gap-3 p-4 pb-24">
-        <View className="flex-row items-center justify-between">
-          <IconButton label="Previous day" glyph="‹" onPress={() => goToDay(addDays(day, -1))} />
+      {/* Gest łapiemy na opakowaniu listy, a nie na całym ekranie: pasek
+          „Add set" stoi poza nim i ma zostać nietykalny. */}
+      <View className="flex-1" {...swipe.panHandlers}>
+        <ScrollView contentContainerClassName="gap-3 p-4 pb-24">
+          <View className="flex-row items-center justify-between">
+            <IconButton label="Previous day" glyph="‹" onPress={() => goToDay(addDays(day, -1))} />
 
-          <View className="items-center">
-            <Text className="text-text">{formatDaySubtitle(day, today)}</Text>
-            <Text className="text-xs text-muted">
-              {total === 0 ? 'no sets' : `${String(total)} ${setsPlural(total)}`}
-            </Text>
+            <View className="items-center">
+              <Text className="text-text">{formatDaySubtitle(day, today)}</Text>
+              <Text className="text-xs text-muted">
+                {total === 0 ? 'no sets' : `${String(total)} ${setsPlural(total)}`}
+              </Text>
+            </View>
+
+            <IconButton
+              label="Next day"
+              glyph="›"
+              onPress={() => goToDay(addDays(day, 1))}
+              // Dopisywanie serii w przyszłość nie ma sensu — dzień się jeszcze
+              // nie wydarzył, a data z przyszłości psułaby podpowiedzi.
+              disabled={day >= today}
+            />
           </View>
 
-          <IconButton
-            label="Next day"
-            glyph="›"
-            onPress={() => goToDay(addDays(day, 1))}
-            // Dopisywanie serii w przyszłość nie ma sensu — dzień się jeszcze
-            // nie wydarzył, a data z przyszłości psułaby podpowiedzi.
-            disabled={day >= today}
-          />
-        </View>
+          {day !== today && (
+            <Button variant="secondary" label="Back to today" onPress={() => goToDay(today)} />
+          )}
 
-        {day !== today && (
-          <Button variant="secondary" label="Back to today" onPress={() => goToDay(today)} />
-        )}
-
-        {/* Biblioteka i cykle są jedno naciśnięcie od dnia, ale poniżej nawigacji
-            dnia — to dzień jest ekranem, po który sięga się w trakcie treningu. */}
-        <View className="flex-row gap-2">
-          <Button
-            grow
-            variant="secondary"
-            label="Exercises"
-            onPress={() => router.push('/library')}
-          />
-          <Button grow variant="secondary" label="Cycles" onPress={() => router.push('/cycles')} />
-        </View>
-
-        {groups.length === 0 ? (
-          <EmptyState
-            title="Nothing here yet"
-            hint="Pick an exercise and log the first set of the day."
-          />
-        ) : (
-          groups.map((group) => (
-            <ExerciseGroup
-              key={group.exerciseId}
-              group={group}
-              onPress={() => router.push(`/day/${day}/log/${group.exerciseId}`)}
+          {/* Biblioteka i cykle są jedno naciśnięcie od dnia, ale poniżej nawigacji
+              dnia — to dzień jest ekranem, po który sięga się w trakcie treningu. */}
+          <View className="flex-row gap-2">
+            <Button
+              grow
+              variant="secondary"
+              label="Exercises"
+              onPress={() => router.push('/library')}
             />
-          ))
-        )}
-      </ScrollView>
+            <Button
+              grow
+              variant="secondary"
+              label="Cycles"
+              onPress={() => router.push('/cycles')}
+            />
+          </View>
+
+          {groups.length === 0 ? (
+            <EmptyState
+              title="Nothing here yet"
+              hint="Pick an exercise and log the first set of the day."
+            />
+          ) : (
+            groups.map((group) => (
+              <ExerciseGroup
+                key={group.exerciseId}
+                group={group}
+                onPress={() => router.push(`/day/${day}/log/${group.exerciseId}`)}
+              />
+            ))
+          )}
+        </ScrollView>
+      </View>
 
       <View className="absolute inset-x-0 bottom-0 border-t border-border bg-base p-4">
         <SafeAreaView edges={['bottom']}>
