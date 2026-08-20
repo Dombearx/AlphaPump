@@ -207,20 +207,64 @@ jobs:
           set -euo pipefail
           base="${ALPHAPUMP_UPDATE_SERVER_URL%/update}"
 
-          # `GET /apk` oddaje manifest wydania stojącego na minipc. 404 znaczy
-          # „nikt jeszcze nic nie wydał", więc pierwszy przebieg buduje pakiet —
-          # nie ma czego aktualizować paczką.
-          wydane="$(curl -fsS --max-time 30 "${base}/apk" 2>/dev/null || echo '{}')"
-          poprzedni="$(printf '%s' "$wydane" | jq -r '.runtimeVersion // ""')"
+          # Czekamy, aż minipc będzie osiągalny, **zanim** o cokolwiek zapytamy.
+          #
+          # Bez tego kroku zapytanie leciało natychmiast po wejściu do NetBirda,
+          # zanim zdążyła się rozejść nazwa hosta — i kończyło się w kilkadziesiąt
+          # milisekund nieudanym rozwiązaniem nazwy. Ponieważ nieudane zapytanie
+          # wyglądało tak samo jak „nie ma jeszcze wydania", **każde** wydanie
+          # szło pełnym pakietem, bez śladu w logu mówiącego dlaczego. Kroki
+          # publikujące niżej mają tę pętlę od początku; tutaj jej brakowało.
+          osiagalny=nie
+          for i in $(seq 1 12); do
+            if curl -fsS --max-time 10 -o /dev/null "${base}/health"; then
+              osiagalny=tak
+              break
+            fi
+            echo "Czekam na serwer aktualizacji (${i}/12)..."
+            sleep 5
+          done
 
-          echo "Odcisk wydania na minipc: ${poprzedni:-(brak)}"
+          # `GET /apk` oddaje manifest wydania stojącego na minipc — to on mówi,
+          # co ludzie mają **zainstalowane**. 404 znaczy „nikt jeszcze nic nie
+          # wydał"; brak pola `runtimeVersion` znaczy wydanie sprzed wprowadzenia
+          # odcisków. Wszystkie trzy przypadki kończą się pełnym pakietem, ale
+          # **każdy mówi o sobie osobno**: cicha porażka tego kroku wyłącza OTA
+          # na zawsze i nie ma tego po czym poznać.
+          poprzedni=""
+          if [ "$osiagalny" = "tak" ]; then
+            kod="$(curl -sS --max-time 30 -o /tmp/wydane.json -w '%{http_code}' "${base}/apk" || echo 000)"
+            if [ "$kod" = "200" ]; then
+              poprzedni="$(jq -r '.runtimeVersion // ""' /tmp/wydane.json)"
+              powod="$([ -n "$poprzedni" ] && echo "odcisk odczytany" || echo "wydanie na minipc nie niesie odcisku (sprzed tej zmiany)")"
+            elif [ "$kod" = "404" ]; then
+              powod="na minipc nie ma jeszcze żadnego wydania"
+            else
+              powod="serwer aktualizacji odpowiedział ${kod} na GET /apk"
+            fi
+          else
+            powod="minipc nieosiągalny — NetBird nie zdążył albo serwer nie odpowiada"
+          fi
+
+          echo "Odcisk tego commita:      ${ODCISK}"
+          echo "Odcisk wydania na minipc: ${poprzedni:-(brak)} — ${powod}"
 
           if [ -n "$poprzedni" ] && [ "$poprzedni" = "$ODCISK" ]; then
             echo "Warstwa natywna bez zmian — wystarczy paczka JavaScriptu."
             echo "wydanie=ota" >> "$GITHUB_OUTPUT"
           else
-            echo "Warstwa natywna inna niż wydana — potrzebny pełny pakiet."
+            echo "Potrzebny pełny pakiet."
             echo "wydanie=apk" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Powód trafia do podsumowania, żeby „czemu znowu pełny pakiet?"
+          # dało się odpowiedzieć z listy przebiegów, bez wchodzenia w logi.
+          echo "powod=${powod}" >> "$GITHUB_OUTPUT"
+
+          # Nieosiągalny minipc to nie jest normalny stan i nie ma prawa
+          # przechodzić niezauważony — wydanie się uda, ale z ostrzeżeniem.
+          if [ "$osiagalny" != "tak" ]; then
+            echo "::warning::Nie dobiłem się do serwera aktualizacji, więc wydanie idzie pełnym pakietem mimo że mogła wystarczyć paczka."
           fi
 
       - name: Podsumowanie
@@ -230,6 +274,7 @@ jobs:
             echo
             echo "- odcisk: \`${{ steps.odcisk.outputs.odcisk }}\`"
             echo "- droga: **${{ steps.decyzja.outputs.wydanie }}**"
+            echo "- podstawa decyzji: ${{ steps.decyzja.outputs.powod }}"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # Szybka ścieżka: sam JavaScript. Bez gradle'a, bez Javy, bez klucza
