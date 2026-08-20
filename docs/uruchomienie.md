@@ -5,6 +5,15 @@ aplikacji. Zakłada, że minipc jest widoczny w NetBirdzie pod
 `domin-server.iron.sq` — jeśli adres jest inny, podstaw swój **wszędzie**, bo
 wchodzi w trzy różne miejsca i musi być w nich identyczny.
 
+**Adres niesie port, jeśli `HTTP_PORT` w `deploy/.env` nie jest osiemdziesiątką.**
+Adresy w tym dokumencie zapisane są bez portu, bo `deploy/.env.example` ustawia
+`HTTP_PORT=80`. Przy `HTTP_PORT=10000` każdy z nich brzmi
+`http://domin-server.iron.sq:10000/…` — łącznie z `EXPO_PUBLIC_API_URL`,
+`BETTER_AUTH_URL`, katalogiem wydań i panelem. Port pominięty w adresie API jest
+pomyłką, której nie widać: aplikacja zbuduje się, zainstaluje, uruchomi i nie
+połączy z niczym, bo adres jest **wkompilowany w pakiet** i nie da się go
+poprawić po instalacji.
+
 Szczegóły i uzasadnienia są w `README.md`; tutaj jest sama kolejność.
 
 ## Gdzie co trafia
@@ -96,7 +105,7 @@ Zakładka **Variables**:
 
 | Zmienna | Wartość |
 | ------- | ------- |
-| `EXPO_PUBLIC_API_URL` | `http://domin-server.iron.sq` |
+| `EXPO_PUBLIC_API_URL` | `http://domin-server.iron.sq` — **z portem**, jeśli `HTTP_PORT` nie jest osiemdziesiątką |
 
 Logowania Google **nie ustawiaj** — jest domyślnie wyłączone i nic nie wymaga.
 
@@ -136,7 +145,7 @@ Uzupełnij `deploy/.env`:
 | ------- | ---------- |
 | `POSTGRES_PASSWORD` | `openssl rand -base64 32` |
 | `BETTER_AUTH_SECRET` | `openssl rand -base64 48` — od razu docelowy, jego zmiana wylogowuje wszystkich |
-| `BETTER_AUTH_URL` | `http://domin-server.iron.sq` — **musi** równać się `EXPO_PUBLIC_API_URL` |
+| `BETTER_AUTH_URL` | `http://domin-server.iron.sq` — **musi** równać się `EXPO_PUBLIC_API_URL`, razem z portem |
 | `TRUSTED_ORIGINS` | `alphapump://` (jest we wzorze) |
 | `OPENROUTER_API_KEY` | [openrouter.ai](https://openrouter.ai) → *Keys*. Puste = wykrywanie duplikatów liczone z samej pisowni; dla API i panelu to poprawny stan, nie błąd — ale segregacja zgłoszeń bez niego nie wstanie |
 

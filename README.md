@@ -718,7 +718,13 @@ jedyny stan, w którym „zrestartowałem po aktualizacji, a zmiany nie widać" 
 awarią, a nie nieporozumieniem — i bez tego wiersza wygląda dokładnie jak
 zwykły start. Odkręca go dopiero nowsze wydanie.
 
-Pod spodem stoi to, co `expo-updates` zrobił od uruchomienia aplikacji: paczka
+Pod adresem wersji stoi adres serwera, z którym ten pakiet umie rozmawiać.
+Jest **wkompilowany** i nie da się go poprawić po instalacji, a pomyłka w nim —
+choćby o brakujący port — daje aplikację, która instaluje się i uruchamia
+normalnie, tylko nie łączy z niczym. Wypisany na ekranie zamienia godzinę
+szukania w jedno spojrzenie.
+
+Niżej stoi to, co `expo-updates` zrobił od uruchomienia aplikacji: paczka
 pobrana i czekająca na restart (z własną datą, **inną** niż data paczki
 uruchomionej), oraz nieudane sprawdzenie albo pobranie, każde osobno. Zestawienie
 obu dat jest tu całym sensem. Okno „paczka gotowa, zrestartuj" wracające przy

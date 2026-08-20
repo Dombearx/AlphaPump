@@ -16,6 +16,7 @@ import { Redirect, Stack, useRouter } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { signOut, useSession } from '../src/auth/client';
+import { appConfig } from '../src/config/index';
 import { today } from '../src/day-labels';
 import { db } from '../src/db/client';
 import { localUser } from '../src/db/queries';
@@ -120,6 +121,12 @@ export default function AccountRoute() {
           {running.detail.length > 0 && (
             <Text className="text-xs text-muted">{running.detail}</Text>
           )}
+
+          {/* Adres serwera jest **wkompilowany w pakiet** i nie da się go
+              poprawić po instalacji, a pomyłka w nim — choćby o port — daje
+              aplikację, która wygląda poprawnie i nie łączy się z niczym.
+              Wypisany tutaj zamienia to w rzecz widoczną od razu. */}
+          <Text className="mt-1 text-xs text-muted">Server {appConfig.apiUrl}</Text>
           {running.warning !== null && <Text className="mt-1 text-danger">{running.warning}</Text>}
 
           {/* Paczka uruchomiona i paczka czekająca to dwie różne rzeczy —

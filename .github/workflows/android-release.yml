@@ -46,8 +46,16 @@ on:
   workflow_dispatch:
     inputs:
       api_url:
-        description: 'Adres API w VPN, np. http://domin-server.iron.sq'
-        required: true
+        # Puste, i tak ma zostać w zwykłym wydaniu ręcznym.
+        #
+        # Adres jest **wkompilowany w pakiet** i wchodzi do odcisku warstwy
+        # natywnej, a wpisany z palca różni się od tego, którym jadą wydania
+        # z `main`, przy pierwszej pomyłce — choćby o port. Skutkiem jest
+        # aplikacja, która wygląda poprawnie, nie łączy się z niczym i ma
+        # własny odcisk, więc nie dostanie też żadnej paczki OTA. Pole zostaje
+        # wyłącznie dla wydania celowanego gdzie indziej.
+        description: 'Adres API w VPN. Puste = zmienna repozytorium EXPO_PUBLIC_API_URL (tak ma być)'
+        required: false
         type: string
       opublikuj:
         description: 'Wysłać wydanie na minipc po zbudowaniu'
