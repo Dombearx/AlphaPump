@@ -59,6 +59,11 @@ on:
         required: false
         default: false
         type: boolean
+      wymus_apk:
+        description: 'Wymuś pełny pakiet .apk, nawet gdy wystarczyłaby paczka JavaScriptu'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: android-release-${{ github.ref }}
@@ -203,9 +208,26 @@ jobs:
         env:
           ALPHAPUMP_UPDATE_SERVER_URL: ${{ secrets.ALPHAPUMP_UPDATE_SERVER_URL }}
           ODCISK: ${{ steps.odcisk.outputs.odcisk }}
+          WYMUS_APK: ${{ inputs.wymus_apk || false }}
         run: |
           set -euo pipefail
           base="${ALPHAPUMP_UPDATE_SERVER_URL%/update}"
+
+          # Wyjście awaryjne, i jedyne, jakie jest.
+          #
+          # Odcisk rozstrzyga poprawnie o tym, czy paczka **pasuje** do warstwy
+          # natywnej — ale nie o tym, czy telefon umie ją uruchomić. Gdy paczki
+          # przestają wstawać, telefon zostaje na kodzie z pakietu, a każde
+          # kolejne wydanie idzie paczką, bo odcisk dalej się zgadza. Bez tego
+          # przełącznika nie ma jak dostarczyć czegokolwiek: droga naprawcza
+          # prowadziłaby przez sztuczną zmianę warstwy natywnej albo skasowanie
+          # wydania na minipc, żeby `GET /apk` oddał 404.
+          if [ "${WYMUS_APK}" = "true" ]; then
+            echo "Wymuszono pełny pakiet — pomijam porównanie odcisków."
+            echo "wydanie=apk" >> "$GITHUB_OUTPUT"
+            echo "powod=wymuszone ręcznie przy uruchomieniu zadania" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           # Czekamy, aż minipc będzie osiągalny, **zanim** o cokolwiek zapytamy.
           #

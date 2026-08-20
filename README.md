@@ -718,6 +718,24 @@ jedyny stan, w którym „zrestartowałem po aktualizacji, a zmiany nie widać" 
 awarią, a nie nieporozumieniem — i bez tego wiersza wygląda dokładnie jak
 zwykły start. Odkręca go dopiero nowsze wydanie.
 
+Pod spodem stoi to, co `expo-updates` zrobił od uruchomienia aplikacji: paczka
+pobrana i czekająca na restart (z własną datą, **inną** niż data paczki
+uruchomionej), oraz nieudane sprawdzenie albo pobranie, każde osobno. Zestawienie
+obu dat jest tu całym sensem. Okno „paczka gotowa, zrestartuj" wracające przy
+**każdym** uruchomieniu znaczy, że paczka pobiera się od nowa za każdym razem,
+czyli że poprzednia nigdy nie została uruchomiona — a bez dwóch dat obok siebie
+wygląda to jak zwykła aktualizacja, która „się nie przyjęła".
+
+##### Gdy paczka nie wstaje
+
+Odcisk rozstrzyga o tym, czy paczka **pasuje** do warstwy natywnej — nie o tym,
+czy telefon umie ją uruchomić. Gdy paczki przestają wstawać, telefon zostaje na
+kodzie wbudowanym w pakiet, a każde kolejne wydanie i tak idzie paczką, bo
+odcisk dalej się zgadza. Wyjściem jest pełny pakiet, a do tego służy pole
+**`wymus_apk`** przy ręcznym uruchomieniu `android-release.yml`: pomija
+porównanie odcisków i buduje `.apk`. Bez niego trzeba by sztucznie ruszyć
+warstwę natywną albo skasować wydanie na minipc, żeby `GET /apk` oddał 404.
+
 Od strony minipc to samo widać bez telefonu: `GET /ota` na serwerze
 aktualizacji wypisuje, co jest w tej chwili podawane dla każdego odcisku
 (identyfikator, `createdAt`, liczba plików), a `GET /apk` — jaki pakiet stoi

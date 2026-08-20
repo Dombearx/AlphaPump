@@ -47,6 +47,39 @@ export interface RunningBundle {
   emergencyReason: string | null;
 }
 
+/**
+ * Paczka pobrana i czekająca na restart. Osobno od `RunningBundle`, bo to są
+ * dwie **różne** paczki — i dopiero zestawienie ich obok siebie odpowiada na
+ * pytanie „zrestartowałem, to czemu nic się nie zmieniło?".
+ */
+export interface PendingUpdate {
+  createdAt: Date | null;
+  updateId: string | null;
+}
+
+/** Co `expo-updates` zrobił od uruchomienia aplikacji. */
+export interface UpdateActivity {
+  /** Paczka gotowa do uruchomienia; `null`, gdy nic nie czeka. */
+  pending: PendingUpdate | null;
+  /** Nieudane pytanie o manifest — zwykle minipc poza zasięgiem. */
+  checkError: string | null;
+  /** Nieudane pobranie paczki. */
+  downloadError: string | null;
+}
+
+export interface UpdateActivityDescription {
+  /** Zdanie o paczce czekającej na restart; `null`, gdy nic nie czeka. */
+  waiting: string | null;
+  /**
+   * Zdanie o paczce, która czeka, choć chodzi kod z pakietu. Po restarcie
+   * powinno zniknąć — jeśli nie znika, paczka nie wstaje i to jest awaria,
+   * a nie nieporozumienie.
+   */
+  stuck: string | null;
+  /** Nieudane próby; pusta lista, gdy wszystko poszło. */
+  problems: string[];
+}
+
 export interface RunningBundleDescription {
   /** „0.2.0 (57)" — wersja pakietu, ta z ustawień systemu. */
   version: string;
@@ -123,4 +156,44 @@ function formatDetail(bundle: RunningBundle): string {
   if (bundle.updateId !== null) parts.push(`bundle ${shorten(bundle.updateId)}`);
   if (bundle.runtimeVersion !== null) parts.push(`native layer ${shorten(bundle.runtimeVersion)}`);
   return parts.join(' · ');
+}
+
+/**
+ * Co słychać po stronie aktualizacji — do wypisania pod wersją.
+ *
+ * Powstało z objawu, którego samo „co chodzi" nie tłumaczy: okno „paczka
+ * gotowa, zrestartuj" wracające przy **każdym** uruchomieniu. Znaczy ono, że
+ * paczka pobiera się od nowa za każdym razem, czyli że poprzednia nigdy nie
+ * została uruchomiona — a tego nie widać, dopóki na ekranie nie stoją obok
+ * siebie data paczki uruchomionej i data paczki czekającej.
+ */
+export function describeUpdateActivity(
+  activity: UpdateActivity,
+  bundle: RunningBundle,
+  today: IsoDate,
+): UpdateActivityDescription {
+  const problems: string[] = [];
+  if (activity.checkError !== null) problems.push(`Last check failed: ${activity.checkError}`);
+  if (activity.downloadError !== null)
+    problems.push(`Last download failed: ${activity.downloadError}`);
+
+  return {
+    waiting: activity.pending === null ? null : formatWaiting(activity.pending, today),
+    stuck:
+      activity.pending !== null && bundle.embedded
+        ? 'A bundle is waiting while the built-in one is running. If that is still true right ' +
+          'after a restart, the downloaded bundle is failing to start and every launch downloads ' +
+          'it again.'
+        : null,
+    problems,
+  };
+}
+
+function formatWaiting(pending: PendingUpdate, today: IsoDate): string {
+  const when =
+    pending.createdAt === null
+      ? 'A bundle'
+      : `A bundle from ${formatBundleTime(pending.createdAt, today)}`;
+  const which = pending.updateId === null ? '' : ` (${shorten(pending.updateId)})`;
+  return `${when}${which} is downloaded and waiting for a restart.`;
 }

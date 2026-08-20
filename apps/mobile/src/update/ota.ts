@@ -23,7 +23,7 @@
  */
 
 import * as Updates from 'expo-updates';
-import type { RunningBundle } from './running';
+import type { RunningBundle, UpdateActivity } from './running';
 
 export interface OtaState {
   /** Paczka pobrana i gotowa — zostaje uruchomić ponownie. */
@@ -68,5 +68,29 @@ export function useRunningPackage(): RunningPackage {
     runtimeVersion: currentlyRunning.runtimeVersion ?? null,
     emergency: currentlyRunning.isEmergencyLaunch,
     emergencyReason: currentlyRunning.emergencyLaunchReason,
+  };
+}
+
+/**
+ * Stan aktualizacji od uruchomienia aplikacji — do wypisania na ekranie konta.
+ *
+ * Osobno od `useOtaUpdate`, bo to nie jest to samo pytanie: tam chodzi o to,
+ * czy pokazać okno, tutaj o to, **dlaczego** okno wraca. Pobrana paczka i
+ * paczka uruchomiona to dwie różne rzeczy i dopiero zestawione obok siebie
+ * mówią, czy restart cokolwiek zmienił.
+ */
+export function useUpdateActivity(): UpdateActivity {
+  const { downloadedUpdate, isUpdatePending, checkError, downloadError } = Updates.useUpdates();
+
+  return {
+    pending:
+      isUpdatePending && downloadedUpdate !== undefined
+        ? {
+            createdAt: downloadedUpdate.createdAt,
+            updateId: downloadedUpdate.updateId ?? null,
+          }
+        : null,
+    checkError: checkError?.message ?? null,
+    downloadError: downloadError?.message ?? null,
   };
 }

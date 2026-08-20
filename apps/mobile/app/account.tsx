@@ -21,7 +21,8 @@ import { db } from '../src/db/client';
 import { localUser } from '../src/db/queries';
 import { describeSync } from '../src/sync/describe';
 import { useSyncEngine, useSyncSnapshot } from '../src/sync/provider';
-import { describeRunningBundle } from '../src/update/running';
+import { useUpdateActivity } from '../src/update/ota';
+import { describeRunningBundle, describeUpdateActivity } from '../src/update/running';
 import { useRunningBundle } from '../src/update/use-update';
 import { Button, Card, Loading, SectionTitle } from '../src/ui/primitives';
 
@@ -33,12 +34,14 @@ export default function AccountRoute() {
 
   const account = useLiveQuery(localUser(db, session?.user.id ?? ''));
   const bundle = useRunningBundle();
+  const activity = useUpdateActivity();
 
   if (isPending) return <Loading />;
   if (!session) return <Redirect href="/sign-in" />;
 
   const description = describeSync(snapshot);
   const running = describeRunningBundle(bundle, today());
+  const updates = describeUpdateActivity(activity, bundle, today());
 
   return (
     <SafeAreaView className="flex-1 bg-base" edges={['bottom']}>
@@ -118,6 +121,17 @@ export default function AccountRoute() {
             <Text className="text-xs text-muted">{running.detail}</Text>
           )}
           {running.warning !== null && <Text className="mt-1 text-danger">{running.warning}</Text>}
+
+          {/* Paczka uruchomiona i paczka czekająca to dwie różne rzeczy —
+              i dopiero obok siebie tłumaczą okno „gotowa, zrestartuj"
+              wracające przy każdym uruchomieniu. */}
+          {updates.waiting !== null && <Text className="mt-2 text-muted">{updates.waiting}</Text>}
+          {updates.stuck !== null && <Text className="mt-1 text-danger">{updates.stuck}</Text>}
+          {updates.problems.map((problem) => (
+            <Text key={problem} className="mt-1 text-xs text-muted">
+              {problem}
+            </Text>
+          ))}
         </Card>
 
         <Button variant="danger" label="Sign out" onPress={() => void signOut()} />

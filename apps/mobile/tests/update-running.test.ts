@@ -9,7 +9,12 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { describeRunningBundle, type RunningBundle } from '../src/update/running';
+import {
+  describeRunningBundle,
+  describeUpdateActivity,
+  type RunningBundle,
+  type UpdateActivity,
+} from '../src/update/running';
 
 const TODAY = '2026-08-20';
 
@@ -103,5 +108,68 @@ describe('describeRunningBundle', () => {
       emergencyReason: 'Failed to load JS bundle',
     });
     expect(describeRunningBundle(fallback, TODAY).warning).toContain('Failed to load JS bundle');
+  });
+});
+
+describe('describeUpdateActivity', () => {
+  const RUNNING_EMBEDDED: RunningBundle = {
+    ...BASE,
+    embedded: true,
+    createdAt: null,
+    updateId: null,
+  };
+
+  const QUIET: UpdateActivity = { pending: null, checkError: null, downloadError: null };
+
+  it('nic nie czeka i nic nie padło — nie ma o czym mówić', () => {
+    const description = describeUpdateActivity(QUIET, BASE, TODAY);
+    expect(description.waiting).toBeNull();
+    expect(description.stuck).toBeNull();
+    expect(description.problems).toEqual([]);
+  });
+
+  it('paczka czekająca niesie swoją datę, żeby dało się ją odróżnić od uruchomionej', () => {
+    const waiting = describeUpdateActivity(
+      {
+        ...QUIET,
+        pending: { createdAt: new Date(2026, 7, 20, 20, 53), updateId: '9f2c1b7a-4d3e-4c1a' },
+      },
+      BASE,
+      TODAY,
+    ).waiting;
+
+    expect(waiting).toBe(
+      'A bundle from 20 August, 20:53 (9f2c1b7a-4d3…) is downloaded and waiting for a restart.',
+    );
+  });
+
+  it('paczka czekająca przy uruchomionym kodzie z pakietu to ten podejrzany stan', () => {
+    const description = describeUpdateActivity(
+      { ...QUIET, pending: { createdAt: new Date(2026, 7, 20, 20, 53), updateId: null } },
+      RUNNING_EMBEDDED,
+      TODAY,
+    );
+    expect(description.stuck).toContain('failing to start');
+  });
+
+  it('ta sama paczka przy uruchomionej paczce pobranej niczego nie podejrzewa', () => {
+    const description = describeUpdateActivity(
+      { ...QUIET, pending: { createdAt: new Date(2026, 7, 20, 20, 53), updateId: null } },
+      BASE,
+      TODAY,
+    );
+    expect(description.stuck).toBeNull();
+  });
+
+  it('nieudane sprawdzenie i nieudane pobranie mówią o sobie osobno', () => {
+    const description = describeUpdateActivity(
+      { pending: null, checkError: 'Network request failed', downloadError: 'Timed out' },
+      BASE,
+      TODAY,
+    );
+    expect(description.problems).toEqual([
+      'Last check failed: Network request failed',
+      'Last download failed: Timed out',
+    ]);
   });
 });
