@@ -23,6 +23,7 @@
  */
 
 import * as Updates from 'expo-updates';
+import type { RunningBundle } from './running';
 
 export interface OtaState {
   /** Paczka pobrana i gotowa — zostaje uruchomić ponownie. */
@@ -43,5 +44,29 @@ export function useOtaUpdate(): OtaState {
         // dysku, więc `expo-updates` uruchomi ją przy następnym otwarciu.
       });
     },
+  };
+}
+
+/**
+ * Paczka, na której aplikacja chodzi w tej chwili — bez części pochodzącej
+ * z pakietu (`versionName`, `versionCode`), bo tę wie `expo.ts`. Składa jedno
+ * z drugim `use-update.ts`.
+ *
+ * Zamiana `undefined` na `null` nie jest kosmetyką: `expo-updates` oddaje
+ * `undefined` w każdym środowisku, w którym jest wyłączony — czyli u dewelopera
+ * — a `running.ts` ma jeden przypadek „nie wiadomo" zamiast dwóch.
+ */
+export type RunningPackage = Omit<RunningBundle, 'versionName' | 'versionCode'>;
+
+export function useRunningPackage(): RunningPackage {
+  const { currentlyRunning } = Updates.useUpdates();
+
+  return {
+    embedded: currentlyRunning.isEmbeddedLaunch,
+    createdAt: currentlyRunning.createdAt ?? null,
+    updateId: currentlyRunning.updateId ?? null,
+    runtimeVersion: currentlyRunning.runtimeVersion ?? null,
+    emergency: currentlyRunning.isEmergencyLaunch,
+    emergencyReason: currentlyRunning.emergencyLaunchReason,
   };
 }

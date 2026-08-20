@@ -29,6 +29,7 @@ import { appConfig } from '../config/index';
 import {
   dismissedVersionCode,
   installedVersionCode,
+  installedVersionName,
   openRelease,
   rememberDismissedVersion,
 } from './expo';
@@ -38,7 +39,8 @@ import {
   releaseUrl,
   type UpdateManifest,
 } from './manifest';
-import { useOtaUpdate } from './ota';
+import { useOtaUpdate, useRunningPackage } from './ota';
+import type { RunningBundle } from './running';
 
 /** Najkrótszy odstęp między sprawdzeniami — powrót na wierzch bywa częsty. */
 const CHECK_INTERVAL_MS = 15 * 60 * 1000;
@@ -145,4 +147,24 @@ export function useUpdateCheck(): UpdateState {
   }, [stage]);
 
   return { stage, confirm, dismiss };
+}
+
+/**
+ * Co w tej chwili chodzi na telefonie — pakiet i paczka razem.
+ *
+ * Dwie warstwy, bo dwa źródła: numer wydania niesie sam pakiet (`expo.ts`),
+ * a to, czy chodzi kod z pakietu, czy pobrany później, wie `expo-updates`
+ * (`ota.ts`). Dla pytającego „mam najnowszą wersję?" jest to jedna odpowiedź,
+ * więc składa się ją tutaj, tak samo jak dwie drogi aktualizacji wyżej.
+ *
+ * Opis do pokazania robi z tego `running.ts` — czysty i przetestowany.
+ */
+export function useRunningBundle(): RunningBundle {
+  const running = useRunningPackage();
+
+  return {
+    ...running,
+    versionName: installedVersionName(),
+    versionCode: installedVersionCode(),
+  };
 }

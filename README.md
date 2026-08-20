@@ -701,6 +701,28 @@ z wydaniem natywnym, do którego nikt jeszcze nie wypuścił poprawki. Aplikacja
 uruchamia wtedy paczkę wbudowaną w `.apk`. Tak samo kończy się uszkodzony opis
 wydania — i to jest celowe, bo alternatywą byłaby aplikacja, która nie wstaje.
 
+##### Co właściwie chodzi na telefonie
+
+Sekcja **Version** na ekranie konta. Numer pakietu (`versionName` i
+`versionCode`) sam z siebie **niczego tu nie rozstrzyga**: wydanie OTA go nie
+rusza, bo pakiet zostaje ten sam. Rozstrzyga wiersz niżej — data i godzina
+powstania paczki, którą aplikacja w tej chwili wykonuje. Porównuje się ją
+z czasem zadania „Wydanie paczki JavaScriptu" w przebiegu wydania i wiadomo,
+czy telefon dostał to, co wyszło. Obok stoją skrócony identyfikator paczki
+i odcisk warstwy natywnej — ten drugi mówi, **które** paczki w ogóle tu
+dojadą.
+
+Osobno wypisany jest start awaryjny: `expo-updates` wraca wtedy do paczki
+wbudowanej w pakiet, bo pobrana nie wstała, i więcej jej nie uruchomi. To
+jedyny stan, w którym „zrestartowałem po aktualizacji, a zmiany nie widać" jest
+awarią, a nie nieporozumieniem — i bez tego wiersza wygląda dokładnie jak
+zwykły start. Odkręca go dopiero nowsze wydanie.
+
+Od strony minipc to samo widać bez telefonu: `GET /ota` na serwerze
+aktualizacji wypisuje, co jest w tej chwili podawane dla każdego odcisku
+(identyfikator, `createdAt`, liczba plików), a `GET /apk` — jaki pakiet stoi
+w katalogu wydań.
+
 Kod: `apps/mobile/src/update/` (`manifest.ts` — kształt i porównanie wersji
 wydania natywnego, `ota.ts` i `expo.ts` — jedyne warstwy dotykające systemu,
 `use-update.ts` — wpięcie w cykl życia) i `src/ui/update-prompt.tsx`; po stronie

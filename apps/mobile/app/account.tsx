@@ -4,6 +4,11 @@
  * Ekran jest celowo ubogi: nick, adres, stan synchronizacji i wylogowanie.
  * Wszystko, co dotyczy treningu, dzieje się na widoku dnia — tu trafia się
  * rzadko i zwykle po to, żeby sprawdzić, czy dane pojechały.
+ *
+ * Wersja stoi tu z tego samego powodu, co stan synchronizacji: to jest ekran,
+ * na który wchodzi się sprawdzić, czy coś dojechało. Dopóki jej nie było,
+ * „zrestartowałem po aktualizacji, ale nie widzę zmiany" nie dawało się
+ * rozstrzygnąć z wnętrza aplikacji — bo wydanie OTA nie rusza numeru wersji.
  */
 
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
@@ -11,10 +16,13 @@ import { Redirect, Stack, useRouter } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { signOut, useSession } from '../src/auth/client';
+import { today } from '../src/day-labels';
 import { db } from '../src/db/client';
 import { localUser } from '../src/db/queries';
 import { describeSync } from '../src/sync/describe';
 import { useSyncEngine, useSyncSnapshot } from '../src/sync/provider';
+import { describeRunningBundle } from '../src/update/running';
+import { useRunningBundle } from '../src/update/use-update';
 import { Button, Card, Loading, SectionTitle } from '../src/ui/primitives';
 
 export default function AccountRoute() {
@@ -24,11 +32,13 @@ export default function AccountRoute() {
   const router = useRouter();
 
   const account = useLiveQuery(localUser(db, session?.user.id ?? ''));
+  const bundle = useRunningBundle();
 
   if (isPending) return <Loading />;
   if (!session) return <Redirect href="/sign-in" />;
 
   const description = describeSync(snapshot);
+  const running = describeRunningBundle(bundle, today());
 
   return (
     <SafeAreaView className="flex-1 bg-base" edges={['bottom']}>
@@ -95,6 +105,19 @@ export default function AccountRoute() {
               onPress={() => router.push('/feedback')}
             />
           </View>
+        </Card>
+
+        <Card className="gap-1">
+          <SectionTitle>Version</SectionTitle>
+          {/* Numer pakietu jest tu największy, bo to on pada w rozmowie — ale
+              o tym, czy wydanie dojechało, mówi dopiero data paczki niżej:
+              wydanie OTA zostawia numer pakietu bez zmian. */}
+          <Text className="mt-1 text-2xl font-semibold text-text">{running.version}</Text>
+          <Text className="text-muted">{running.source}</Text>
+          {running.detail.length > 0 && (
+            <Text className="text-xs text-muted">{running.detail}</Text>
+          )}
+          {running.warning !== null && <Text className="mt-1 text-danger">{running.warning}</Text>}
         </Card>
 
         <Button variant="danger" label="Sign out" onPress={() => void signOut()} />
