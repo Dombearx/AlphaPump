@@ -40,7 +40,7 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
     return details.updatedAt === undefined ? (
       <Loading label="Loading exercise…" />
     ) : (
-      <SafeAreaView className="flex-1 justify-center gap-4 bg-base p-6">
+      <SafeAreaView className="flex-1 justify-center gap-4 p-6">
         <EmptyState
           title="This exercise no longer exists"
           hint="It was removed from the library."
@@ -85,7 +85,7 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-base" edges={['bottom']}>
+    <SafeAreaView className="flex-1" edges={['bottom']}>
       <Stack.Screen options={{ title: exercise.name }} />
 
       <ScrollView contentContainerClassName="gap-4 p-4 pb-10">

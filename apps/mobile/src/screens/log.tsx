@@ -270,7 +270,7 @@ export function LogScreen({ day, exerciseId }: { day: IsoDate; exerciseId: strin
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-base" edges={['bottom']}>
+    <SafeAreaView className="flex-1" edges={['bottom']}>
       <Stack.Screen
         options={{
           title: exercise.name,
@@ -438,7 +438,7 @@ export function LogScreen({ day, exerciseId }: { day: IsoDate; exerciseId: strin
  */
 function MissingExercise({ onBack }: { onBack: () => void }) {
   return (
-    <SafeAreaView className="flex-1 justify-center gap-4 bg-base p-6">
+    <SafeAreaView className="flex-1 justify-center gap-4 p-6">
       <EmptyState
         title="This exercise no longer exists"
         hint="It was removed from the library — pick another one."

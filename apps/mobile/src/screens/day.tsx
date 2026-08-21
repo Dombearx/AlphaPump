@@ -84,7 +84,7 @@ export function DayScreen({ day }: { day: IsoDate }) {
   if (!session) return <Redirect href="/sign-in" />;
 
   return (
-    <SafeAreaView className="flex-1 bg-base" edges={['bottom']}>
+    <SafeAreaView className="flex-1" edges={['bottom']}>
       <Stack.Screen
         options={{
           title: formatDayTitle(day, today),

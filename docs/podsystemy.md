@@ -415,6 +415,27 @@ minimalistycznych wykresach". Siatka kalendarza i punkty wykresu powstają
 w czystych modułach (`src/calendar.ts`, `src/chart-data.ts`), więc jedno i drugie
 ma testy bez renderowania ekranu.
 
+### Tapeta
+
+Własne zdjęcie w tle ustawia się w koncie (`src/ui/background.tsx`), a rysuje je
+korzeń aplikacji pod całą nawigacją. Ekrany są od tego przezroczyste — kolor tła
+maluje `_layout.tsx`, a nie każdy `SafeAreaView` z osobna, więc żaden ekran nie
+musi o tapecie wiedzieć. Nieprzezroczyste zostają karty, nagłówek i paski akcji,
+bo to na nich stoi tekst; nad samym zdjęciem leży jeszcze przyciemnienie kolorem
+tła, żeby jasna fotografia nie zjadła białych podpisów.
+
+Zdjęcie kopiujemy do katalogu dokumentów, zamiast zapamiętać adres wybranego
+pliku: Android oddaje go jako `content://`, a uprawnienie do tego adresu wygasa
+razem z procesem — po restarcie tapeta byłaby pustym prostokątem. Wyboru pliku
+pilnuje `expo-document-picker`, ten sam co przy imporcie z FitNotesa, a nie
+`expo-image-picker`: dołożenie modułu natywnego znaczyłoby, że tapeta dojedzie
+dopiero z nowym `.apk`, a nie wydaniem OTA.
+
+Reguły (formaty, limit rozmiaru, nazwy kolejnych kopii) siedzą w czystym
+`src/background/state.ts` i mają testy w Node; `src/background/expo.ts` tylko je
+wykonuje. Kolejne tapety dostają kolejne numery w nazwie, bo pod tym samym
+adresem React Native pokazałby obraz z pamięci podręcznej zamiast nowo wybranego.
+
 ### Ekrany, które czekają na sieć
 
 Są trzy i każdy z tego samego powodu: pokazują **stan serwera**, którego nie da

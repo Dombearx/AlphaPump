@@ -9,6 +9,10 @@
  *
  * Motyw jest ciemny i nie ma przełącznika. Specyfikacja wymaga dark theme,
  * a jeden motyw znaczy jeden zestaw kolorów do utrzymania.
+ *
+ * Kolor tła maluje **korzeń**, a nie każdy ekran z osobna — ekrany są
+ * przezroczyste. Wygląda to tak samo jak wcześniej, a pozwala wsunąć pod nie
+ * tapetę użytkownika (`src/background`) bez dotykania ich wszystkich.
  */
 
 import 'react-native-get-random-values';
@@ -20,10 +24,13 @@ import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { installConsoleCapture } from '../src/app-log';
+import { expoBackgroundStore } from '../src/background/expo';
+import { BackgroundProvider, useAppBackground } from '../src/background/provider';
 import { appConfig, isGoogleSignInConfigured } from '../src/config/index';
 import { DatabaseProvider } from '../src/db/provider';
 import { SyncProvider } from '../src/sync/provider';
 import { COLORS } from '../src/theme';
+import { AppBackdrop } from '../src/ui/background';
 import { UpdatePrompt } from '../src/ui/update-prompt';
 
 // Jak najwcześniej, żeby żaden log wystrzelony podczas startu (importy,
@@ -45,33 +52,49 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: COLORS.base }}>
       <SafeAreaProvider>
-        <StatusBar style="light" />
-        {/* Nad bazą i nad synchronizacją, bo nie zależy od żadnej z nich:
-            aktualizacja ma się proponować także wtedy, gdy migracje padły albo
-            nikt nie jest zalogowany — czyli dokładnie wtedy, gdy nowsze wydanie
-            bywa lekarstwem. */}
-        <UpdatePrompt />
-        <DatabaseProvider>
-          {/* Silnik synchronizacji stoi **wewnątrz** bazy, a nie obok niej:
-              wymiana danych pisze do tych samych tabel, więc nie ma prawa
-              ruszyć, zanim przejdą migracje. */}
-          <SyncProvider>
-            <Stack
-              screenOptions={{
-                headerStyle: { backgroundColor: COLORS.surface },
-                headerTintColor: COLORS.text,
-                contentStyle: { backgroundColor: COLORS.base },
-                // Przejścia między dniami i ekranem serii mają być natychmiastowe
-                // — „bardzo szybko" ze specyfikacji dotyczy też nawigacji.
-                animation: 'fade',
-              }}
-            >
-              <Stack.Screen name="index" options={{ title: 'Today' }} />
-              <Stack.Screen name="sign-in" options={{ title: 'Sign in', headerShown: false }} />
-            </Stack>
-          </SyncProvider>
-        </DatabaseProvider>
+        <BackgroundProvider store={expoBackgroundStore}>
+          {/* Pierwsza w rodzeństwie, bo rodzeństwo rysuje się po kolei: tapeta
+              ma leżeć pod nawigacją, a nie na niej. */}
+          <AppBackdrop />
+          <StatusBar style="light" />
+          {/* Nad bazą i nad synchronizacją, bo nie zależy od żadnej z nich:
+              aktualizacja ma się proponować także wtedy, gdy migracje padły albo
+              nikt nie jest zalogowany — czyli dokładnie wtedy, gdy nowsze wydanie
+              bywa lekarstwem. */}
+          <UpdatePrompt />
+          <DatabaseProvider>
+            {/* Silnik synchronizacji stoi **wewnątrz** bazy, a nie obok niej:
+                wymiana danych pisze do tych samych tabel, więc nie ma prawa
+                ruszyć, zanim przejdą migracje. */}
+            <SyncProvider>
+              <AppStack />
+            </SyncProvider>
+          </DatabaseProvider>
+        </BackgroundProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
+  );
+}
+
+function AppStack() {
+  const { uri } = useAppBackground();
+
+  return (
+    <Stack
+      screenOptions={{
+        headerStyle: { backgroundColor: COLORS.surface },
+        headerTintColor: COLORS.text,
+        // Bez tapety kolor tła zostaje na ekranie nawigacji: przejście „fade"
+        // przenika wtedy jedną nieprzezroczystą kartę w drugą, a nie dwie
+        // przezroczyste przez siebie. Zdjęcie widać dopiero wtedy, gdy jest.
+        contentStyle: { backgroundColor: uri === null ? COLORS.base : 'transparent' },
+        // Przejścia między dniami i ekranem serii mają być natychmiastowe
+        // — „bardzo szybko" ze specyfikacji dotyczy też nawigacji.
+        animation: 'fade',
+      }}
+    >
+      <Stack.Screen name="index" options={{ title: 'Today' }} />
+      <Stack.Screen name="sign-in" options={{ title: 'Sign in', headerShown: false }} />
+    </Stack>
   );
 }
