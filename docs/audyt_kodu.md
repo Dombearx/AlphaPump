@@ -26,7 +26,7 @@ Rejestr jest zamknięty: **wszystkie 40 znalezisk (BEZ, WDR, DAN, POP, KOD, UX)
 zostały wdrożone.** Dziewięć blokad PWA zostaje otwartych — opisują pracę do
 wykonania przy dokładaniu wersji przeglądarkowej, a nie usterki w tym, co stoi.
 
-Trzy rzeczy poszły inaczej, niż zapisano wyżej, i warto o nich wiedzieć czytając
+Cztery rzeczy poszły inaczej, niż zapisano wyżej, i warto o nich wiedzieć czytając
 opisy znalezisk:
 
 - **KOD-2** — `moveSet` został **usunięty**, a nie zachowany. Po zdjęciu interfejsu
@@ -41,6 +41,17 @@ opisy znalezisk:
   formularze i tabele. Chodzą w sekundach w zwykłym `pnpm test`. Czego nie
   zastępują — nawigacji, gestów, klawiatury i zachowania SQLite na urządzeniu —
   jest napisane w `stack_technologiczny.md`.
+- **KOD-4** — usunięcie `expo-network` było **błędem, cofniętym po tym rejestrze**.
+  Grep po `src/`/`app/` faktycznie nie znajduje importu, ale `@better-auth/expo`
+  woła jego natywny moduł (`ExpoNetwork`) pod spodem, jako swoją `peerDependency`.
+  Bez pakietu w `package.json` moduł nie wchodzi do autolinkingu, a aplikacja
+  wywala się na starcie: `authClient` powstaje w module scope, więc pierwszy
+  render dowolnego ekranu kończy się `Cannot find native module 'ExpoNetwork'`
+  i natychmiastowym zamknięciem. Pakiet wrócił do `package.json`, z komentarzem
+  w `src/auth/client.ts` tłumaczącym, dlaczego grep po imporcie tego nie wyłapie.
+  Wniosek dla reszty listy: „nieużywana zależność natywna" wymaga sprawdzenia
+  `node_modules/<pakiet>/package.json` pod kątem `peerDependencies` bibliotek,
+  które faktycznie ją importują — nie samego grepa po własnym kodzie.
 
 Jedna zmiana wymaga **ręcznego kroku na minipc** przed pierwszym wdrożeniem
 z tej gałęzi: `/update` przyjmuje teraz wyłącznie `POST` z tokenem, a na maszynie
@@ -485,6 +496,13 @@ nie używa, podbijają wersję odcisku przy każdej aktualizacji Expo i wymuszaj
 
 **Naprawa.** Usunąć, przejść `prebuild` i porównać odcisk przed i po. Uwaga na
 `react-native-reanimated`: wtyczka `react-native-worklets` siedzi w `babel.config.js`.
+
+**Poprawka.** `expo-network` nie był nieużywany — patrz „Stan wdrożenia" wyżej. Usunięcie
+go wywalało aplikację na starcie, bo `@better-auth/expo` woła jego natywny moduł jako swoją
+`peerDependency`, bez importu we własnym kodzie. Pakiet wrócił do `package.json`. Pozostała
+czwórka (`expo-build-properties`, `expo-splash-screen`, `expo-system-ui`,
+`react-native-reanimated`) nie ma tego problemu — żadna z nich nie jest `peerDependency`
+biblioteki, którą aplikacja faktycznie używa.
 
 ### KOD-5 — Pusty pakiet `@alphapump/api-client` nadal w drzewie · **średni**
 
