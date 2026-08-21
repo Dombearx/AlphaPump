@@ -49,6 +49,9 @@ function content(): ArchiveContent {
 
   return {
     users: [{ ...USER }],
+    // Puste, bo ten zestaw opisuje archiwum jednego konta — poświadczenia
+    // wchodzą wyłącznie do systemowego.
+    credentials: [],
     tags: [{ id: plecy, name: 'Plecy', slug: slug('Plecy'), color: tagColor('Plecy'), ...STAMPS }],
     exercises: [
       {
@@ -224,6 +227,8 @@ describe('archiveSummary', () => {
   it('zlicza wiersze każdej encji', () => {
     expect(archiveSummary(content())).toEqual({
       users: 1,
+      // Zestaw opisuje archiwum jednego konta, a takie poświadczeń nie niesie.
+      credentials: 0,
       tags: 1,
       exercises: 1,
       sets: 1,
@@ -232,7 +237,16 @@ describe('archiveSummary', () => {
   });
 
   it('kolejność importu idzie od bytów niezależnych do zależnych', () => {
-    expect(ARCHIVE_IMPORT_ORDER).toEqual(['users', 'tags', 'exercises', 'sets', 'cycles']);
+    expect(ARCHIVE_IMPORT_ORDER).toEqual([
+      'users',
+      // Zaraz po kontach: wskazują na nie kluczem obcym, a bez nich odtworzone
+      // konto istnieje i nie da się na nie zalogować.
+      'credentials',
+      'tags',
+      'exercises',
+      'sets',
+      'cycles',
+    ]);
   });
 });
 

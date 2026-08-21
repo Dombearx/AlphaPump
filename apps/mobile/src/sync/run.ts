@@ -20,12 +20,13 @@
  * tu drugim źródłem prawdy o czymś, co i tak liczy się w milisekundach.
  */
 
-import type { SyncResult } from '@alphapump/core';
+import type { SyncPushRequest, SyncResult } from '@alphapump/core';
 import type { SqliteDatabase } from '@alphapump/db/sqlite';
 import { withTransaction } from '../db/transaction';
 import { applyChanges } from './apply';
-import { clearThrough, takeBatch } from './outbox';
-import { buildPushRequest, isEmptyPush, withoutIncompleteRows } from './payload';
+import { clearThrough, enqueue, takeBatch, type PendingRow } from './outbox';
+import { buildPushRequest, isEmptyPush, rowExists, withoutIncompleteRows } from './payload';
+import { reconcile, recordRejections } from './reconcile';
 import { markPushed, readSyncState, writeCursor } from './state';
 import type { SyncTransport } from './transport';
 
@@ -49,6 +50,8 @@ export interface SyncRunResult {
   pulled: number;
   /** Wiersze, których serwer nie przyjął — patrz `SyncResult.reason`. */
   rejected: SyncResult[];
+  /** Wiersze wstawione z powrotem do kolejki przez `reconcile`. */
+  requeued: number;
   cursor: number;
 }
 
@@ -64,8 +67,11 @@ export async function runSync(options: SyncRunOptions): Promise<SyncRunResult> {
     transport,
     options.maxPullBatches ?? DEFAULT_MAX_PULL_BATCHES,
   );
+  // Dopiero po pullu: to on dowozi `server_seq` wierszom, które serwer już zna,
+  // więc przebieg przed nim kolejkowałby bibliotekę, która właśnie przyjechała.
+  const requeued = await reconcile(db, new Date());
 
-  return { pushed, pulled, rejected, cursor };
+  return { pushed, pulled, rejected, requeued, cursor };
 }
 
 /**
@@ -78,7 +84,26 @@ export async function runSync(options: SyncRunOptions): Promise<SyncRunResult> {
  * Wiersze odrzucone przez serwer i tak znikają z kolejki. Zostawienie ich
  * zatrzymałoby outbox na zawsze: skoro serwer odrzucił wiersz z powodu uprawnień
  * albo niespójnych danych, odrzuci go też za dziesiątym razem, a kolejka za nim
- * przestałaby się ruszać.
+ * przestałaby się ruszać. Nie znaczy to, że wiersz przepada — odrzucenie idzie
+ * do kwarantanny (`reconcile.ts`), skąd wraca do kolejki, gdy minie odstęp.
+ *
+ * ## Wiersze, które **nie pojechały**, wracają do kolejki
+ *
+ * Paczka bywa przycięta jeszcze przed wysłaniem: `withoutIncompleteRows` odsiewa
+ * cykl bez pozycji celu, a `withDependencies` — serie i cykle, których zależność
+ * nie zmieściła się w limicie. Takiego wiersza serwer nigdy nie widział, więc nie
+ * ma go ani w odpowiedzi, ani w kwarantannie.
+ *
+ * `clearThrough` kasował mimo to **cały** odcinek kolejki do `highWater`, razem
+ * z jego wpisem. Bezpiecznik `reconcile` tego nie łapał, bo szuka wyłącznie
+ * wierszy z pustym `server_seq` — czyli takich, o których serwer nigdy nie
+ * słyszał. Edycja wiersza **już potwierdzonego**, odsiana przy składaniu paczki,
+ * przepadała więc po cichu i na zawsze.
+ *
+ * Dlatego odsiane wiersze wracają do kolejki w tej samej transakcji, w której
+ * odcinek jest kasowany. Dostają nowy numer, więc pojadą następną paczką — a że
+ * `push` zwraca liczbę wierszy, które **faktycznie** pojechały, silnik nie
+ * zapętla się na paczce, z której nie da się wysłać niczego.
  */
 async function push(
   db: SqliteDatabase,
@@ -90,29 +115,62 @@ async function push(
   if (batch.rows.length === 0) return 0;
 
   const request = withoutIncompleteRows(await buildPushRequest(db, deviceId, batch.rows));
+  const sent = rowsInRequest(request);
+  const dropped = batch.rows.filter((row) => !sent.has(`${row.entity}:${row.rowId}`));
 
   if (isEmptyPush(request)) {
-    // Wpisy wskazywały na wiersze, których już nie ma — nie ma czego wysyłać,
-    // ale kolejkę trzeba oczyścić, inaczej zostanie w niej martwy ogon.
-    await withTransaction(db, () => clearThrough(db, batch.highWater));
+    // Wpisy wskazywały na wiersze, których już nie ma albo których nie da się
+    // w tej chwili wysłać. Kolejkę trzeba oczyścić, inaczej zostanie w niej
+    // martwy ogon — ale to, co da się jeszcze wysłać, wraca do niej z nowym
+    // numerem.
+    await withTransaction(db, async () => {
+      await clearThrough(db, batch.highWater);
+      await requeue(db, dropped, new Date());
+    });
     return 0;
   }
 
   const response = await transport.push(request);
-  rejected.push(...response.results.filter((result) => result.decision === 'rejected'));
+  const refused = response.results.filter((result) => result.decision === 'rejected');
+  rejected.push(...refused);
 
   const now = new Date(response.serverTime);
   await withTransaction(
     db,
     async () => {
       await applyChanges(db, response.changes);
+      await recordRejections(db, refused, now);
       await clearThrough(db, batch.highWater);
+      await requeue(db, dropped, now);
       await markPushed(db, now);
     },
     { deferForeignKeys: true },
   );
 
-  return batch.rows.length;
+  return batch.rows.length - dropped.length;
+}
+
+/** Klucze wierszy, które faktycznie weszły do paczki. */
+function rowsInRequest(request: SyncPushRequest): Set<string> {
+  return new Set([
+    ...request.tags.map((row) => `tag:${row.id}`),
+    ...request.exercises.map((row) => `exercise:${row.id}`),
+    ...request.cycles.map((row) => `cycle:${row.id}`),
+    ...request.sets.map((row) => `set:${row.id}`),
+  ]);
+}
+
+/**
+ * Wstawia z powrotem do kolejki wiersze, które z paczki wypadły.
+ *
+ * Wiersz, którego już nie ma w bazie, nie wraca: `buildPushRequest` pomija
+ * wiersze usunięte trwale, a kolejkowanie ich w kółko dałoby wpis, który nigdy
+ * nie zejdzie.
+ */
+async function requeue(db: SqliteDatabase, rows: readonly PendingRow[], now: Date): Promise<void> {
+  for (const row of rows) {
+    if (await rowExists(db, row)) await enqueue(db, row.entity, row.rowId, now);
+  }
 }
 
 /**

@@ -9,9 +9,9 @@
  *    potrzebuje wyłącznie nicków do rekordów globalnych.
  * 2. **`server_seq` bywa pusty.** Wiersz utworzony offline nie dostał jeszcze
  *    numeru z sekwencji serwera; dostanie go po pierwszym udanym pushu.
- * 3. **Dwie tabele istnieją tylko tutaj.** `outbox` i `sync_state` opisują stan
- *    wymiany danych jednego urządzenia — serwer nie ma o nich pojęcia i mieć
- *    nie musi.
+ * 3. **Trzy tabele istnieją tylko tutaj.** `outbox`, `sync_state`
+ *    i `sync_rejections` opisują stan wymiany danych jednego urządzenia —
+ *    serwer nie ma o nich pojęcia i mieć nie musi.
  *
  * Czas jest trzymany jako liczba milisekund (`timestamp_ms`), a dzień
  * treningowy jako tekst `YYYY-MM-DD` — tak samo jak po stronie serwera, gdzie
@@ -31,7 +31,7 @@
  * zostałby odrzucony — a to znaczy albo wywróconą transakcję pullu i kursor,
  * który nigdy nie rusza do przodu, albo cicho zgubiony wiersz.
  *
- * Rozwiązaniem jest **odroczenie**, nie usunięcie: transakcja pullu (etap 7)
+ * Rozwiązaniem jest **odroczenie**, nie usunięcie: transakcja pullu
  * ustawia `PRAGMA defer_foreign_keys = ON`, przez co SQLite przenosi
  * sprawdzenie na `COMMIT`. Kolejność wewnątrz paczki przestaje mieć znaczenie,
  * a niespójność faktyczna — taka, której nie domyka żaden wiersz z tej samej
@@ -39,7 +39,14 @@
  */
 
 import { GOAL_METRICS, LOGGING_TYPES, SYNC_ENTITIES, USER_ROLES } from '@alphapump/core';
-import type { GoalMetric, IsoDate, LoggingType, SyncEntity, UserRole } from '@alphapump/core';
+import type {
+  GoalMetric,
+  IsoDate,
+  LoggingType,
+  SyncEntity,
+  SyncRejection,
+  UserRole,
+} from '@alphapump/core';
 import { sql } from 'drizzle-orm';
 import {
   check,
@@ -87,6 +94,10 @@ export const users = sqliteTable(
   },
   (table) => [
     uniqueIndex('users_email_unique').on(table.email),
+    // Odpowiednik indeksu z Postgresa. Tabela jest na telefonie mała, ale
+    // parzystość schematów jest tu celem samym w sobie: rozjazd, którego nie
+    // widać, jest gorszy niż indeks, który nic nie kosztuje.
+    index('users_server_seq_idx').on(table.serverSeq),
     check('users_role_check', oneOf('role', USER_ROLES)),
   ],
 );
@@ -306,6 +317,52 @@ export const syncState = sqliteTable(
 /** Identyfikator jedynego wiersza `sync_state`. */
 export const SYNC_STATE_ID = 1;
 
+/**
+ * Wiersze, których serwer nie przyjął — kwarantanna, a nie kosz.
+ *
+ * Odrzucony wiersz schodzi z outboxu, bo inaczej zatrzymałby kolejkę: skoro
+ * serwer odmówił raz, odmówi też za dziesiątym razem, a wszystko za nim
+ * przestałoby jechać. Samo skasowanie wpisu znaczyłoby jednak, że zapis
+ * przepada po cichu — a przepadająca seria treningowa jest najgorszą rzeczą,
+ * jaka może się w tej aplikacji wydarzyć.
+ *
+ * Dlatego odrzucenie zostaje zapisane **tutaj**, razem z powodem i licznikiem
+ * prób. Daje to trzy rzeczy, których skasowany wpis dać nie może: `reconcile`
+ * wie, czego nie kolejkować od razu z powrotem, użytkownik ma co zobaczyć
+ * w statusie synchronizacji, a wiersz odrzucony z powodu, który da się naprawić
+ * po stronie serwera (brakujące ćwiczenie wbudowane, cofnięte uprawnienie),
+ * wraca do kolejki sam, gdy minie `retry_after`.
+ *
+ * Odstęp rośnie z każdą próbą, bo powód odrzucenia zwykle nie znika sam.
+ * Wiersz naprawdę nie do przyjęcia kosztuje więc jedno wejście do paczki na
+ * dobę, a nie jedno na każdą wymianę.
+ *
+ * Tabela nie jest synchronizowana i nie ma kluczy obcych — wpis musi przeżyć
+ * wiersz, którego dotyczy, tak samo jak wpis outboxu.
+ */
+export const syncRejections = sqliteTable(
+  'sync_rejections',
+  {
+    entity: text('entity').$type<SyncEntity>().notNull(),
+    rowId: text('row_id').notNull(),
+    /**
+     * Kod powodu podany przez serwer. Zdanie buduje z niego aplikacja
+     * (`describeRejection`) — serwer nie zna języka, w którym mówi ten ekran.
+     */
+    reason: text('reason').$type<SyncRejection>(),
+    /** Zmienna część komunikatu: lista identyfikatorów, nazwa, typ logowania. */
+    reasonDetail: text('reason_detail'),
+    attempts: integer('attempts').notNull().default(1),
+    rejectedAt: integer('rejected_at', { mode: 'timestamp_ms' }).notNull(),
+    /** Do tego czasu `reconcile` nie kolejkuje wiersza ponownie. */
+    retryAfter: integer('retry_after', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (table) => [
+    primaryKey({ name: 'sync_rejections_pk', columns: [table.entity, table.rowId] }),
+    check('sync_rejections_entity_check', oneOf('entity', SYNC_ENTITIES)),
+  ],
+);
+
 export type UserRow = typeof users.$inferSelect;
 export type TagRow = typeof tags.$inferSelect;
 export type ExerciseRow = typeof exercises.$inferSelect;
@@ -315,3 +372,4 @@ export type CycleRow = typeof cycles.$inferSelect;
 export type CycleGoalRow = typeof cycleGoals.$inferSelect;
 export type OutboxRow = typeof outbox.$inferSelect;
 export type SyncStateRow = typeof syncState.$inferSelect;
+export type SyncRejectionRow = typeof syncRejections.$inferSelect;

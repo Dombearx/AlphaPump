@@ -1,5 +1,16 @@
 /**
- * Manifest wydania — skąd aplikacja wie, że jest nowsza wersja.
+ * Manifest wydania natywnego — skąd aplikacja wie, że trzeba doinstalować `.apk`.
+ *
+ * Dotyczy **wyłącznie** wydań ruszających warstwę natywną: podbicia SDK, nowej
+ * zależności z kodem natywnym. Wydania ruszające sam JavaScript jadą przez
+ * `expo-updates` (`ota.ts`) i nie mają z tym plikiem nic wspólnego — telefon
+ * pobiera wtedy kilka megabajtów paczki zamiast kilkudziesięciu megabajtów
+ * pakietu.
+ *
+ * Takiego wydania nie da się zainstalować za użytkownika: aplikacja nie ma już
+ * uprawnienia `REQUEST_INSTALL_PACKAGES` i nie oddaje pliku instalatorowi.
+ * Umie tylko powiedzieć, że nowszy pakiet istnieje, i otworzyć katalog wydań
+ * w przeglądarce — tą samą drogą, którą idzie pierwsza instalacja.
  *
  * Wydanie na Androida nie idzie przez sklep, więc nikt nie powie telefonowi
  * „jest aktualizacja". Robi to plik `latest.json` leżący obok `.apk` w katalogu
@@ -43,14 +54,6 @@ export const updateManifestSchema = z.object({
   file: z.string().min(1),
   /** Rozmiar w bajtach — pokazywany przed pobraniem, żeby nie zaskoczył. */
   size: z.number().int().nonnegative(),
-  /**
-   * Suma MD5 pliku. Wybrana **nie** dlatego, że jest mocna (nie jest), tylko
-   * dlatego, że nowe API `expo-file-system` liczy ją natywnie, we właściwości
-   * `File.md5`. Jest tu wyłącznie kontrolą spójności pobrania — przed podmianą
-   * pakietu chroni podpis APK-a sprawdzany przez system, a nie ten hash.
-   * `.sha256` obok pliku zostaje dla człowieka i skryptów na minipc.
-   */
-  md5: z.string().regex(/^[0-9a-f]{32}$/i),
   /** Kiedy wydanie powstało. */
   releasedAt: z.iso.datetime(),
   /** Opis zmian; pusty, gdy wydanie go nie niesie. */
@@ -85,8 +88,15 @@ export function parseUpdateManifest(value: unknown): UpdateManifest {
   return parsed.data;
 }
 
-/** Adres pliku `.apk` opisanego manifestem. */
-export function apkUrl(baseUrl: string, manifest: UpdateManifest): string {
+/**
+ * Adres pliku `.apk` opisanego manifestem — do otwarcia w przeglądarce.
+ *
+ * Manifest niesie **nazwę**, nie adres, więc ten sam plik działa pod każdym
+ * adresem, pod którym minipc widać w VPN. Sumy kontrolne zostały w
+ * `latest.json` i przy pliku, ale aplikacja ich już nie sprawdza: pobiera
+ * przeglądarka, a przed podmianą pakietu chroni podpis sprawdzany przez system.
+ */
+export function releaseUrl(baseUrl: string, manifest: UpdateManifest): string {
   return `${baseUrl.replace(/\/+$/, '')}/${encodeURIComponent(manifest.file)}`;
 }
 

@@ -18,19 +18,31 @@
 import {
   adminUserListSchema,
   archiveSchema,
+  duplicateCheckResponseSchema,
+  embeddingRefreshReportSchema,
+  exerciseMergeReportSchema,
   exerciseSchema,
   feedbackTriageReportSchema,
   importReportSchema,
+  libraryExerciseListSchema,
+  libraryTagListSchema,
   systemStatsSchema,
+  tagMergeReportSchema,
   tagSchema,
   type AdminUser,
   type Archive,
   type CreateExerciseInput,
+  type DuplicateCheckResponse,
+  type EmbeddingRefreshReport,
   type Exercise,
+  type ExerciseMergeReport,
   type FeedbackTriageReport,
   type ImportReport,
+  type LibraryExercise,
+  type LibraryTag,
   type SystemStats,
   type Tag,
+  type TagMergeReport,
   type UpdateExerciseInput,
   type UpdateUserInput,
   userSchema,
@@ -91,7 +103,7 @@ export async function request<T>(
       parsed.success ? parsed.data.error.code : 'unknown',
       parsed.success
         ? parsed.data.error.message
-        : `Serwer odpowiedział ${String(response.status)} bez czytelnego błędu`,
+        : `The server answered ${String(response.status)} with no readable error`,
     );
   }
 
@@ -100,7 +112,7 @@ export async function request<T>(
     throw new ApiError(
       response.status,
       'schema_mismatch',
-      `Odpowiedź ${path} ma nieznany kształt: ${parsed.error.issues[0]?.message ?? 'brak szczegółów'}`,
+      `The ${path} response has an unknown shape: ${parsed.error.issues[0]?.message ?? 'no details'}`,
     );
   }
 
@@ -186,12 +198,6 @@ export const runFeedbackTriage = (fetchImpl?: typeof fetch): Promise<FeedbackTri
 
 /* -------------------------------------------------------------- biblioteka */
 
-export const listExercises = (fetchImpl?: typeof fetch): Promise<Exercise[]> =>
-  request('/exercises', z.array(exerciseSchema), { fetchImpl });
-
-export const listTags = (fetchImpl?: typeof fetch): Promise<Tag[]> =>
-  request('/tags', z.array(tagSchema), { fetchImpl });
-
 /**
  * Utworzenie ćwiczenia. Kształt wejścia jest **rdzeniowy** (`CreateExerciseInput`),
  * a nie własny dla panelu: to ten sam kontrakt, który waliduje serwer i którego
@@ -236,6 +242,91 @@ export const renameTag = (id: string, name: string, fetchImpl?: typeof fetch): P
 export const deleteTag = async (id: string, fetchImpl?: typeof fetch): Promise<void> => {
   await request(`/tags/${id}`, z.null(), { method: 'DELETE', fetchImpl });
 };
+
+/* -------------------------------------------------- porządkowanie biblioteki */
+
+/**
+ * Biblioteka z widokiem użycia.
+ *
+ * Panel czyta ją stąd, a nie z `GET /exercises`, którym jedzie aplikacja: liczby
+ * serii, użytkowników i celów są odczytem administracyjnym i nie mają po co
+ * jechać na telefon przy każdym otwarciu biblioteki. Wiersze z tombstonem też
+ * są tylko tutaj — aplikacja nie ma co robić z ćwiczeniem, którego nie ma.
+ */
+export const listLibraryExercises = (
+  options: { includeDeleted?: boolean } = {},
+  fetchImpl?: typeof fetch,
+): Promise<LibraryExercise[]> =>
+  request(
+    `/admin/library/exercises${options.includeDeleted === true ? '?includeDeleted=true' : ''}`,
+    libraryExerciseListSchema,
+    { fetchImpl },
+  ).then((body) => body.exercises);
+
+export const listLibraryTags = (
+  options: { includeDeleted?: boolean } = {},
+  fetchImpl?: typeof fetch,
+): Promise<LibraryTag[]> =>
+  request(
+    `/admin/library/tags${options.includeDeleted === true ? '?includeDeleted=true' : ''}`,
+    libraryTagListSchema,
+    { fetchImpl },
+  ).then((body) => body.tags);
+
+/**
+ * Podobne ćwiczenia — to samo wyszukiwanie hybrydowe, które w aplikacji
+ * ostrzega przed duplikatem przy tworzeniu ćwiczenia. Pytaniem jest tu nazwa
+ * wiersza, który już istnieje.
+ */
+export const listSimilarExercises = (
+  id: string,
+  fetchImpl?: typeof fetch,
+): Promise<DuplicateCheckResponse> =>
+  request(`/admin/library/exercises/${id}/similar`, duplicateCheckResponseSchema, { fetchImpl });
+
+/**
+ * Scalenie ćwiczeń: serie i cele przechodzą na wskazane, źródło znika.
+ *
+ * To jest **jedyna** droga do pozbycia się duplikatu, na którym ktokolwiek
+ * zapisał serię — usunięcie takiego ćwiczenia serwer odrzuca.
+ */
+export const mergeExercises = (
+  sourceId: string,
+  targetId: string,
+  fetchImpl?: typeof fetch,
+): Promise<ExerciseMergeReport> =>
+  request(`/admin/library/exercises/${sourceId}/merge`, exerciseMergeReportSchema, {
+    method: 'POST',
+    body: { targetId },
+    fetchImpl,
+  });
+
+export const restoreExercise = (id: string, fetchImpl?: typeof fetch): Promise<Exercise> =>
+  request(`/admin/library/exercises/${id}/restore`, exerciseSchema, { method: 'POST', fetchImpl });
+
+export const mergeTags = (
+  sourceId: string,
+  targetId: string,
+  fetchImpl?: typeof fetch,
+): Promise<TagMergeReport> =>
+  request(`/admin/library/tags/${sourceId}/merge`, tagMergeReportSchema, {
+    method: 'POST',
+    body: { targetId },
+    fetchImpl,
+  });
+
+export const restoreTag = (id: string, fetchImpl?: typeof fetch): Promise<Tag> =>
+  request(`/admin/library/tags/${id}/restore`, tagSchema, { method: 'POST', fetchImpl });
+
+/**
+ * Przeliczenie wektorów całej biblioteki. Bez niego lista podobnych ćwiczeń
+ * widzi wyłącznie wiersze zapisane po włączeniu warstwy semantycznej.
+ */
+export const refreshEmbeddings = (fetchImpl?: typeof fetch): Promise<EmbeddingRefreshReport> =>
+  request('/admin/library/embeddings/refresh', embeddingRefreshReportSchema, {
+    method: 'POST',
+    fetchImpl,
+  });
 
 /* ---------------------------------------------------------- transfer danych */
 

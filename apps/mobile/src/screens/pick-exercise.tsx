@@ -113,7 +113,7 @@ export function PickExerciseScreen({ day }: { day: IsoDate }) {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-base" edges={['bottom']}>
+    <SafeAreaView className="flex-1" edges={['bottom']}>
       <Stack.Screen options={{ title: 'Pick an exercise' }} />
 
       <View className="p-4 pb-2">

@@ -49,8 +49,9 @@ export function SyncBadge() {
 
             {snapshot.rejected > 0 && (
               <Text className="text-danger">
-                The server rejected {snapshot.rejected} row(s) from the last batch — this usually
-                means missing permission to edit someone else's exercise.
+                The server would not accept {snapshot.rejected} change(s). They are kept on this
+                device and retried automatically
+                {snapshot.rejectedReason === null ? '' : ` — ${snapshot.rejectedReason}`}.
               </Text>
             )}
 

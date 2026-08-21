@@ -249,7 +249,7 @@ export function TransferScreen() {
     });
 
   return (
-    <SafeAreaView className="flex-1 bg-base" edges={['bottom']}>
+    <SafeAreaView className="flex-1" edges={['bottom']}>
       <Stack.Screen options={{ title: 'Export and import' }} />
 
       <ScrollView contentContainerClassName="gap-4 p-4">

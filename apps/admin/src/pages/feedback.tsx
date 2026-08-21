@@ -19,15 +19,15 @@ export function FeedbackPage() {
   return (
     <div className="flex flex-col gap-6">
       <Card className="flex flex-col gap-3">
-        <CardTitle>Przegląd zgłoszeń</CardTitle>
+        <CardTitle>Feedback triage</CardTitle>
         <p className="text-sm text-muted">
-          Sprawdza nowe zgłoszenia zwrotne z aplikacji, klasyfikuje je i albo zakłada issue na
-          GitHubie (błąd), albo otwiera dyskusję na Discordzie (prośba o zmianę). Ten sam przebieg
-          dzieje się też codziennie o umówionej godzinie — przycisk niżej uruchamia go od razu.
+          Reads new in-app feedback, classifies it, and either opens a GitHub issue (a bug) or
+          starts a Discord thread (a change request). The same pass also runs daily at a set hour —
+          the button below starts it right now.
         </p>
         <div>
           <Button disabled={run.isPending} onClick={() => run.mutate()}>
-            {run.isPending ? 'Przegląd w toku…' : 'Uruchom przegląd zgłoszeń'}
+            {run.isPending ? 'Triage running…' : 'Run feedback triage'}
           </Button>
         </div>
         {run.error !== null && <Problem error={run.error} />}
@@ -35,22 +35,22 @@ export function FeedbackPage() {
 
       {report !== undefined && (
         <Card className="flex flex-col gap-3">
-          <CardTitle>Wynik ostatniego przebiegu</CardTitle>
+          <CardTitle>Result of the last pass</CardTitle>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Stat label="Sprawdzone zgłoszenia" value={report.scanned} />
-            <Stat label="Błędy" value={report.bugs} hint="założone issue" />
+            <Stat label="Reports read" value={report.scanned} />
+            <Stat label="Bugs" value={report.bugs} hint="issues opened" />
             <Stat
-              label="Prośby o zmianę"
+              label="Change requests"
               value={report.changeRequests}
-              hint="otwarte wątki na Discordzie"
+              hint="Discord threads opened"
             />
-            <Stat label="Duplikaty" value={report.duplicates} hint="dopisane do istniejących" />
+            <Stat label="Duplicates" value={report.duplicates} hint="appended to existing ones" />
           </div>
 
           {report.failures.length > 0 && (
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-text">Nieprzetworzone zgłoszenia</span>
+                <span className="text-sm font-medium text-text">Unprocessed reports</span>
                 <Badge tone="danger">{report.failures.length}</Badge>
               </div>
               <ul className="flex flex-col gap-1">

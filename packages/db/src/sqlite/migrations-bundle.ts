@@ -60,6 +60,27 @@ export const sqliteMigrationBundle: SqliteMigrationBundle = {
         "when": 1786705791047,
         "tag": "0004_damp_nocturne",
         "breakpoints": true
+      },
+      {
+        "idx": 5,
+        "version": "6",
+        "when": 1787173915039,
+        "tag": "0005_chilly_peter_parker",
+        "breakpoints": true
+      },
+      {
+        "idx": 6,
+        "version": "6",
+        "when": 1787301047897,
+        "tag": "0006_third_cloak",
+        "breakpoints": true
+      },
+      {
+        "idx": 7,
+        "version": "6",
+        "when": 1787302226847,
+        "tag": "0007_talented_harpoon",
+        "breakpoints": true
       }
     ]
   },
@@ -69,6 +90,9 @@ export const sqliteMigrationBundle: SqliteMigrationBundle = {
   m0002: "PRAGMA foreign_keys=OFF;--> statement-breakpoint\nCREATE TABLE `__new_users` (\n\t`id` text PRIMARY KEY NOT NULL,\n\t`email` text,\n\t`nickname` text NOT NULL,\n\t`role` text DEFAULT 'user' NOT NULL,\n\t`created_at` integer NOT NULL,\n\t`updated_at` integer NOT NULL,\n\t`deleted_at` integer,\n\t`server_seq` integer,\n\t`device_id` text,\n\tCONSTRAINT \"users_role_check\" CHECK(\"role\" IN ('user', 'admin'))\n);\n--> statement-breakpoint\nINSERT INTO `__new_users`(\"id\", \"email\", \"nickname\", \"role\", \"created_at\", \"updated_at\", \"deleted_at\", \"server_seq\", \"device_id\") SELECT \"id\", \"email\", \"nickname\", \"role\", \"created_at\", \"updated_at\", \"deleted_at\", \"server_seq\", \"device_id\" FROM `users`;--> statement-breakpoint\nDROP TABLE `users`;--> statement-breakpoint\nALTER TABLE `__new_users` RENAME TO `users`;--> statement-breakpoint\nPRAGMA foreign_keys=ON;--> statement-breakpoint\nCREATE UNIQUE INDEX `users_email_unique` ON `users` (`email`);",
   m0003: "CREATE TABLE `outbox` (\n\t`seq` integer PRIMARY KEY AUTOINCREMENT NOT NULL,\n\t`entity` text NOT NULL,\n\t`row_id` text NOT NULL,\n\t`queued_at` integer NOT NULL,\n\tCONSTRAINT \"outbox_entity_check\" CHECK(\"entity\" IN ('tag', 'exercise', 'cycle', 'set'))\n);\n--> statement-breakpoint\nCREATE INDEX `outbox_row_idx` ON `outbox` (`entity`,`row_id`);--> statement-breakpoint\nCREATE TABLE `sync_state` (\n\t`id` integer PRIMARY KEY NOT NULL,\n\t`cursor` integer DEFAULT 0 NOT NULL,\n\t`pulled_at` integer,\n\t`pushed_at` integer,\n\t`last_error` text,\n\tCONSTRAINT \"sync_state_singleton_check\" CHECK(\"id\" = 1)\n);\n",
   m0004: "DROP INDEX `exercises_author_slug_unique`;--> statement-breakpoint\nALTER TABLE `exercises` ADD `gym` text;--> statement-breakpoint\nCREATE UNIQUE INDEX `exercises_author_slug_gym_unique` ON `exercises` (`author_id`,`slug`,coalesce(`gym`, ''));",
+  m0005: "CREATE TABLE `sync_rejections` (\n\t`entity` text NOT NULL,\n\t`row_id` text NOT NULL,\n\t`reason` text,\n\t`attempts` integer DEFAULT 1 NOT NULL,\n\t`rejected_at` integer NOT NULL,\n\t`retry_after` integer NOT NULL,\n\tPRIMARY KEY(`entity`, `row_id`),\n\tCONSTRAINT \"sync_rejections_entity_check\" CHECK(\"entity\" IN ('tag', 'exercise', 'cycle', 'set'))\n);\n",
+  m0006: "CREATE INDEX `users_server_seq_idx` ON `users` (`server_seq`);",
+  m0007: "ALTER TABLE `sync_rejections` ADD `reason_detail` text;",
   },
 };
 

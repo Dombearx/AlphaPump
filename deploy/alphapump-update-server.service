@@ -4,13 +4,35 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-User=domin
-WorkingDirectory=/home/domin/AlphaPump
+# Podstaw swoje. Plik opisuje **wzorzec** jednostki, a nie konkretną maszynę:
+# postawienie drugiego środowiska (choćby do próby odtworzenia kopii) nie ma
+# wymagać czytania cudzej nazwy użytkownika z repozytorium.
+#
+# Użytkownik musi należeć do grupy `docker` — trasa `/update` woła `docker
+# compose`. Jest to zarazem powód, dla którego ta trasa wymaga tokenu.
+User=CHANGEME
+WorkingDirectory=/home/CHANGEME/AlphaPump
 # Katalog z wydaniami aplikacji, ten sam, który compose montuje Caddy'emu jako
-# `/srv/pobierz`. Domyślna wartość serwera (`deploy/apk`) odpowiada domyślnej
+# `/srv/alphapump/download`. Domyślna wartość serwera (`deploy/apk`) odpowiada domyślnej
 # w compose — odkomentuj i ustaw ścieżkę bezwzględną, jeśli zmieniasz `APK_DIR`
 # w `deploy/.env`. Patrz komentarz przy tej zmiennej w `deploy/.env.example`.
-# Environment=UPDATE_SERVER_APK_DIR=/home/domin/AlphaPump/deploy/apk
+# Environment=UPDATE_SERVER_APK_DIR=/home/CHANGEME/AlphaPump/deploy/apk
+# To samo dla katalogu z wydaniami OTA (`OTA_DIR` w `deploy/.env`), z którego
+# compose montuje `/srv/alphapump/ota` Caddy'emu i `/data/ota` API.
+# Environment=UPDATE_SERVER_OTA_DIR=/home/CHANGEME/AlphaPump/deploy/ota
+#
+# Publishing secret. Deliberately NOT written here -- this file is in the
+# repository, and the token is what stops anyone who can reach this port inside
+# the VPN from handing every phone in the group arbitrary JavaScript. Put it in
+# a drop-in instead, which lives outside the repo:
+#
+#   sudo systemctl edit alphapump-update-server
+#   # [Service]
+#   # Environment=UPDATE_SERVER_PUBLISH_TOKEN=<ten sam co sekret ALPHAPUMP_PUBLISH_TOKEN>
+#
+# Unset means publishing is disabled, not open: POST /apk and POST /ota answer
+# 503 and say so. Reading and /update keep working, so forgetting it cannot
+# brick the deploy channel.
 # Login shell so uv is picked up from the profile wherever its installer put
 # it, rather than hardcoding a path here. exec replaces the shell, so systemd
 # supervises uv itself instead of a wrapper.

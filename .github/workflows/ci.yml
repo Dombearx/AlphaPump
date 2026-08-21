@@ -19,34 +19,10 @@ env:
   DO_NOT_TRACK: 1
 
 jobs:
+  # Cztery sprawdzenia mieszkają w `verify.yml`, bo wołają je także workflow
+  # wdrożenia i wydania — tam jako bramka, bez której nic nie wyjeżdża.
   verify:
-    name: Lint, typecheck, build, test
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Lint
-        run: pnpm lint
-
-      - name: Typecheck
-        run: pnpm typecheck
-
-      - name: Build
-        run: pnpm build
-
-      - name: Test
-        run: pnpm test
+    uses: ./.github/workflows/verify.yml
 
   wydania:
     # Serwer aktualizacji stoi na gospodarzu, poza Composem i poza workspace

@@ -24,7 +24,7 @@ const queryClient = new QueryClient({
 });
 
 const container = document.getElementById('root');
-if (!container) throw new Error('Brak elementu #root — sprawdź index.html');
+if (!container) throw new Error('No #root element — check index.html');
 
 createRoot(container).render(
   <StrictMode>

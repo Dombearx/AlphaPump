@@ -17,9 +17,12 @@
  * `require`, więc `app.config.ts` nie mógłby sięgnąć po nic z `src/`.
  */
 
+const { parseAbis } = require('./config/abis');
 const { envValue } = require('./config/env');
 const { atsExceptions, cleartextHost } = require('./config/network');
+const { GRADLE_JVM_ARGS } = require('./config/gradle-memory');
 const withCleartextHost = require('./config/with-cleartext-host');
+const withGradleProperties = require('./config/with-gradle-properties');
 
 /** Adres API. Domyślny wskazuje na serwer uruchomiony lokalnie. */
 const API_URL = envValue('EXPO_PUBLIC_API_URL') ?? 'http://localhost:3000';
@@ -34,6 +37,14 @@ const UPDATE_BASE_URL =
   envValue('EXPO_PUBLIC_UPDATE_BASE_URL') ?? `${API_URL.replace(/\/+$/, '')}/alphapump/download`;
 
 /**
+ * Manifest aktualizacji OTA — trasa API, nie plik statyczny (odpowiedź zależy
+ * od nagłówków żądania i jest `multipart/mixed`). Stąd aplikacja bierze paczkę
+ * JavaScriptu, gdy wydanie nie ruszyło warstwy natywnej: kilka megabajtów
+ * zamiast całego pliku `.apk`.
+ */
+const UPDATE_MANIFEST_URL = `${API_URL.replace(/\/+$/, '')}/updates/manifest`;
+
+/**
  * Wersja dla człowieka — ta, którą widać w oknie „jest nowa wersja" i w
  * ustawieniach systemu. Przy wydaniu z tagu podstawia ją
  * `android-release.yml`; poza nim bierze się z `package.json`, żeby ten sam
@@ -43,6 +54,14 @@ const UPDATE_BASE_URL =
  * Wydania rozróżnia i tak `versionCode` niżej — `versionName` jest etykietą.
  */
 const VERSION_NAME = envValue('APP_VERSION_NAME') ?? require('./package.json').version;
+
+/**
+ * Architektury procesora pakowane do pliku `.apk`. Domyślnie samo `arm64-v8a`,
+ * czyli każdy telefon z Androidem wydany po 2017 roku — komplet czterech
+ * architektur to trzykrotnie większy plik do pobrania przy pierwszej instalacji.
+ * Starszy sprzęt w grupie: `ANDROID_ABIS=arm64-v8a,armeabi-v7a`.
+ */
+const ANDROID_ABIS = parseAbis(envValue('ANDROID_ABIS'));
 
 /** @type {import('expo/config').ExpoConfig} */
 const config = {
@@ -80,17 +99,44 @@ const config = {
     versionCode: Number(envValue('ANDROID_VERSION_CODE') ?? 1),
     adaptiveIcon: { backgroundColor: '#232327', foregroundImage: './assets/icon.png' },
     /**
-     * Aplikacja sama podmienia się na nowszą: pobiera `.apk` z minipc i oddaje
-     * go instalatorowi systemu. Bez tego uprawnienia instalator odrzuca zamiar,
-     * zanim w ogóle pokaże okno.
+     * Aplikacja nie prosi o żadne uprawnienie ponad te, które Expo dokłada samo.
      *
-     * Uprawnienie **nie** daje cichej instalacji — Android i tak pyta
-     * użytkownika o zgodę dla naszego pakietu (raz, w „instalowanie nieznanych
-     * aplikacji"), a potem o samą podmianę przy każdym wydaniu. Zasady Google
-     * Play mocno je ograniczają, ale ta aplikacja nie idzie przez Play i iść
-     * nie ma; rozdanie jest wewnątrz VPN-u.
+     * Stało tu `android.permission.REQUEST_INSTALL_PACKAGES` — aplikacja
+     * pobierała `.apk` i oddawała go instalatorowi systemu. Odkąd wydania
+     * ruszające sam JavaScript jadą przez `expo-updates`, instalator jest
+     * potrzebny wyłącznie przy zmianie warstwy natywnej, czyli parę razy w roku
+     * — a wtedy plik pobiera się przeglądarką z `/alphapump/download`, jak przy
+     * pierwszej instalacji. Najgroźniejsze uprawnienie w tej aplikacji zniknęło
+     * więc razem z kodem, który był jedynym jego użytkownikiem.
      */
-    permissions: ['android.permission.REQUEST_INSTALL_PACKAGES'],
+  },
+
+  /**
+   * Odcisk warstwy natywnej. Paczka JavaScriptu zostaje zaproponowana wyłącznie
+   * telefonowi o **tym samym** odcisku — uruchomiona na innym wywala aplikację
+   * przy starcie, i to jest dokładnie ta awaria, po której nie da się już nic
+   * naprawić zdalnie.
+   *
+   * Polityka `fingerprint`, a nie numer wpisany ręcznie, bo ta wartość musi być
+   * **wyprowadzona**, a nie zapamiętana: wersja podbijana ręcznie rozjeżdża się
+   * z rzeczywistością przy pierwszym przeoczeniu, a przeoczenie widać dopiero
+   * na czyimś telefonie. Tym samym odciskiem `android-release.yml` rozstrzyga,
+   * czy wydanie potrzebuje nowego `.apk`, czy wystarczy paczka.
+   */
+  runtimeVersion: { policy: 'fingerprint' },
+
+  updates: {
+    url: UPDATE_MANIFEST_URL,
+    /**
+     * Zero, czyli **nie czekaj**. Aplikacja startuje natychmiast z paczką, którą
+     * już ma, a nowszą pobiera w tle i uruchamia przy następnym wejściu (albo
+     * na życzenie, przyciskiem w oknie aktualizacji). Odwrotne ustawienie
+     * kazałoby czekać na sieć przy każdym starcie — a minipc bywa poza zasięgiem
+     * częściej, niż jest w nim. To ta sama zasada, na której stoi baza lokalna:
+     * ekran nigdy nie czeka na sieć.
+     */
+    fallbackToCacheTimeout: 0,
+    checkAutomatically: 'ON_LOAD',
   },
 
   plugins: [
@@ -99,6 +145,15 @@ const config = {
     'expo-sqlite',
     '@react-native-google-signin/google-signin',
     [withCleartextHost, { host: cleartextHost(API_URL) }],
+    [
+      withGradleProperties,
+      {
+        properties: {
+          reactNativeArchitectures: ANDROID_ABIS.join(','),
+          'org.gradle.jvmargs': GRADLE_JVM_ARGS,
+        },
+      },
+    ],
   ],
 
   experiments: {

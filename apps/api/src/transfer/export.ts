@@ -17,9 +17,20 @@
  * Wchodzą też ćwiczenia **autorstwa** właściciela, nawet nieużywane w żadnej
  * serii: wymyślone ćwiczenie jest jego danymi, nie danymi biblioteki.
  *
+ ## Poświadczenia wchodzą **tylko** do archiwum systemowego
+ *
+ * Bez nich odtworzenie z kopii dawało bazę, na którą nikt nie umiał się
+ * zalogować: konta istnieją razem z adresami, więc rejestracja odbija się o
+ * zajęty adres, a hasła nie ma. Kopia systemowa niesie więc hash hasła
+ * i powiązanie z Google — jest zastrzeżona dla administratora, a przy wysyłce
+ * poza maszynę `scripts/backup.sh` wymusza szyfrowanie `age`.
+ *
+ * Archiwum jednego konta, które użytkownik pobiera sobie sam, poświadczeń nie
+ * niesie i nieść nie może.
+ *
  * ## Czego nie ma nigdy
  *
- * Hashy haseł, sesji i kluczy API (wrażliwe, a do odtworzenia zbędne),
+ * Sesji i kluczy API (wygasają albo generuje się je od nowa), tokenów OAuth,
  * embeddingów (przeliczalne z nazw) oraz rekordów i rankingów (pochodne z serii).
  * Użytkownicy są w archiwum w postaci minimalnej — `id`, e-mail, nick, rola —
  * bo bez nich `author_id` przy ćwiczeniach i właściciel przy seriach wskazywałyby
@@ -32,12 +43,14 @@ import {
   createArchive,
   type Archive,
   type ArchiveContent,
+  type ArchiveCredential,
   type ArchiveUser,
 } from '@alphapump/core';
 import { and, asc, eq, inArray, isNull, or } from 'drizzle-orm';
 import type { Database } from '../db.js';
 import { toCycleDto, toExerciseDto, toSetDto, toTagDto } from '../dto.js';
 import {
+  accounts,
   cycleGoals,
   cycles,
   exerciseTags,
@@ -61,6 +74,32 @@ const toArchiveUser = (row: typeof users.$inferSelect): ArchiveUser => ({
   nickname: row.nickname,
   role: row.role,
 });
+
+/**
+ * Sposoby logowania wszystkich kont — wyłącznie dla zakresu systemowego.
+ *
+ * Bierzemy `password` (hash) oraz parę `providerId`/`accountId`, po której
+ * better-auth rozpoznaje konto u dostawcy. Tokenów nie bierzemy: wygasają,
+ * a Google wystawi nowe przy pierwszym logowaniu.
+ */
+async function systemCredentials(db: Database): Promise<ArchiveCredential[]> {
+  const rows = await db
+    .select({
+      userId: accounts.userId,
+      providerId: accounts.providerId,
+      accountId: accounts.accountId,
+      password: accounts.password,
+    })
+    .from(accounts)
+    .orderBy(asc(accounts.userId), asc(accounts.providerId));
+
+  return rows.map((row) => ({
+    userId: row.userId,
+    providerId: row.providerId,
+    accountId: row.accountId,
+    password: row.password,
+  }));
+}
 
 export async function exportArchive(
   db: Database,
@@ -150,6 +189,7 @@ async function systemContent(db: Database): Promise<ArchiveContent> {
 
   return {
     users: userRows.map(toArchiveUser),
+    credentials: await systemCredentials(db),
     tags: tagRows.map(toTagDto),
     exercises: exerciseRows.map((row) => toExerciseDto(row, tagsByExercise.get(row.id) ?? [])),
     sets: setRows.map(toSetDto),
@@ -228,6 +268,9 @@ async function userContent(db: Database, userId: string): Promise<ArchiveContent
 
   return {
     users: userRows.map(toArchiveUser),
+    // Pusto, i to jest reguła, nie przeoczenie: plik, który użytkownik pobiera
+    // sobie sam, nie może nieść hasha hasła — także własnego.
+    credentials: [],
     tags: tagRows.map(toTagDto),
     exercises: exerciseRows.map((row) => toExerciseDto(row, tagsByExercise.get(row.id) ?? [])),
     sets: setRows.map(toSetDto),

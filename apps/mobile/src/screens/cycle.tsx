@@ -73,7 +73,7 @@ export function CycleScreen({ cycleId }: { cycleId: string }) {
     return goals.updatedAt === undefined ? (
       <Loading label="Loading cycle…" />
     ) : (
-      <SafeAreaView className="flex-1 justify-center gap-4 bg-base p-6">
+      <SafeAreaView className="flex-1 justify-center gap-4 p-6">
         <EmptyState title="This cycle no longer exists" />
         <Button label="Back to cycles" onPress={() => router.replace('/cycles')} />
       </SafeAreaView>
@@ -120,7 +120,7 @@ export function CycleScreen({ cycleId }: { cycleId: string }) {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-base" edges={['bottom']}>
+    <SafeAreaView className="flex-1" edges={['bottom']}>
       <Stack.Screen options={{ title: cycle.name }} />
 
       <ScrollView contentContainerClassName="gap-4 p-4 pb-10">

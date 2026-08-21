@@ -96,7 +96,7 @@ export function EmptyState({ title, hint }: { title: string; hint?: string }) {
 
 export function Loading({ label }: { label?: string }) {
   return (
-    <View className="flex-1 items-center justify-center gap-3 bg-base">
+    <View className="flex-1 items-center justify-center gap-3">
       <ActivityIndicator size="large" color={COLORS.accent} />
       {label !== undefined && <Text className="text-muted">{label}</Text>}
     </View>
@@ -126,6 +126,10 @@ export function Field({ label, unit, hint, grow = false, ...input }: FieldProps)
       <SectionTitle>{label}</SectionTitle>
       <View className="flex-row items-center rounded-2xl border border-border bg-surface px-4">
         <TextInput
+          // Podpis jest nad polem, a nie w nim, więc bez tego czytnik ekranu
+          // czyta „pole tekstowe" i nic więcej. Wywołujący może go nadpisać,
+          // podając własny `accessibilityLabel`.
+          accessibilityLabel={label}
           className="flex-1 py-4 text-lg text-text"
           placeholderTextColor={COLORS.muted}
           selectionColor={COLORS.accent}

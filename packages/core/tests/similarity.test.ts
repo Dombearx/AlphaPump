@@ -1,5 +1,5 @@
 /**
- * Ostrzeganie o podobnych ćwiczeniach — kryterium etapu 8 w jego czystej części.
+ * Ostrzeganie o podobnych ćwiczeniach — warstwa leksykalna w jej czystej części.
  *
  * Testy pilnują dwóch rzeczy naraz: że duplikat zostaje znaleziony i że nazwy
  * dzielące wyłącznie ogon znaków **nie** są uznawane za podobne. Druga część
@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 import {
   SIMILARITY_THRESHOLD,
   findSimilarExercises,
+  nameContains,
   nameSimilarity,
   nameTokens,
   tokenSimilarity,
@@ -71,6 +72,28 @@ describe('nameSimilarity', () => {
   });
 });
 
+describe('nameContains', () => {
+  it('krótsza nazwa jest fragmentem dłuższej mimo odmiany', () => {
+    expect(nameContains('Przysiady bułgarskie ze sztangielkami', 'Przysiad')).toBe(true);
+  });
+
+  it('fragment nie działa w drugą stronę', () => {
+    expect(nameContains('Przysiad', 'Przysiady bułgarskie ze sztangielkami')).toBe(false);
+  });
+
+  it('nie zależy od wielkości liter ani od ogonków', () => {
+    expect(nameContains('wyciskanie sztangi lezac', 'WYCISKANIE LEŻĄC')).toBe(true);
+  });
+
+  it('jedno wspólne słowo z dwóch to nie fragment', () => {
+    expect(nameContains('Wiosłowanie sztangą', 'Wyciskanie sztangi')).toBe(false);
+  });
+
+  it('nazwa bez liter nie jest fragmentem niczego', () => {
+    expect(nameContains('Martwy ciąg', '???')).toBe(false);
+  });
+});
+
 describe('findSimilarExercises', () => {
   it('znajduje duplikat mimo odmiany i braku ogonków', () => {
     const matches = findSimilarExercises('wyciskanie sztangi lezac', LIBRARY);
@@ -84,6 +107,25 @@ describe('findSimilarExercises', () => {
 
     expect(matches.map((match) => match.exercise.id)).toEqual(['e-4']);
     expect(matches[0]?.identical).toBe(false);
+  });
+
+  it('ostrzega, gdy wpisana nazwa jest fragmentem istniejącej', () => {
+    // Sam wynik to tu `2 × 1 / 4`, czyli poniżej progu — a jest to duplikat,
+    // o którym serwer mówi w trybie online. Offline nie ma go czym zastąpić.
+    expect(nameSimilarity('Wyciskanie', 'Wyciskanie sztangi leżąc')).toBeLessThan(
+      SIMILARITY_THRESHOLD,
+    );
+
+    const matches = findSimilarExercises('Wyciskanie', LIBRARY);
+    expect(matches.map((match) => match.exercise.id)).toEqual(['e-1']);
+  });
+
+  it('ostrzega, gdy istniejąca nazwa jest fragmentem wpisanej', () => {
+    const name = 'Martwy ciąg sumo na podwyższeniu z pasem';
+    expect(nameSimilarity(name, 'Martwy ciąg')).toBeLessThan(SIMILARITY_THRESHOLD);
+
+    const matches = findSimilarExercises(name, LIBRARY);
+    expect(matches.map((match) => match.exercise.id)).toEqual(['e-4']);
   });
 
   it('nie ostrzega przy nazwie, której w bibliotece nie ma', () => {

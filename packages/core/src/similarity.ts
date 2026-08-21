@@ -22,6 +22,21 @@
  * sztangą" i „wyciskanie sztangi" dzielą długi ogon znaków, więc wychodziłyby
  * podobne, choć nie mają ze sobą nic wspólnego. Praca na słowach to odsiewa.
  *
+ * ## Fragment nazwy
+ *
+ * Sam wynik nie wystarczy, bo jest **ułamkiem**: rozcieńcza go każdy człon,
+ * którego druga nazwa nie ma. „Przysiady" wobec „Przysiady bułgarskie ze
+ * sztangielkami" daje `2 × 1 / 4 = 0,5`, czyli poniżej progu — a to jest
+ * dokładnie ten duplikat, o którym trzeba powiedzieć. Serwer go łapie, bo jego
+ * warstwa leksykalna to **alternatywa**: trigramy **albo** `tsvector`, w którym
+ * wszystkie słowa wpisywanej nazwy mają trafić w kandydata, niezależnie od tego,
+ * ile słów kandydat ma poza nimi.
+ *
+ * Ta sama reguła jest tutaj jako `nameContains`: jedna nazwa jest fragmentem
+ * drugiej, gdy **każde** jej słowo znajdzie sobie partnera w tej drugiej. Bez
+ * niej ostrzeżenie znikało po wyjściu telefonu z zasięgu — a wtedy właśnie
+ * powstają duplikaty, bo nie ma czego scalić przy najbliższej synchronizacji.
+ *
  * Zakres tej warstwy kończy się na pisowni. „Martwy ciąg" i „deadlift" to dla
  * niej dwie różne nazwy — dopasowanie po znaczeniu wchodzi dopiero z etapem 12
  * (embeddingi i re-ranker) i tylko jako uzupełnienie tego, co jest tutaj.
@@ -87,16 +102,12 @@ export function tokenSimilarity(a: string, b: string): number {
 }
 
 /**
- * Podobieństwo dwóch nazw, 0–1. Jedynka znaczy „ten sam slug", czyli w praktyce
- * ten sam identyfikator ćwiczenia u tego samego autora.
+ * Ile słów z lewej znalazło sobie partnera po prawej.
+ *
+ * Każde słowo z lewej szuka sobie **jednego** partnera z prawej. Zajęte słowa
+ * odpadają, żeby „przysiad przysiad" nie zaliczyło dwa razy tego samego.
  */
-export function nameSimilarity(a: string, b: string): number {
-  const left = nameTokens(a);
-  const right = nameTokens(b);
-  if (left.length === 0 || right.length === 0) return 0;
-
-  // Każde słowo z lewej szuka sobie **jednego** partnera z prawej. Zajęte słowa
-  // odpadają, żeby „przysiad przysiad" nie zaliczyło dwa razy tego samego.
+function countMatchedTokens(left: readonly string[], right: readonly string[]): number {
   const taken = new Set<number>();
   let matched = 0;
 
@@ -119,7 +130,36 @@ export function nameSimilarity(a: string, b: string): number {
     }
   }
 
-  return (2 * matched) / (left.length + right.length);
+  return matched;
+}
+
+/**
+ * Podobieństwo dwóch nazw, 0–1. Jedynka znaczy „ten sam slug", czyli w praktyce
+ * ten sam identyfikator ćwiczenia u tego samego autora.
+ */
+export function nameSimilarity(a: string, b: string): number {
+  const left = nameTokens(a);
+  const right = nameTokens(b);
+  if (left.length === 0 || right.length === 0) return 0;
+
+  return (2 * countMatchedTokens(left, right)) / (left.length + right.length);
+}
+
+/**
+ * Czy `inner` jest fragmentem `outer` — czyli czy **każde** słowo `inner`
+ * znajduje sobie partnera w `outer`. Dopasowanie słów jest to samo, miękkie,
+ * więc „przysiady" są fragmentem „przysiad bułgarski".
+ *
+ * Nazwa dłuższa nigdy nie jest fragmentem krótszej, więc wołający sprawdza obie
+ * strony: duplikat powstaje zarówno przez dopisanie członu do istniejącej nazwy,
+ * jak i przez wpisanie samego rdzenia nazwy już istniejącej.
+ */
+export function nameContains(outer: string, inner: string): boolean {
+  const needle = nameTokens(inner);
+  const haystack = nameTokens(outer);
+  if (needle.length === 0 || haystack.length === 0) return false;
+
+  return countMatchedTokens(needle, haystack) === needle.length;
 }
 
 /** Minimum, jakiego potrzebuje wyszukiwanie podobnych. `Exercise` to spełnia. */
@@ -156,14 +196,24 @@ export function findSimilarExercises<T extends SimilarityCandidate>(
   const needle = slug(name);
   if (needle.length === 0) return [];
 
-  return candidates
-    .filter((candidate) => candidate.id !== excludeId)
-    .map((exercise) => ({
-      exercise,
-      score: nameSimilarity(name, exercise.name),
-      identical: slug(exercise.name) === needle,
-    }))
-    .filter((match) => match.score >= threshold)
-    .sort((a, b) => b.score - a.score || a.exercise.name.localeCompare(b.exercise.name))
-    .slice(0, limit);
+  return (
+    candidates
+      .filter((candidate) => candidate.id !== excludeId)
+      .map((exercise) => ({
+        exercise,
+        score: nameSimilarity(name, exercise.name),
+        identical: slug(exercise.name) === needle,
+      }))
+      // Alternatywa, nie koniunkcja — tak samo jak w warstwie leksykalnej serwera.
+      // Wynik zostaje wynikiem: fragment przechodzi przez próg, ale nie udaje, że
+      // jest podobny bardziej, niż jest, i na liście stoi niżej.
+      .filter(
+        (match) =>
+          match.score >= threshold ||
+          nameContains(match.exercise.name, name) ||
+          nameContains(name, match.exercise.name),
+      )
+      .sort((a, b) => b.score - a.score || a.exercise.name.localeCompare(b.exercise.name))
+      .slice(0, limit)
+  );
 }

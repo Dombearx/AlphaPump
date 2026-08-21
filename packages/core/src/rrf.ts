@@ -1,7 +1,7 @@
 /**
  * Reciprocal Rank Fusion — scalanie kilku list wyników w jedną.
  *
- * Wyszukiwanie hybrydowe (etap 12) pyta bazę dwa razy: raz leksykalnie
+ * Wyszukiwanie hybrydowe pyta bazę dwa razy: raz leksykalnie
  * (`pg_trgm` i `tsvector`), raz semantycznie (odległość kosinusowa embeddingów).
  * Obie listy są uporządkowane, ale ich **wyniki liczbowe nie są porównywalne** —
  * `similarity()` z trigramów i `1 - (a <=> b)` z pgvectora mieszkają w innych

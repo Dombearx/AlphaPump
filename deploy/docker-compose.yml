@@ -1,7 +1,7 @@
 # Stos AlphaPump na minipc.
 #
 # Trzy kontenery: baza, API i warstwa wejściowa (Caddy z wpieczonym panelem).
-# Uruchomienie i aktualizacja są opisane w README, w sekcji „Wdrożenie".
+# Uruchomienie i aktualizacja są opisane w `docs/wdrozenie.md`.
 #
 # Zmienne wchodzą z pliku `deploy/.env` (wzór: `.env.example`). Compose czyta go
 # sam, bo leży obok tego pliku. Zapis `${X:?…}` znaczy „bez tej zmiennej nie
@@ -14,6 +14,15 @@ services:
   db:
     image: pgvector/pgvector:pg17
     restart: unless-stopped
+    # Sterownik `json-file` bez limitu rośnie, aż zapełni dysk — a na tym samym
+    # dysku leży baza. Trzy pliki po dziesięć megabajtów wystarczą, żeby zajrzeć
+    # w to, co się właśnie zepsuło, i nie wystarczą, żeby cokolwiek przewrócić.
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+    mem_limit: 1g
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-alphapump}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?ustaw POSTGRES_PASSWORD w deploy/.env}
@@ -36,8 +45,22 @@ services:
       # źródeł, które przechodzą CI.
       context: ..
       dockerfile: deploy/Dockerfile.api
-    image: alphapump/api:local
+    # Znacznik to skrót commita, którym `deploy/update_server.py` zbudował
+    # obraz. Dzięki temu `docker images` odpowiada na pytanie, co właściwie
+    # chodzi, a powrót do poprzedniej wersji jest `IMAGE_TAG=<starszy sha>
+    # docker compose up -d` na obrazie, który wciąż leży na dysku — zamiast
+    # przemeldowania gałęzi i kwadransa przebudowy na żywym stosie.
+    image: alphapump/api:${IMAGE_TAG:-local}
     restart: unless-stopped
+    # Sterownik `json-file` bez limitu rośnie, aż zapełni dysk — a na tym samym
+    # dysku leży baza. Trzy pliki po dziesięć megabajtów wystarczą, żeby zajrzeć
+    # w to, co się właśnie zepsuło, i nie wystarczą, żeby cokolwiek przewrócić.
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+    mem_limit: 1g
     depends_on:
       db:
         condition: service_healthy
@@ -66,6 +89,12 @@ services:
       # Ścieżka w kontenerze jest stała — host decyduje, co się pod nią kryje,
       # przez wolumin niżej. Aplikacja nie musi znać żadnej z tych decyzji.
       FEEDBACK_DIR: /data/feedback
+      # Wydania OTA — patrz wolumin niżej i `deploy/update_server.py`.
+      OTA_DIR: /data/ota
+      # Katalog kopii zapasowych — wyłącznie do odczytu i wyłącznie po to, żeby
+      # panel pokazał wiek najnowszej. Pusta wartość znaczy „nie podmontowano",
+      # co jest normalnym stanem: kopie z założenia leżą poza stosem.
+      BACKUP_DIR: ${BACKUP_DIR:+/data/backups}
       # Adres usługi `triage` **w sieci Compose** — nazwa serwisu niżej jest
       # jednocześnie nazwą hosta, bez żadnego portu na gospodarzu. Puste znaczy
       # „panel administracyjny nie może wyzwolić przeglądu ręcznie"; endpoint
@@ -81,6 +110,16 @@ services:
       # `cat`-em na minipc. Ten sam wzorzec co `APK_DIR` u `web` niżej: katalog
       # gospodarza wchodzi z `deploy/.env`, żeby przetrwał `docker compose down`.
       - ${FEEDBACK_DIR:-./feedback}:/data/feedback
+      # Wydania OTA **tylko do odczytu**: pisze je proces na gospodarzu
+      # (`update_server.py`), API wyłącznie czyta. Pomyłka w kodzie API nie ma
+      # więc jak skasować paczki, która jest w tej chwili jedyną działającą.
+      - ${OTA_DIR:-./ota}:/data/ota:ro
+      # Kopie zapasowe **tylko do odczytu**, i to nie jest ostrożność na zapas:
+      # jedyne, co API z tym katalogiem robi, to `stat`. Zapis z kontenera
+      # aplikacji do katalogu kopii byłby dokładnie tym, przed czym kopie mają
+      # bronić. Bez `BACKUP_DIR` w `deploy/.env` wolumin wskazuje sam na siebie
+      # i jest pusty — Compose nie umie „nie podmontować" warunkowo.
+      - ${BACKUP_DIR:-./backups}:/data/backups:ro
     healthcheck:
       # Obraz jest oparty na `node:alpine` i nie ma `curl`-a ani `wget`-a
       # z HTTP-em — a Node ma `fetch` w standardzie. `/health` odpytuje bazę,
@@ -102,8 +141,17 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile.web
-    image: alphapump/web:local
+    image: alphapump/web:${IMAGE_TAG:-local}
     restart: unless-stopped
+    # Sterownik `json-file` bez limitu rośnie, aż zapełni dysk — a na tym samym
+    # dysku leży baza. Trzy pliki po dziesięć megabajtów wystarczą, żeby zajrzeć
+    # w to, co się właśnie zepsuło, i nie wystarczą, żeby cokolwiek przewrócić.
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+    mem_limit: 256m
     depends_on:
       api:
         condition: service_healthy
@@ -120,6 +168,9 @@ services:
       # czegokolwiek poza VPN. Caddy serwuje go zwykłym `file_server`, więc żadna
       # zmiana w `Caddyfile` nie jest do tego potrzebna.
       - ${APK_DIR:-./apk}:/srv/alphapump/download:ro
+      # Pliki wydań OTA — Caddy oddaje je pod `/alphapump/ota/`. Sam manifest
+      # obsługuje API, bo zależy od nagłówków żądania.
+      - ${OTA_DIR:-./ota}:/srv/alphapump/ota:ro
     healthcheck:
       # `wget -q -O -` zamiast `--spider`: obraz Caddy'ego stoi na Alpine,
       # a wget z busyboksa ma krótkie flagi zawsze, długie zależnie od budowy.
@@ -138,8 +189,17 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile.triage
-    image: alphapump/triage:local
+    image: alphapump/triage:${IMAGE_TAG:-local}
     restart: unless-stopped
+    # Sterownik `json-file` bez limitu rośnie, aż zapełni dysk — a na tym samym
+    # dysku leży baza. Trzy pliki po dziesięć megabajtów wystarczą, żeby zajrzeć
+    # w to, co się właśnie zepsuło, i nie wystarczą, żeby cokolwiek przewrócić.
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+    mem_limit: 512m
     # Brak `depends_on: api`: usługa czyta pliki, a nie API. Awaria backendu ma
     # wstrzymać nowe zgłoszenia, a nie przegląd tych, które już przyszły.
     environment:

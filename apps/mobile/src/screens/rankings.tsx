@@ -58,7 +58,7 @@ export function RankingsScreen() {
   if (!session) return <Redirect href="/sign-in" />;
 
   return (
-    <SafeAreaView className="flex-1 bg-base" edges={['bottom']}>
+    <SafeAreaView className="flex-1" edges={['bottom']}>
       <Stack.Screen options={{ title: 'Rankings' }} />
 
       <View className="gap-3 p-4 pb-2">

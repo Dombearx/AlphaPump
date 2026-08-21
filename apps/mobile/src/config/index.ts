@@ -1,7 +1,7 @@
 /**
  * Konfiguracja odczytana z manifestu Expo.
  *
- * `app.config.ts` przekłada zmienne środowiskowe na pole `extra`, a tutaj
+ * `app.config.js` przekłada zmienne środowiskowe na pole `extra`, a tutaj
  * zamienia się ono w typowany obiekt. Jedno miejsce, w którym aplikacja
  * dowiaduje się, gdzie stoi serwer.
  */

@@ -5,7 +5,8 @@ aplikacji. Zakłada, że minipc jest widoczny w NetBirdzie pod
 `domin-server.iron.sq` — jeśli adres jest inny, podstaw swój **wszędzie**, bo
 wchodzi w trzy różne miejsca i musi być w nich identyczny.
 
-Szczegóły i uzasadnienia są w `README.md`; tutaj jest sama kolejność.
+Szczegóły są w `wdrozenie.md`, a zmienne środowiskowe w `konfiguracja.md`;
+tutaj jest sama kolejność.
 
 ## Gdzie co trafia
 
@@ -79,6 +80,7 @@ Zakładka **Secrets**:
 | `NETBIRD_ACCESS_KEY` | panel NetBirda → *Setup Keys* (te same, których używa `deploy.yml`) |
 | `NETBIRD_MANAGEMENT_URL` | panel NetBirda → adres instancji zarządzającej |
 | `ALPHAPUMP_UPDATE_SERVER_URL` | `http://domin-server.iron.sq:40002/update` |
+| `ALPHAPUMP_PUBLISH_TOKEN` | wymyśl długi losowy napis: `openssl rand -hex 32`. **Ten sam** wpisujesz na minipc w kroku D |
 | `CLAUDE_CODE_OAUTH_TOKEN` | na własnej maszynie: `claude setup-token`. Token z subskrypcji, nie klucz API — nie obciąża rachunku za API |
 | `AGE_CI_IDENTITY` | **opcjonalny**, i przy kopiach lokalnych z kroku H niepotrzebny: klucz prywatny `age` dla CI. Bez niego comiesięczna próba odtworzenia generuje parę jednorazową i nadal sprawdza cały łańcuch |
 
@@ -206,6 +208,13 @@ deploy/smoke.sh http://localhost
 `--wait` czeka na healthchecki, czyli na wykonane migracje, a nie na sam start
 kontenerów.
 
+Migracje i **dane startowe** (konto systemowe, tagi startowe, ćwiczenia
+wbudowane) wchodzą przy każdym starcie kontenera `api` — nie ma tu osobnego
+kroku do wyklikania i nie da się go pominąć. Seed wstawia wyłącznie to, czego
+brakuje, więc kolejne wdrożenia nie cofają zmian zrobionych w panelu. W logu
+(`docker compose -f deploy/docker-compose.yml logs api`) widać wiersz „Dane
+startowe: … tagów i … ćwiczeń wbudowanych w zestawie".
+
 ## D. minipc — serwer aktualizacji
 
 Przyjmuje wydania aplikacji z GitHub Actions i przebudowuje stos po mergu.
@@ -219,6 +228,23 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now alphapump-update-server
 systemctl status alphapump-update-server
 ```
+
+Token wydawniczy wchodzi w **drop-inie**, a nie w pliku jednostki — ten jest
+w repozytorium:
+
+```bash
+sudo systemctl edit alphapump-update-server
+# [Service]
+# Environment=UPDATE_SERVER_PUBLISH_TOKEN=<ten sam napis co sekret ALPHAPUMP_PUBLISH_TOKEN>
+sudo systemctl restart alphapump-update-server
+```
+
+Bez niego `POST /apk` i `POST /ota` oddają 503 i mówią, czego brakuje —
+publikowanie jest **wyłączone**, a nie otwarte. Czytanie manifestów przez telefony
+i `/update` działają dalej, więc pominięcie tego kroku nie odcina wdrożeń, tylko
+wydania. Token jest jedyną rzeczą stojącą między dostępem do VPN-u a możliwością
+wysłania dowolnego JavaScriptu na wszystkie telefony w grupie: paczka OTA, w
+odróżnieniu od pliku `.apk`, nie ma podpisu, który sprawdzałby system.
 
 Użytkownik z `User=` musi należeć do grupy `docker`, mieć `uv` w profilu i być
 **właścicielem katalogu repozytorium**: usługa robi w nim `git pull` i
@@ -271,6 +297,12 @@ Biblioteka jest wspólna dla całej grupy, więc dodane pozycje zobaczą wszyscy
 Jedyna różnica między ćwiczeniem wbudowanym a dodanym przez Ciebie to autor
 (konto systemowe kontra Twoje) — na widoczność ani na filtrowanie po tagach nie
 wpływa to w żaden sposób.
+
+Panel pokazuje **tę samą** bibliotekę co telefony: obie strony seedują się z tego
+samego pliku i liczą identyfikatory z nazw tym samym kodem, a serwer robi to przy
+każdym starcie. Gdyby telefon miał u siebie ćwiczenie wbudowane, którego serwer
+nie zna (na przykład aplikacja wyprzedziła wdrożenie serwera), dośle je sam przy
+najbliższej synchronizacji — razem z serią, która na nie wskazuje.
 
 Kolejność ma znaczenie w jedną stronę: **najpierw tagi, potem ćwiczenia**. Tag
 główny jest wymagany, więc przy pustej liście tagów przycisk dodawania ćwiczenia
@@ -389,9 +421,14 @@ u zewnętrznego dostawcy to historia treningowa całej grupy.
 | Objaw | Przyczyna |
 | ----- | --------- |
 | zadanie wydania: „Brak sekretu ANDROID_KEYSTORE_BASE64" | krok A i B |
-| zadanie wydania: „nie zna trasy POST /apk" | `sudo systemctl restart alphapump-update-server` |
+| zadanie wydania: „nie zna trasy POST /apk" albo „POST /ota" | `sudo systemctl restart alphapump-update-server` |
+| zadanie wydania: „Brak sekretu ALPHAPUMP_PUBLISH_TOKEN" | ustaw sekret repozytorium — patrz krok D |
+| serwer aktualizacji oddaje 503 „Publishing is disabled" | brak `UPDATE_SERVER_PUBLISH_TOKEN` w drop-inie systemd — `sudo systemctl edit alphapump-update-server` |
+| serwer aktualizacji oddaje 401 przy wydaniu | token w drop-inie systemd ≠ sekret `ALPHAPUMP_PUBLISH_TOKEN` w repozytorium |
 | aplikacja nie łączy się z serwerem | `EXPO_PUBLIC_API_URL` ≠ `BETTER_AUTH_URL`, albo telefon poza VPN |
-| telefon nie widzi nowej wersji | sprawdź `curl http://domin-server.iron.sq/alphapump/download/latest.json` |
+| telefon nie widzi nowego pakietu `.apk` | sprawdź `curl http://domin-server.iron.sq/alphapump/download/latest.json` |
+| telefon nie dostaje paczki JavaScriptu | sprawdź `curl http://<minipc>:40002/ota` — czy jest wpis dla odcisku, który ma telefon; zgodność odcisków: `curl .../alphapump/download/latest.json \| jq .runtimeVersion` |
+| każde wydanie idzie pełnym pakietem, choć nic natywnego się nie ruszyło | `latest.json` nie ma pola `runtimeVersion` (wydanie sprzed tej zmiany) — pierwszy `.apk` po niej naprawia to sam |
 | `docker compose logs triage` w pętli restartów | brak jednej z pięciu zmiennych z kroku C — log podaje nazwę |
 | `systemctl status alphapump-update-server`: `uv: command not found` | `uv` nie jest zainstalowany na użytkowniku z `User=` — patrz „Czego potrzebuje minipc" |
 | serwer aktualizacji: `dubious ownership` albo `Permission denied` przy `git pull` | repozytorium należy do innego użytkownika niż ten z `User=` — `sudo chown -R <user> <katalog>` |

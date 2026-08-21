@@ -1,8 +1,8 @@
 /**
- * Biblioteka i tagi — kryterium ukończenia etapu 8.
+ * Biblioteka i tagi, w całości offline.
  *
  * Testy jadą po prawdziwym schemacie lokalnym i **nigdy nie dotykają sieci**.
- * To jest sedno tego etapu: przepływ „wybierz tag, zobacz ćwiczenia, dodaj nowe"
+ * To jest sedno biblioteki: przepływ „wybierz tag, zobacz ćwiczenia, dodaj nowe"
  * ma działać w trybie samolotowym, razem z ostrzeżeniem o duplikacie. Gdyby
  * cokolwiek tutaj wymagało serwera, test by nie przeszedł.
  */
@@ -22,7 +22,7 @@ import {
   updateExercise,
 } from '../src/db/library';
 import { additionalTagsOf, exerciseLibrary, tagLibrary } from '../src/db/queries';
-import { createSet } from '../src/db/sets';
+import { createSet, deleteSet } from '../src/db/sets';
 import {
   EXERCISES,
   TAGS,
@@ -313,9 +313,9 @@ describe('ćwiczenia w bazie lokalnej', () => {
       expect(queued.at(-1)).toMatchObject({ entity: 'exercise', rowId: saved.id });
     });
 
-    it('usunięte ćwiczenie nie zabiera ze sobą zapisanych serii', async () => {
+    it('ćwiczenia z zapisaną serią nie da się usunąć', async () => {
       const saved = await add('Wyciskanie francuskie');
-      await createSet(local.db, {
+      const set = await createSet(local.db, {
         userId: AUTHOR.userId,
         deviceId: AUTHOR.deviceId,
         exerciseId: saved.id,
@@ -330,11 +330,19 @@ describe('ćwiczenia w bazie lokalnej', () => {
         },
       });
 
+      // Usunięcie miękkie zostawiało serię z ćwiczeniem, którego dla właściciela
+      // już nie ma — czyli z wpisem bez nazwy w dniu treningowym. Duplikat scala
+      // administrator w panelu, a pomyłkę kasuje się razem z jej serią.
+      await expect(deleteExercise(local.db, saved.id, AUTHOR)).rejects.toThrow(/logged sets/);
+
+      const [row] = await local.db.select().from(exercises).where(eq(exercises.id, saved.id));
+      expect(row?.deletedAt).toBeNull();
+
+      await deleteSet(local.db, set.id, AUTHOR);
       await deleteExercise(local.db, saved.id, AUTHOR);
 
-      // Usunięcie miękkie: wiersz zostaje, więc seria dalej ma na co wskazywać.
-      const [row] = await local.db.select().from(exercises).where(eq(exercises.id, saved.id));
-      expect(row).toBeDefined();
+      const [removed] = await local.db.select().from(exercises).where(eq(exercises.id, saved.id));
+      expect(removed?.deletedAt).not.toBeNull();
     });
 
     it('utworzenie po usunięciu przywraca ten sam wiersz', async () => {

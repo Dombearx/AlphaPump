@@ -17,9 +17,12 @@ import {
   ApiError,
   createExercise,
   createTag,
+  listLibraryExercises,
   listUsers,
+  mergeExercises,
   pruneTombstones,
   request,
+  restoreExercise,
   updateExercise,
 } from '../src/lib/api';
 import { z } from 'zod';
@@ -198,5 +201,72 @@ describe('mutacje', () => {
 
     expect(fake.calls[0]?.init.body).toBe('{}');
     expect(result.removed.sets).toBe(2);
+  });
+});
+
+describe('porządkowanie biblioteki', () => {
+  const EXERCISE = {
+    id: '22222222-2222-4222-8222-222222222222',
+    name: 'Wyciskanie hantli',
+    slug: 'wyciskanie-hantli',
+    authorId: USER.id,
+    loggingType: 'weight_reps',
+    primaryTagId: '33333333-3333-4333-8333-333333333333',
+    additionalTagIds: [],
+    note: null,
+    gym: null,
+    createdAt: USER.createdAt,
+    updatedAt: USER.updatedAt,
+    deletedAt: null,
+  };
+
+  it('lista niesie użycie i pyta o wiersze z tombstonem, gdy ma je pokazać', async () => {
+    const fake = fakeFetch(200, {
+      exercises: [
+        {
+          exercise: EXERCISE,
+          authorNickname: 'Kuba',
+          builtIn: false,
+          hasEmbedding: true,
+          usage: { sets: 12, deletedSets: 1, users: 2, goals: 0, lastPerformedOn: '2026-04-01' },
+        },
+      ],
+    });
+
+    const rows = await listLibraryExercises({ includeDeleted: true }, fake.impl);
+
+    expect(fake.calls[0]?.url).toContain('/admin/library/exercises?includeDeleted=true');
+    expect(rows[0]?.usage).toMatchObject({ sets: 12, users: 2 });
+  });
+
+  it('scalenie idzie POST-em i niesie wyłącznie cel — źródło jest w ścieżce', async () => {
+    const fake = fakeFetch(200, {
+      sourceId: EXERCISE.id,
+      targetId: '55555555-5555-4555-8555-555555555555',
+      movedSets: 10,
+      movedDeletedSets: 0,
+      movedGoals: 1,
+    });
+
+    const report = await mergeExercises(
+      EXERCISE.id,
+      '55555555-5555-4555-8555-555555555555',
+      fake.impl,
+    );
+
+    expect(fake.calls[0]?.url).toContain(`/admin/library/exercises/${EXERCISE.id}/merge`);
+    expect(fake.calls[0]?.init.method).toBe('POST');
+    expect(fake.calls[0]?.init.body).toBe(
+      JSON.stringify({ targetId: '55555555-5555-4555-8555-555555555555' }),
+    );
+    expect(report.movedSets).toBe(10);
+  });
+
+  it('przywrócenie oddaje ćwiczenie bez tombstone’a', async () => {
+    const fake = fakeFetch(200, EXERCISE);
+    const restored = await restoreExercise(EXERCISE.id, fake.impl);
+
+    expect(fake.calls[0]?.url).toContain(`/admin/library/exercises/${EXERCISE.id}/restore`);
+    expect(restored.deletedAt).toBeNull();
   });
 });

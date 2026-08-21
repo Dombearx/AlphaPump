@@ -27,6 +27,14 @@
 :80 {
 	encode gzip
 
+	# Sufit na ciało żądania. API ma własny, ciaśniejszy limit (`BODY_LIMIT_BYTES`
+	# w `apps/api/src/app.ts`) — ten jest przed nim i chroni to, czego tamten nie
+	# widzi: pliki oddawane przez `file_server` i sam proces Caddy'ego. Wartość
+	# jest z zapasem względem limitu archiwum, bo import jedzie tędy.
+	request_body {
+		max_size 160MB
+	}
+
 	# Ścieżki API. `path` przyjmuje wiele wzorców i łączy je alternatywą;
 	# gwiazdka pasuje do dowolnego dalszego ciągu, brak gwiazdki znaczy
 	# dopasowanie dokładne. Pary w rodzaju `/tags /tags/*` są celowe: samo
@@ -37,7 +45,7 @@
 	# czytelniejsza, ale `caddy fmt` przestawia wtedy wcięcia po swojemu
 	# i serwer dokłada przy każdym starcie ostrzeżenie o niesformatowanej
 	# konfiguracji — czyli szum w logu dokładnie wtedy, gdy się do niego zagląda.
-	@api path /health /openapi.json /me /rankings /export /import /feedback /api/auth/* /tags /tags/* /exercises /exercises/* /sets /sets/* /cycles /cycles/* /sync/* /admin/*
+	@api path /health /openapi.json /me /rankings /export /import /feedback /api/auth/* /tags /tags/* /exercises /exercises/* /sets /sets/* /cycles /cycles/* /sync/* /admin/* /updates/*
 
 	handle @api {
 		reverse_proxy api:3000 {
@@ -92,6 +100,27 @@
 	handle @wydania {
 		root * /srv
 		file_server browse
+	}
+
+	# Pliki wydań OTA — paczki JavaScriptu, które telefon pobiera zamiast całego
+	# pliku `.apk`. Katalog `deploy/ota/` gospodarza, wpięty woluminem
+	# w `docker-compose.yml` i zapisywany przez `deploy/update_server.py`.
+	#
+	# Sam manifest **nie** jest tutaj: zależy od nagłówków żądania i jest
+	# `multipart/mixed`, więc obsługuje go API pod `/updates/manifest`.
+	# Tu są wyłącznie pliki, po które telefon sięga po przeczytaniu manifestu.
+	#
+	# Każdy z nich nazywa się swoim hashem, więc treść pod danym adresem nigdy
+	# się nie zmienia — stąd `immutable`. Bez tego telefon przy każdym wydaniu
+	# pobiera ponownie komplet obrazków i czcionek, które już ma, mimo że
+	# zmieniła się wyłącznie paczka JavaScriptu. To jest różnica między
+	# aktualizacją ważącą dwa megabajty a ważącą dwadzieścia.
+	@ota path /alphapump/ota/*
+	header @ota Cache-Control "public, max-age=31536000, immutable"
+
+	handle @ota {
+		root * /srv
+		file_server
 	}
 
 	# Wszystko pozostałe to panel: pliki statyczne, a dla ścieżek routera

@@ -16,7 +16,7 @@ function validate<T extends z.ZodType>(target: Target, schema: T) {
   return zValidator(target, schema, (result) => {
     if (!result.success) {
       throw badRequest(
-        'Żądanie nie przeszło walidacji',
+        'The request failed validation',
         result.error.issues.map((issue) => ({
           path: issue.path.join('.'),
           message: issue.message,

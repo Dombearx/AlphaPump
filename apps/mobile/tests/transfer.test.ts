@@ -1,5 +1,5 @@
 /**
- * Eksport i import w aplikacji — etap 14 od strony telefonu.
+ * Eksport i import w aplikacji — od strony telefonu.
  *
  * Testy jadą po prawdziwym schemacie lokalnym i **nigdy nie dotykają sieci**: to
  * jest główna zaleta tej ścieżki względem `GET /export`. Telefon ma u siebie całą

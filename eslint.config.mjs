@@ -50,7 +50,14 @@ export default tseslint.config(
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
-      'no-console': ['warn', { allow: ['warn', 'error'] }],
+      /**
+       * Konsola tylko tam, gdzie jest wyjściem procesu: `apps/api/src/logger.ts`
+       * wypisuje linie JSON i wyłącza regułę u siebie, CLI pisze przez
+       * `process.stdout`. Wcześniej reguła przepuszczała `warn` i `error`, więc
+       * poziom logu wybierało się tak, żeby lint nie krzyczał — a nie tak, jak
+       * wynikało z treści komunikatu.
+       */
+      'no-console': 'error',
       eqeqeq: ['error', 'always', { null: 'ignore' }],
     },
   },

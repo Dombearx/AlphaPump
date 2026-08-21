@@ -21,14 +21,30 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+# Zależności bierzemy z `uv.lock`, a nie z listy przepisanej tutaj z ręki.
+#
+# Poprzednio stał tu jawny `pip install` z własnymi zakresami wersji, obok
+# `pyproject.toml`, który tych samych zależności pilnował dla CI. Dwa źródła
+# prawdy dla jednej listy znaczą, że dołożenie zależności w kodzie i zapomnienie
+# o tym pliku daje usługę, która wstaje w CI i wywraca się na minipc.
+#
+# `uv sync --frozen` odmawia pracy, gdy lockfile nie pasuje do manifestu — czyli
+# rozjazd zatrzymuje budowanie obrazu, zamiast przepuszczać go do uruchomienia.
+RUN pip install --no-cache-dir uv
+
 # Manifest osobno od kodu: instalacja zależności nie zależy od treści `src/`,
 # więc poprawka w prompcie nie unieważnia warstwy z pobranymi paczkami.
-COPY services/triage/pyproject.toml ./
-RUN pip install --no-cache-dir \
-    "discord.py>=2.4,<3" "httpx>=0.27,<1" "apscheduler>=3.10,<4" "aiohttp>=3.9,<4"
+# `--no-install-project` jest tu konieczne — bez niego `uv` chciałby zbudować
+# pakiet, którego źródeł jeszcze nie ma w obrazie.
+COPY services/triage/pyproject.toml services/triage/uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
 
 COPY services/triage/src ./src
-RUN pip install --no-cache-dir --no-deps .
+RUN uv sync --frozen --no-dev
+
+# Środowisko `uv` mieszka w `.venv`; bez tego `python` z obrazu bazowego nie
+# widziałby ani zależności, ani samego pakietu.
+ENV PATH="/app/.venv/bin:$PATH"
 
 # Użytkownik bez uprawnień i katalog na stan założony **w obrazie**. To drugie
 # jest istotne: Docker przenosi właściciela katalogu z obrazu do świeżo

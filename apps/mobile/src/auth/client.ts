@@ -12,6 +12,17 @@ import { createAuthClient } from 'better-auth/react';
 import * as SecureStore from 'expo-secure-store';
 import { appConfig } from '../config/index';
 
+/**
+ * `expo-network` nie jest importowane nigdzie w tym pliku ani gdziekolwiek
+ * w `src/`/`app/` — a mimo to musi zostać zależnością w `package.json`.
+ * `expoClient()` niżej woła jego natywny moduł (`ExpoNetwork`) pod spodem,
+ * do sprawdzania łączności. Bez pakietu w `package.json` moduł nie wchodzi
+ * do autolinkingu, a `expoClient()` wywala się przy pierwszym użyciu
+ * z `Cannot find native module 'ExpoNetwork'` — i to na starcie aplikacji,
+ * bo `authClient` powstaje w module scope. Grep po importach tego nie
+ * wyłapie: to jest peerDependency biblioteki, nie import w naszym kodzie.
+ */
+
 /** Schemat deep linków aplikacji; musi zgadzać się z `scheme` w `app.config.js`. */
 export const APP_SCHEME = 'alphapump';
 

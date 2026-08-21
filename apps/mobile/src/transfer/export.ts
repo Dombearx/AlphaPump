@@ -137,6 +137,10 @@ export async function exportLocalArchive(
   );
 
   const content: ArchiveContent = {
+    // Telefon nigdy nie eksportuje poświadczeń: baza lokalna ich nie zna, a plik
+    // z eksportu użytkownik nosi u siebie. Poświadczenia wchodzą wyłącznie do
+    // archiwum systemowego robionego na serwerze.
+    credentials: [],
     users: userRows.map((row): ArchiveUser => ({
       id: row.id,
       email: row.email,

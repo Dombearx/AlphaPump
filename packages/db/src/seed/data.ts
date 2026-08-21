@@ -6,7 +6,7 @@
  * i kolory nie są tu wpisane ręcznie, tylko liczone funkcjami z `@alphapump/core`
  * — czyli dokładnie tak, jak policzy je telefon, tworząc tag offline.
  *
- * To jest sedno kryterium ukończenia etapu 2: seed po obu stronach daje
+ * To jest sedno parzystości seeda: po obu stronach daje
  * **identyczne identyfikatory** ćwiczeń wbudowanych, bo obie strony liczą je
  * z tej samej nazwy tym samym kodem.
  *

@@ -1,7 +1,7 @@
 /**
  * Słownik: tagi i ćwiczenia. Zapis lokalny, kolejka wysyłki, zero sieci.
  *
- * Wszystko tutaj musi działać offline — to jest kryterium ukończenia etapu 8.
+ * Wszystko tutaj musi działać offline — to jest wymaganie produktu.
  * Ćwiczenie utworzone w trybie samolotowym ma od razu istnieć w bibliotece,
  * dać się wybrać do serii i pojechać na serwer, gdy łączność wróci.
  *
@@ -33,6 +33,7 @@ import {
   exerciseTags,
   exercises,
   tags,
+  workoutSets,
   type ExerciseRow,
   type SqliteDatabase,
 } from '@alphapump/db/sqlite';
@@ -69,6 +70,24 @@ export class NameTakenError extends Error {
   constructor(name: string) {
     super(`You already have an exercise named "${name}"`);
     this.name = 'NameTakenError';
+  }
+}
+
+/**
+ * Ćwiczenie ma zapisane serie.
+ *
+ * Reguły pilnuje serwer, ale odmowa stamtąd przyszłaby dopiero przy
+ * synchronizacji — jako odrzucony wiersz w kolejce, po którym ćwiczenie
+ * wróciłoby do biblioteki bez wyjaśnienia. Lepiej powiedzieć „nie" od razu.
+ *
+ * Telefon widzi wyłącznie serie swojego właściciela, więc ten warunek jest
+ * węższy niż serwerowy: ćwiczenie, na którym trenuje ktoś inny z grupy,
+ * odrzuci dopiero push.
+ */
+export class ExerciseInUseError extends Error {
+  constructor() {
+    super('This exercise has logged sets. Delete the sets first, or ask an admin to merge it.');
+    this.name = 'ExerciseInUseError';
   }
 }
 
@@ -320,6 +339,12 @@ export async function updateExercise(
  * Usunięcie jest miękkie — wiersz zostaje z tombstonem. Dzięki temu zapisane
  * serie nie tracą tego, na co wskazują, a usunięcie wykonane offline ma jak
  * dojechać na drugie urządzenie.
+ *
+ * Ćwiczenie, na którym cokolwiek zapisano, nie daje się usunąć w ogóle — dla
+ * właściciela serii ćwiczenie z tombstonem nie istnieje, więc jego seria
+ * zostaje w dniu jako wpis bez nazwy. Duplikat scala administrator w panelu;
+ * ćwiczenie z jedną serią wpisaną przez pomyłkę kasuje się po skasowaniu tej
+ * serii.
  */
 export async function deleteExercise(
   db: SqliteDatabase,
@@ -329,6 +354,7 @@ export async function deleteExercise(
 ): Promise<void> {
   const existing = await loadExercise(db, exerciseId);
   assertMayModify(existing, author);
+  if (await hasLoggedSets(db, exerciseId)) throw new ExerciseInUseError();
 
   await withTransaction(db, async () => {
     await db
@@ -337,6 +363,17 @@ export async function deleteExercise(
       .where(eq(exercises.id, existing.id));
     await enqueue(db, 'exercise', existing.id, now);
   });
+}
+
+/** Czy w lokalnej bazie leży choć jedna żywa seria tego ćwiczenia. */
+async function hasLoggedSets(db: SqliteDatabase, exerciseId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: workoutSets.id })
+    .from(workoutSets)
+    .where(and(eq(workoutSets.exerciseId, exerciseId), isNull(workoutSets.deletedAt)))
+    .limit(1);
+
+  return row !== undefined;
 }
 
 async function loadExercise(db: SqliteDatabase, exerciseId: string): Promise<ExerciseRow> {

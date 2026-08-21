@@ -11,15 +11,18 @@
  * nie ma.
  */
 
+import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
-import { logger } from 'hono/logger';
 import type { AppConfig } from './config.js';
 import type { AppDependencies, AppEnvironment } from './context.js';
 import { ApiError, toErrorResponse } from './errors.js';
+import { logger } from './logger.js';
 import { DERIVED_RECOMPUTATIONS } from './derived/index.js';
 import { authenticate } from './middleware/authenticate.js';
 import { buildOpenApiDocument, type RouteSpec } from './openapi.js';
+import { createAdminLibraryRouter, adminLibraryRoutes } from './routes/library/index.js';
 import { createAdminRouter, adminRoutes } from './routes/admin.js';
 import { createCycleRouter, cycleRoutes } from './routes/cycles.js';
 import { createDuplicateRouter, duplicateRoutes } from './routes/duplicates.js';
@@ -33,6 +36,7 @@ import { createSetRouter, setRoutes } from './routes/sets.js';
 import { createSyncRouter, syncRoutes } from './routes/sync.js';
 import { createTagRouter, tagRoutes } from './routes/tags.js';
 import { createTransferRouter, transferRoutes } from './routes/transfer.js';
+import { createUpdateRouter, updateRoutes } from './routes/updates.js';
 
 /** Wersja wystawiana w OpenAPI i w healthchecku. */
 export const API_VERSION = '0.1.0';
@@ -54,8 +58,33 @@ export const documentedRoutes: RouteSpec[] = [
   ...syncRoutes,
   ...transferRoutes,
   ...adminRoutes,
+  ...adminLibraryRoutes,
   ...feedbackRoutes,
+  ...updateRoutes,
 ];
+
+/**
+ * Ile bajtów wolno przysłać w ciele żądania.
+ *
+ * Ciało jest parsowane w całości do pamięci, **zanim** Zod zobaczy pierwsze
+ * pole — bez tego limitu każde zalogowane konto kładzie proces jednym żądaniem
+ * o rozmiarze kilkuset megabajtów, a razem z nim panel, bo wychodzi tym samym
+ * Caddym.
+ *
+ * Dwie wartości, bo dwie różne rzeczy tu jadą. Zwykłe żądanie to formularz albo
+ * paczka synchronizacji: 500 serii z notatkami po tysiąc znaków mieści się
+ * w megabajcie z zapasem. Archiwum jest tego innym rzędem wielkości — historia
+ * treningowa całej grupy w jednym pliku — i ma własny, wyraźnie wyższy sufit.
+ */
+export const BODY_LIMIT_BYTES = 4 * 1024 * 1024;
+export const ARCHIVE_BODY_LIMIT_BYTES = 128 * 1024 * 1024;
+
+const tooLarge = (limitBytes: number) => () => {
+  throw new ApiError(
+    'bad_request',
+    `The request is larger than ${String(Math.round(limitBytes / (1024 * 1024)))} MB`,
+  );
+};
 
 export function createApp(dependencies: AppDependencies, config: AppConfig) {
   const app = new Hono<AppEnvironment>();
@@ -68,7 +97,46 @@ export function createApp(dependencies: AppDependencies, config: AppConfig) {
     derived: dependencies.derived ?? DERIVED_RECOMPUTATIONS,
   };
 
-  if (config.nodeEnv !== 'test') app.use('*', logger());
+  /**
+   * Identyfikator żądania i jeden wpis logu na żądanie.
+   *
+   * Identyfikator wraca do klienta nagłówkiem `x-request-id`, więc zgłoszenie
+   * „nie zapisała mi się seria o 19:40" da się przełożyć na konkretny wpis
+   * w `docker logs` — wcześniej nie było czego szukać. Testy tego nie logują:
+   * dwieście linii JSON-a na przebieg nie mówi nic, czego nie mówi wynik testu.
+   */
+  app.use('*', async (context, next) => {
+    const requestId = context.req.header('x-request-id') ?? randomUUID();
+    context.set('requestId', requestId);
+    context.header('x-request-id', requestId);
+
+    if (config.nodeEnv === 'test') return next();
+
+    const startedAt = Date.now();
+    await next();
+    logger.info('żądanie', {
+      requestId,
+      method: context.req.method,
+      path: context.req.path,
+      status: context.res.status,
+      durationMs: Date.now() - startedAt,
+    });
+  });
+
+  // Jedno przejście, dwie wartości. Dwa osobne `app.use` nie zadziałałyby:
+  // Hono uruchamia **wszystkie** pasujące warstwy pośrednie, więc ta ogólna
+  // odcięłaby archiwum na czterech megabajtach, zanim doszłoby do podniesionej.
+  const archiveLimit = bodyLimit({
+    maxSize: ARCHIVE_BODY_LIMIT_BYTES,
+    onError: tooLarge(ARCHIVE_BODY_LIMIT_BYTES),
+  });
+  const generalLimit = bodyLimit({
+    maxSize: BODY_LIMIT_BYTES,
+    onError: tooLarge(BODY_LIMIT_BYTES),
+  });
+  app.use('*', (context, next) =>
+    (context.req.path === '/import' ? archiveLimit : generalLimit)(context, next),
+  );
 
   app.use(
     '*',
@@ -80,11 +148,26 @@ export function createApp(dependencies: AppDependencies, config: AppConfig) {
   );
 
   app.onError((error, context) => {
+    const requestId = context.get('requestId');
+
     if (error instanceof ApiError) {
       return context.json(toErrorResponse(error), error.status as 400);
     }
-    console.error('Nieobsłużony błąd żądania', error);
-    return context.json(toErrorResponse(new ApiError('internal', 'Wewnętrzny błąd serwera')), 500);
+
+    logger.error('nieobsłużony błąd żądania', {
+      requestId,
+      method: context.req.method,
+      path: context.req.path,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+
+    // Identyfikator w komunikacie, żeby użytkownik mógł go przepisać do
+    // zgłoszenia zamiast opisywać, co robił o 19:40.
+    return context.json(
+      toErrorResponse(new ApiError('internal', `Internal server error (request id: ${requestId})`)),
+      500,
+    );
   });
 
   app.notFound((context) =>
@@ -104,6 +187,13 @@ export function createApp(dependencies: AppDependencies, config: AppConfig) {
     ),
   );
 
+  /**
+   * Manifest aktualizacji OTA. Przed uwierzytelnieniem świadomie: telefon pyta
+   * o niego przy starcie, zanim ktokolwiek się zaloguje — a wydanie naprawiające
+   * logowanie musi dojechać właśnie do telefonu, który zalogować się nie potrafi.
+   */
+  app.route('/', createUpdateRouter(config.otaDir));
+
   /** better-auth obsługuje rejestrację, logowanie, sesje i klucze API. */
   app.all('/api/auth/*', (context) => dependencies.auth.handler(context.req.raw));
 
@@ -120,7 +210,8 @@ export function createApp(dependencies: AppDependencies, config: AppConfig) {
   secured.route('/', createRankingRouter(resolved));
   secured.route('/', createSyncRouter(resolved));
   secured.route('/', createTransferRouter(resolved));
-  secured.route('/', createAdminRouter(resolved));
+  secured.route('/', createAdminRouter(resolved, config.backupDir));
+  secured.route('/', createAdminLibraryRouter(resolved));
   secured.route('/', createFeedbackRouter(config.feedbackDir));
 
   app.route('/', secured);

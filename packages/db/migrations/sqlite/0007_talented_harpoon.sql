@@ -1,0 +1,1 @@
+ALTER TABLE `sync_rejections` ADD `reason_detail` text;

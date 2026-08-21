@@ -3,7 +3,7 @@
  *
  * Postępu **nie zapisujemy nigdzie**. Jest daną pochodną, liczoną z serii przez
  * `computeCycleProgress` z rdzenia (patrz `src/cycle-progress.ts`). To nie jest
- * oszczędność miejsca, tylko warunek poprawności całego etapu 9: skoro postęp
+ * oszczędność miejsca, tylko warunek poprawności cykli: skoro postęp
  * liczy się od zera przy każdym odczycie, usunięcie serii po prostu go
  * zmniejsza — bez korekt wstecznych, bez licznika, który potrafi rozjechać się
  * z rzeczywistością po nieudanej synchronizacji.

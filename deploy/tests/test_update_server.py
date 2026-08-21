@@ -25,6 +25,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import update_server  # noqa: E402
 
 
+PUBLISH_TOKEN = "testowy-token-wydawniczy"
+
+
+@pytest.fixture(autouse=True)
+def publishing_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Publishing is token-gated; without this every upload here would 503."""
+    monkeypatch.setenv(update_server.PUBLISH_TOKEN_VARIABLE, PUBLISH_TOKEN)
+
+
+AUTHORIZED = {"Authorization": f"Bearer {PUBLISH_TOKEN}"}
+
+
 @pytest.fixture
 def releases(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     directory = tmp_path / "apk"
@@ -101,6 +113,7 @@ def test_publishing_sweeps_and_prunes(releases: Path):
     with TestClient(update_server.app) as client:
         response = client.post(
             "/apk",
+            headers=AUTHORIZED,
             data={"manifest": json.dumps(manifest)},
             files={"apk": ("alphapump-63.apk", content, "application/vnd.android.package-archive")},
         )
@@ -113,3 +126,148 @@ def test_publishing_sweeps_and_prunes(releases: Path):
     ]
     assert list(releases.glob("*.part")) == []
     assert json.loads((releases / "latest.json").read_text())["versionCode"] == 63
+
+
+def test_publishing_a_package_needs_the_token(releases: Path):
+    content = b"podlozony pakiet"
+    manifest = {
+        "versionCode": 99,
+        "versionName": "9.9.9",
+        "file": "alphapump-99.apk",
+        "size": len(content),
+        "md5": hashlib.md5(content).hexdigest(),
+        "sha256": hashlib.sha256(content).hexdigest(),
+    }
+    files = {"apk": ("alphapump-99.apk", content, "application/vnd.android.package-archive")}
+
+    with TestClient(update_server.app) as client:
+        anonymous = client.post("/apk", data={"manifest": json.dumps(manifest)}, files=files)
+        wrong = client.post(
+            "/apk",
+            headers={"Authorization": "Bearer nie-ten-token"},
+            data={"manifest": json.dumps(manifest)},
+            files=files,
+        )
+
+    assert anonymous.status_code == 401
+    assert wrong.status_code == 401
+    assert list(releases.glob("*.apk")) == []
+
+
+def test_publishing_is_refused_loudly_when_no_token_is_configured(
+    releases: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Unset means disabled, not open -- and says so, rather than 401-ing forever."""
+    monkeypatch.delenv(update_server.PUBLISH_TOKEN_VARIABLE)
+
+    with TestClient(update_server.app) as client:
+        response = client.post(
+            "/apk",
+            headers=AUTHORIZED,
+            data={"manifest": "{}"},
+            files={"apk": ("alphapump-1.apk", b"x", "application/octet-stream")},
+        )
+
+    assert response.status_code == 503
+    assert update_server.PUBLISH_TOKEN_VARIABLE in response.text
+
+
+def test_reading_the_current_release_stays_open(releases: Path):
+    """Phones read this without a token; only publishing is gated."""
+    with TestClient(update_server.app) as client:
+        assert client.get("/health").status_code == 200
+        assert client.get("/apk").status_code == 404
+
+
+def test_redeploying_needs_the_token(monkeypatch: pytest.MonkeyPatch):
+    """`/update` runs git and docker as a host user; it may not be anonymous.
+
+    The call is also POST now. A state-changing GET fires from any page someone
+    in the VPN opens, from a browser prefetch, and from anything that follows a
+    URL it was handed -- so the old shape answers 405 with instructions instead
+    of quietly still working.
+    """
+    ran: list[list[str]] = []
+    monkeypatch.setattr(
+        update_server.subprocess,
+        "run",
+        lambda command, **_: ran.append(command) or _CompletedFake(),
+    )
+
+    with TestClient(update_server.app) as client:
+        anonymous = client.post("/update")
+        wrong = client.post("/update", headers={"Authorization": "Bearer nie-ten-token"})
+        old_shape = client.get("/update")
+
+    assert anonymous.status_code == 401
+    assert wrong.status_code == 401
+    assert old_shape.status_code == 405
+    assert "POST /update" in old_shape.text
+    assert ran == [], "nothing may run before the token checks out"
+
+
+def test_redeploying_tags_images_with_the_commit(monkeypatch: pytest.MonkeyPatch):
+    """Going back to a previous version has to be possible without a rebuild."""
+    seen: list[tuple[list[str], str | None]] = []
+
+    def fake_run(command, **kwargs):
+        seen.append((command, (kwargs.get("env") or {}).get("IMAGE_TAG")))
+        if command[:2] == ["git", "rev-parse"]:
+            return _CompletedFake(stdout="abc1234\n")
+        return _CompletedFake()
+
+    monkeypatch.setattr(update_server.subprocess, "run", fake_run)
+
+    with TestClient(update_server.app) as client:
+        response = client.post("/update", headers=AUTHORIZED)
+
+    assert response.status_code == 200, response.text
+    compose = [tag for command, tag in seen if command[:2] == ["docker", "compose"]]
+    assert compose == ["abc1234"]
+
+
+class _CompletedFake:
+    """Stands in for `subprocess.CompletedProcess` without running anything."""
+
+    def __init__(self, returncode: int = 0, stdout: str = "", stderr: str = ""):
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def test_all_three_integrity_fields_are_checked(releases: Path):
+    """The manifest requires md5 and size, so leaving them unread made them decoration.
+
+    A number nobody verifies is a number nobody keeps correct, and the next
+    reader cannot tell which of the three to trust.
+    """
+    content = b"pakiet, ktory nie zgadza sie z opisem"
+    base = {
+        "versionCode": 71,
+        "versionName": "0.1.0",
+        "file": "alphapump-71.apk",
+        "size": len(content),
+        "md5": hashlib.md5(content).hexdigest(),
+        "sha256": hashlib.sha256(content).hexdigest(),
+    }
+    files = {"apk": ("alphapump-71.apk", content, "application/vnd.android.package-archive")}
+
+    with TestClient(update_server.app) as client:
+        wrong_md5 = client.post(
+            "/apk",
+            headers=AUTHORIZED,
+            data={"manifest": json.dumps({**base, "md5": "0" * 32})},
+            files=files,
+        )
+        wrong_size = client.post(
+            "/apk",
+            headers=AUTHORIZED,
+            data={"manifest": json.dumps({**base, "size": len(content) + 1})},
+            files=files,
+        )
+
+    assert wrong_md5.status_code == 400
+    assert "md5" in wrong_md5.text
+    assert wrong_size.status_code == 400
+    assert "size" in wrong_size.text
+    assert list(releases.glob("*.apk")) == [], "nothing may land when the description is wrong"

@@ -7,11 +7,19 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Bramka. Bez niej wdrożenie startowało równolegle z CI i nie oglądało się na
+  # jego wynik — merge z czerwonym testem jechał na minipc.
+  sprawdzenia:
+    uses: ./.github/workflows/verify.yml
+
   deploy:
+    needs: sprawdzenia
     runs-on: ubuntu-latest
     steps:
       - name: Join Netbird network
-        uses: hackiron/public-actions/netbird-connect@main
+        # Przypięte do commita, nie do gałęzi: akcja jest cudza, a startuje w tym
+        # samym runnerze co klucz podpisujący wydanie i token publikacji.
+        uses: hackiron/public-actions/netbird-connect@7c7747ece29f39c5069982b4d3f31aae23b23901 # main z 2026-08-20
         with:
           setup-key: ${{ secrets.NETBIRD_ACCESS_KEY }}
           hostname: github-actions-deploy-alphapump
@@ -33,5 +41,20 @@ jobs:
           echo "::error::Timed out waiting for AlphaPump server after 5 minutes"
           exit 1
 
+      # `POST` z tokenem, nie gołe `GET`. Powód jest po stronie serwera
+      # (`deploy/update_server.py`): trasa robi `git pull` i `docker compose`
+      # jako użytkownik w grupie `docker`, więc od tej pory wymaga tego samego
+      # sekretu co publikacja wydania.
       - name: Trigger AlphaPump update
-        run: curl -fsS "${{ secrets.ALPHAPUMP_UPDATE_SERVER_URL }}"
+        env:
+          ALPHAPUMP_UPDATE_SERVER_URL: ${{ secrets.ALPHAPUMP_UPDATE_SERVER_URL }}
+          ALPHAPUMP_PUBLISH_TOKEN: ${{ secrets.ALPHAPUMP_PUBLISH_TOKEN }}
+        run: |
+          set -euo pipefail
+          [ -n "${ALPHAPUMP_PUBLISH_TOKEN}" ] || {
+            echo "::error::Brak sekretu ALPHAPUMP_PUBLISH_TOKEN — serwer aktualizacji odrzuci wdrożenie." >&2
+            exit 1
+          }
+          curl -fsS --max-time 900 -X POST \
+            -H "Authorization: Bearer ${ALPHAPUMP_PUBLISH_TOKEN}" \
+            "${ALPHAPUMP_UPDATE_SERVER_URL}"

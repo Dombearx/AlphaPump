@@ -21,10 +21,10 @@ import { SignInPage } from '../pages/sign-in';
 import { cn } from '../lib/cn';
 
 const NAV = [
-  { to: '/', label: 'Przegląd' },
-  { to: '/users', label: 'Konta' },
+  { to: '/', label: 'Overview' },
+  { to: '/users', label: 'Accounts' },
   { to: '/library', label: 'Biblioteka' },
-  { to: '/triage', label: 'Zgłoszenia' },
+  { to: '/triage', label: 'Feedback' },
   { to: '/data', label: 'Dane' },
 ] as const;
 
@@ -38,21 +38,21 @@ export function Layout() {
   });
   const path = useRouterState({ select: (state) => state.location.pathname });
 
-  if (isPending) return <Loading label="Sprawdzanie sesji…" />;
+  if (isPending) return <Loading label="Checking the session…" />;
   if (!session) return <SignInPage />;
 
-  if (me.isPending) return <Loading label="Sprawdzanie uprawnień…" />;
+  if (me.isPending) return <Loading label="Checking permissions…" />;
   if (me.error) {
     return (
       <main className="flex min-h-full items-center justify-center p-6">
         <Card className="flex w-full max-w-md flex-col gap-3">
           <Problem error={me.error} />
           <p className="text-sm text-muted">
-            Jeśli API jest poza zasięgiem, sprawdź połączenie z siecią NetBird — panel i API są
-            dostępne wyłącznie wewnątrz VPN.
+            If the API is out of reach, check the NetBird connection — the panel and the API are
+            only reachable inside the VPN.
           </p>
           <Button variant="secondary" onClick={() => void signOut()}>
-            Wyloguj
+            Sign out
           </Button>
         </Card>
       </main>
@@ -63,13 +63,13 @@ export function Layout() {
     return (
       <main className="flex min-h-full items-center justify-center p-6">
         <Card className="flex w-full max-w-md flex-col gap-3">
-          <h1 className="text-lg font-semibold text-text">Brak uprawnień</h1>
+          <h1 className="text-lg font-semibold text-text">No permission</h1>
           <p className="text-sm text-muted">
-            Konto {me.data.email} nie ma roli administratora. Rolę nadaje inny administrator z tego
-            panelu.
+            Account {me.data.email} does not have the administrator role. Another administrator can
+            grant it from this panel.
           </p>
           <Button variant="secondary" onClick={() => void signOut()}>
-            Wyloguj
+            Sign out
           </Button>
         </Card>
       </main>
@@ -99,7 +99,7 @@ export function Layout() {
 
           <span className="text-sm text-muted">{me.data.nickname}</span>
           <Button size="sm" variant="ghost" onClick={() => void signOut()}>
-            Wyloguj
+            Sign out
           </Button>
         </div>
       </header>

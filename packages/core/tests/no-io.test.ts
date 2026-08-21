@@ -1,5 +1,5 @@
 /**
- * Strażnik kryterium ukończenia etapu 1: pakiet nie ma żadnej zależności od I/O.
+ * Strażnik reguły: pakiet nie ma żadnej zależności od I/O.
  *
  * To nie jest test kosmetyczny. Gdy do rdzenia wejdzie odczyt bazy, zapytanie
  * sieciowe albo zmienna środowiskowa, przestanie on być tym samym kodem po obu

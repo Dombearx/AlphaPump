@@ -12,20 +12,23 @@
  * do trwałej diagnostyki.
  */
 
-export type AppLogLevel = 'log' | 'warn' | 'error';
+import {
+  FEEDBACK_LOG_LIMIT,
+  FEEDBACK_LOG_MESSAGE_MAX_LENGTH,
+  type FeedbackLogEntry,
+  type FeedbackLogLevel,
+} from '@alphapump/core';
 
-export interface AppLogEntry {
-  level: AppLogLevel;
-  message: string;
-  /** ISO 8601, zegar telefonu w chwili wpisu. */
-  at: string;
-}
+export type AppLogLevel = FeedbackLogLevel;
+export type AppLogEntry = FeedbackLogEntry;
 
-/** Zgodne z limitem, który akceptuje `POST /feedback` (`FEEDBACK_LOG_LIMIT`). */
-export const RECENT_LOG_LIMIT = 30;
+/**
+ * Ile wpisów trzyma bufor. Ta sama stała, którą serwer sprawdza przy
+ * `POST /feedback` — jedna wartość, nie dwie spięte komentarzem.
+ */
+export const RECENT_LOG_LIMIT = FEEDBACK_LOG_LIMIT;
 
-/** Pojedynczy wpis bywa dłuższy niż potrzeba — obiekt cyklowy, długi stack. */
-const MESSAGE_MAX_LENGTH = 2000;
+const MESSAGE_MAX_LENGTH = FEEDBACK_LOG_MESSAGE_MAX_LENGTH;
 
 const buffer: AppLogEntry[] = [];
 

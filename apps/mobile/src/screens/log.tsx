@@ -22,27 +22,29 @@ import {
   type LoggingType,
   type RecordOutcome,
 } from '@alphapump/core';
-import type { WorkoutSetRow } from '@alphapump/db/sqlite';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { Redirect, Stack, useRouter } from 'expo-router';
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Alert,
-  Animated,
   KeyboardAvoidingView,
-  PanResponder,
   Platform,
   Pressable,
   ScrollView,
   Text,
   View,
-  type PanResponderGestureState,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSession } from '../auth/client';
 import { db } from '../db/client';
-import { additionalTagsOf, exerciseDetails, exerciseHistory, exerciseTagList } from '../db/queries';
-import { createSet, deleteSet, moveSet, updateSet, type SetAuthor } from '../db/sets';
+import {
+  additionalTagsOf,
+  exerciseDetails,
+  exerciseHistory,
+  exerciseTagList,
+  type HistorySetRow,
+} from '../db/queries';
+import { createSet, deleteSet, updateSet, type SetAuthor } from '../db/sets';
 import { useDeviceId } from '../hooks';
 import {
   fieldsFor,
@@ -71,14 +73,6 @@ import {
 const RECORDS_SHOWN = 4;
 
 /**
- * Wyłącznik funkcji: przeciąganie serii działa, ale na razie jest uznane za
- * niepotrzebne. Kod zostaje cały (łącznie z `PanResponder`, refami i stanem
- * niżej) na wypadek, gdyby ktoś jednak chciał to z powrotem włączyć — flaga
- * tylko odcina go od renderu, żeby serie na razie po prostu stały w kolejności
- * zapisu, bez uchwytu i bez możliwości zmiany.
- */
-const REORDER_ENABLED: boolean = false;
-
 /**
  * Bok przycisków +/− przy ciężarze i powtórzeniach — tyle, ile wysokości ma
  * obramowane pole `Field` (padding `py-4` plus wysokość wiersza tekstu `text-lg`).
@@ -116,41 +110,6 @@ export function LogScreen({ day, exerciseId }: { day: IsoDate; exerciseId: strin
   const exercise = details.data[0];
   const sets = useMemo(() => history.data ?? [], [history.data]);
   const daySets = useMemo(() => sets.filter((set) => set.performedOn === day), [sets, day]);
-
-  /**
-   * Drag-and-drop zmiany kolejności serii — na gołym `PanResponder`/`Animated`
-   * z jądra React Native, celowo z pominięciem Reanimated/gesture-handler.
-   * Poprzednia próba (`react-native-draggable-flatlist`, oparte na worklecie
-   * Reanimated 4) kończyła się czarnym ekranem bez żadnego śladu w logu Metro —
-   * a więc najpewniej awarią po stronie natywnej, której bez `adb logcat` nie da
-   * się tu zdiagnozować. `PanResponder` liczy gesty na wątku JS, nie dotyka
-   * wątku UI ani workletów, więc błąd — gdyby wystąpił — byłby widoczny zwykłym
-   * `console.error`, zamiast cichej awarii.
-   */
-  const [rowHeight, setRowHeight] = useState(64);
-  const [dragging, setDragging] = useState<{ id: string; from: number } | null>(null);
-  const [dropIndex, setDropIndex] = useState<number | null>(null);
-  // `ScrollView` wyłączony na czas przeciągania — inaczej i tak potrafi
-  // przechwycić gest dla siebie w trakcie, mimo `onPanResponderTerminationRequest`.
-  const [dragScrollLocked, setDragScrollLocked] = useState(false);
-  const dragY = useRef(new Animated.Value(0)).current;
-  const dragScale = useRef(new Animated.Value(1)).current;
-  const rowGap = 8; // musi się zgadzać z `gap-2` na liście serii poniżej
-
-  /**
-   * Świeże wartości do wnętrza `PanResponder`ów bez ich przebudowy — patrz
-   * komentarz przy `getPanResponder` niżej, dlaczego przebudowa w trakcie
-   * gestu jest tym, co faktycznie psuło przeciąganie.
-   */
-  const rowIndexRef = useRef(new Map<string, number>());
-  const rowHeightRef = useRef(rowHeight);
-  const daySetsLengthRef = useRef(daySets.length);
-  const dropIndexRef = useRef<number | null>(null);
-  const panResponders = useRef(new Map<string, ReturnType<typeof PanResponder.create>>());
-
-  rowIndexRef.current = new Map(daySets.map((set, index) => [set.id, index]));
-  rowHeightRef.current = rowHeight;
-  daySetsLengthRef.current = daySets.length;
 
   const suggestion = useMemo(
     () => (exercise === undefined ? null : suggestedDraft(exercise.loggingType, sets, day)),
@@ -260,93 +219,7 @@ export function LogScreen({ day, exerciseId }: { day: IsoDate; exerciseId: strin
     ]);
   };
 
-  /**
-   * `moveSet` przesuwa o jedno miejsce naraz i sam przenumerowuje resztę —
-   * przeciągnięcie o kilka pozycji to po prostu kilka takich kroków pod rząd
-   * na tym samym id.
-   */
-  const commitReorder = (setId: string, from: number, to: number) => {
-    if (from === to) return;
-    const direction: 'up' | 'down' = to < from ? 'up' : 'down';
-    const steps = Math.abs(to - from);
-
-    run(async (who) => {
-      for (let step = 0; step < steps; step += 1) {
-        await moveSet(db, setId, direction, who);
-      }
-      requestSync();
-    });
-  };
-
-  const releaseDrag = () => {
-    Animated.parallel([
-      Animated.timing(dragY, { toValue: 0, duration: 150, useNativeDriver: false }),
-      Animated.spring(dragScale, { toValue: 1, useNativeDriver: false }),
-    ]).start();
-    setDragging(null);
-    setDropIndex(null);
-    dropIndexRef.current = null;
-  };
-
-  /**
-   * Jeden `PanResponder` na serię, utworzony **raz** i trzymany w `useRef`.
-   *
-   * To jest poprawka błędu, nie tylko cache dla wydajności: wcześniej
-   * `PanResponder.create(...)` wołało się na nowo przy **każdym** renderze
-   * (a `setDropIndex` w trakcie przeciągania wywołuje render za każdym razem,
-   * gdy palec przekroczy granicę kolejnego wiersza). Podmiana `panHandlers`
-   * na widoku, który w danej chwili **jest** aktywnym responderem, zrywała
-   * gest w połowie — widać to było jako serię „spadającą" z powrotem na
-   * miejsce dokładnie przy przekraczaniu progu wysokości sąsiedniego wiersza.
-   * Wewnątrz responder nie zamyka się nad `index`/`rowHeight`/`dropIndex`
-   * z chwili utworzenia (byłyby przestarzałe), tylko czyta je z refów, które
-   * odświeżamy przy każdym renderze bez dotykania samego respondera.
-   */
-  const getPanResponder = (setId: string) => {
-    const existing = panResponders.current.get(setId);
-    if (existing) return existing;
-
-    const responder = PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderTerminationRequest: () => false,
-      onPanResponderGrant: () => {
-        const index = rowIndexRef.current.get(setId) ?? 0;
-        dragY.setValue(0);
-        setDragging({ id: setId, from: index });
-        setDropIndex(index);
-        dropIndexRef.current = index;
-        setDragScrollLocked(true);
-        Animated.spring(dragScale, { toValue: 1.04, useNativeDriver: false }).start();
-      },
-      onPanResponderMove: (_event, gesture: PanResponderGestureState) => {
-        dragY.setValue(gesture.dy);
-        const index = rowIndexRef.current.get(setId) ?? 0;
-        const rowStep = rowHeightRef.current + rowGap;
-        const target = Math.max(
-          0,
-          Math.min(daySetsLengthRef.current - 1, index + Math.round(gesture.dy / rowStep)),
-        );
-        dropIndexRef.current = target;
-        setDropIndex(target);
-      },
-      onPanResponderRelease: () => {
-        setDragScrollLocked(false);
-        const index = rowIndexRef.current.get(setId) ?? 0;
-        if (dropIndexRef.current !== null) commitReorder(setId, index, dropIndexRef.current);
-        releaseDrag();
-      },
-      onPanResponderTerminate: () => {
-        setDragScrollLocked(false);
-        releaseDrag();
-      },
-    });
-
-    panResponders.current.set(setId, responder);
-    return responder;
-  };
-
-  const select = (set: WorkoutSetRow) => {
+  const select = (set: HistorySetRow) => {
     setEditing(set.id);
     setOutcome(null);
     setProblem(null);
@@ -397,7 +270,7 @@ export function LogScreen({ day, exerciseId }: { day: IsoDate; exerciseId: strin
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-base" edges={['bottom']}>
+    <SafeAreaView className="flex-1" edges={['bottom']}>
       <Stack.Screen
         options={{
           title: exercise.name,
@@ -426,11 +299,7 @@ export function LogScreen({ day, exerciseId }: { day: IsoDate; exerciseId: strin
           onPress={cancel}
           accessibilityElementsHidden={false}
         >
-          <ScrollView
-            contentContainerClassName="gap-4 p-4"
-            keyboardShouldPersistTaps="handled"
-            scrollEnabled={!dragScrollLocked}
-          >
+          <ScrollView contentContainerClassName="gap-4 p-4" keyboardShouldPersistTaps="handled">
             {/* Tagi ćwiczenia — te same chipsy co w bibliotece, tylko bez
                 `onPress`: tutaj mówią wyłącznie, czego ćwiczenie dotyczy, i nie
                 mają dokąd prowadzić w środku zapisywania serii. Tag główny stoi
@@ -526,83 +395,17 @@ export function LogScreen({ day, exerciseId }: { day: IsoDate; exerciseId: strin
                   None yet — the first one goes to the top of the list.
                 </Text>
               ) : (
-                daySets.map((set, index) => {
-                  if (!REORDER_ENABLED) {
-                    return (
-                      <Row key={set.id} selected={set.id === editing} onPress={() => select(set)}>
-                        <Text className="w-6 text-right text-muted">{index + 1}.</Text>
-                        <View className="flex-1">
-                          <Text className="text-base text-text">{formatSet(loggingType, set)}</Text>
-                          {set.note !== null && set.note.length > 0 && (
-                            <Text className="text-xs text-muted">{set.note}</Text>
-                          )}
-                        </View>
-                      </Row>
-                    );
-                  }
-
-                  const isDragging = dragging?.id === set.id;
-                  const showDropLineAbove =
-                    dragging !== null && dropIndex === index && dragging.from !== index;
-
-                  return (
-                    <View key={set.id}>
-                      {showDropLineAbove && <View className="mb-2 h-0.5 rounded-full bg-accent" />}
-                      <Animated.View
-                        onLayout={
-                          index === 0
-                            ? (event) => setRowHeight(event.nativeEvent.layout.height)
-                            : undefined
-                        }
-                        style={
-                          isDragging
-                            ? {
-                                transform: [{ translateY: dragY }, { scale: dragScale }],
-                                zIndex: 10,
-                                elevation: 10,
-                                opacity: 0.95,
-                              }
-                            : undefined
-                        }
-                      >
-                        {/* Uchwyt musi być RODZEŃSTWEM `Pressable`, nie jego dzieckiem —
-                            zagnieżdżony wewnątrz `Row` nigdy by nie dostał gestu: sam
-                            `Pressable` przejmuje dotyk na starcie, zanim `PanResponder`
-                            zdąży go rozpoznać jako przeciągnięcie przy ruchu. */}
-                        <View
-                          className={`flex-row items-center gap-3 rounded-2xl border px-4 py-3 ${
-                            set.id === editing
-                              ? 'border-accent bg-surface'
-                              : 'border-border bg-surface'
-                          }`}
-                        >
-                          <Pressable
-                            accessibilityRole="button"
-                            className="flex-1 flex-row items-center gap-3 active:opacity-70"
-                            onPress={() => select(set)}
-                          >
-                            <Text className="w-6 text-right text-muted">{index + 1}.</Text>
-                            <View className="flex-1">
-                              <Text className="text-base text-text">
-                                {formatSet(loggingType, set)}
-                              </Text>
-                              {set.note !== null && set.note.length > 0 && (
-                                <Text className="text-xs text-muted">{set.note}</Text>
-                              )}
-                            </View>
-                          </Pressable>
-                          <View
-                            {...getPanResponder(set.id).panHandlers}
-                            accessibilityLabel="Drag to reorder"
-                            className="h-10 w-10 items-center justify-center"
-                          >
-                            <Text className="text-lg text-muted">⠿</Text>
-                          </View>
-                        </View>
-                      </Animated.View>
+                daySets.map((set, index) => (
+                  <Row key={set.id} selected={set.id === editing} onPress={() => select(set)}>
+                    <Text className="w-6 text-right text-muted">{index + 1}.</Text>
+                    <View className="flex-1">
+                      <Text className="text-base text-text">{formatSet(loggingType, set)}</Text>
+                      {set.note !== null && set.note.length > 0 && (
+                        <Text className="text-xs text-muted">{set.note}</Text>
+                      )}
                     </View>
-                  );
-                })
+                  </Row>
+                ))
               )}
             </View>
 
@@ -635,7 +438,7 @@ export function LogScreen({ day, exerciseId }: { day: IsoDate; exerciseId: strin
  */
 function MissingExercise({ onBack }: { onBack: () => void }) {
   return (
-    <SafeAreaView className="flex-1 justify-center gap-4 bg-base p-6">
+    <SafeAreaView className="flex-1 justify-center gap-4 p-6">
       <EmptyState
         title="This exercise no longer exists"
         hint="It was removed from the library — pick another one."

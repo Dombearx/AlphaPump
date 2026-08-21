@@ -1,5 +1,5 @@
 /**
- * Zapisywanie serii — kryterium ukończenia etapu 6.
+ * Zapisywanie serii w bazie lokalnej.
  *
  * Testy jadą po prawdziwym schemacie lokalnym i **nigdy nie dotykają sieci**.
  * To jest sedno: cały przepływ ma działać w trybie samolotowym, łącznie
@@ -8,9 +8,9 @@
  */
 
 import { outbox, workoutSets } from '@alphapump/db/sqlite';
-import { asc, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createSet, deleteSet, moveSet, updateSet, type SetValues } from '../src/db/sets';
+import { createSet, deleteSet, updateSet, type SetValues } from '../src/db/sets';
 import { daySets, groupDaySets } from '../src/db/queries';
 import {
   EXERCISES,
@@ -179,59 +179,6 @@ describe('serie w bazie lokalnej', () => {
       await expect(
         updateSet(local.db, { ...AUTHOR, setId: created.id, values: reps(90, 8) }),
       ).rejects.toThrow(/No set with ID/);
-    });
-  });
-
-  describe('kolejność serii', () => {
-    const positions = async () =>
-      (
-        await local.db
-          .select({ id: workoutSets.id, position: workoutSets.position })
-          .from(workoutSets)
-          .orderBy(asc(workoutSets.position))
-      ).map((row) => row.id);
-
-    it('przesuwa serię w górę', async () => {
-      const first = await add(reps(80, 8));
-      const second = await add(reps(80, 7));
-
-      expect(await moveSet(local.db, second.id, 'up', AUTHOR)).toBe(true);
-      expect(await positions()).toEqual([second.id, first.id]);
-    });
-
-    it('przesuwa serię w dół', async () => {
-      const first = await add(reps(80, 8));
-      const second = await add(reps(80, 7));
-
-      expect(await moveSet(local.db, first.id, 'down', AUTHOR)).toBe(true);
-      expect(await positions()).toEqual([second.id, first.id]);
-    });
-
-    it('nie robi nic na skraju listy', async () => {
-      const first = await add(reps(80, 8));
-      await add(reps(80, 7));
-
-      expect(await moveSet(local.db, first.id, 'up', AUTHOR)).toBe(false);
-    });
-
-    it('przesuwa tylko wewnątrz jednego dnia', async () => {
-      const yesterday = await add(reps(80, 8), '2026-08-10');
-      const today = await add(reps(80, 7), DAY);
-
-      expect(await moveSet(local.db, today.id, 'up', AUTHOR)).toBe(false);
-      expect(await moveSet(local.db, yesterday.id, 'down', AUTHOR)).toBe(false);
-    });
-
-    it('kolejkuje wyłącznie wiersze, których numer się zmienił', async () => {
-      const first = await add(reps(80, 8));
-      const second = await add(reps(80, 7));
-      await add(reps(80, 6));
-
-      await local.db.delete(outbox);
-      await moveSet(local.db, second.id, 'up', AUTHOR);
-
-      const queued = await local.db.select().from(outbox);
-      expect(queued.map((row) => row.rowId).sort()).toEqual([first.id, second.id].sort());
     });
   });
 

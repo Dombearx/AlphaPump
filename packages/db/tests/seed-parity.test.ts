@@ -1,5 +1,5 @@
 /**
- * Parzystość seeda — kryterium ukończenia etapu 2 wprost:
+ * Parzystość seeda. Wymaganie wprost:
  *
  * > seed daje po obu stronach identyczne identyfikatory ćwiczeń wbudowanych.
  *

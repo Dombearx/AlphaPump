@@ -10,7 +10,7 @@
  * zapisu na serwerze — a **nie** topologicznie względem zależności. Ćwiczenie
  * potrafi więc przyjechać przed swoim tagiem, a seria przed swoim ćwiczeniem.
  * Po stronie telefonu domyka to `PRAGMA defer_foreign_keys = ON` w transakcji
- * pullu (etap 7): SQLite przenosi wtedy sprawdzenie więzów na `COMMIT`, więc
+ * pullu: SQLite przenosi wtedy sprawdzenie więzów na `COMMIT`, więc
  * kolejność wewnątrz paczki przestaje mieć znaczenie, a niespójność, której nie
  * domyka żaden wiersz z tej samej paczki, dalej nie przechodzi.
  *

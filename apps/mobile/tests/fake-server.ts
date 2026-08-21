@@ -10,6 +10,12 @@
  * Czego tu nie ma: uwierzytelnienia, uprawnień i trwałości. Te sprawdzają testy
  * integracyjne `@alphapump/api` — powtarzanie ich tutaj oznaczałoby utrzymywanie
  * drugiej implementacji serwera.
+ *
+ * Jedna reguła spoza LWW jest tu jednak odwzorowana, bo bez niej testy
+ * przepuściłyby najgorszy z możliwych błędów: **seria wskazująca na nieznane
+ * ćwiczenie jest odrzucana**, dokładnie jak w `apps/api/src/sync/push.ts`.
+ * To ta reguła zżarła serie zapisane na bibliotece wbudowanej, dopóki serwer
+ * nie dostawał seeda.
  */
 
 import {
@@ -30,6 +36,7 @@ import {
   type SyncedUser,
   type SyncedWorkoutSet,
 } from '@alphapump/core';
+import { SEED_EXERCISES, SEED_TAGS, SEED_TIMESTAMP } from '@alphapump/db';
 import type { SyncTransport } from '../src/sync/transport';
 
 type Stored<T> = T & { deviceId: string | null };
@@ -47,6 +54,12 @@ export interface FakeServerOptions {
   userId: string;
   /** Zegar serwera; domyślnie prawdziwy. */
   now?: () => Date;
+  /**
+   * Czy serwer ma bibliotekę wbudowaną. Domyślnie ma, bo tak wygląda produkcja:
+   * seed jedzie przy każdym starcie serwera. `'empty'` odtwarza bazę sprzed tej
+   * poprawki — i służy wyłącznie do sprawdzenia, że telefon sobie z nią radzi.
+   */
+  library?: 'seeded' | 'empty';
 }
 
 export class FakeSyncServer implements SyncTransport {
@@ -62,8 +75,16 @@ export class FakeSyncServer implements SyncTransport {
   pullCalls = 0;
   /** Ustawione na błąd sprawia, że każde żądanie kończy się tym błędem. */
   failWith: Error | null = null;
+  /**
+   * Serie, których serwer nie przyjmie, cokolwiek by przyszło. Prawdziwy serwer
+   * odrzuca z paru powodów (cudze ćwiczenie, niespójne pomiary) — testom
+   * wystarczy jeden, żeby sprawdzić, co telefon robi z odmową.
+   */
+  readonly refuse = new Set<string>();
 
-  constructor(private readonly options: FakeServerOptions) {}
+  constructor(private readonly options: FakeServerOptions) {
+    if (options.library !== 'empty') this.seedLibrary();
+  }
 
   private get now(): Date {
     return this.options.now?.() ?? new Date();
@@ -76,6 +97,44 @@ export class FakeSyncServer implements SyncTransport {
 
   private guard(): void {
     if (this.failWith !== null) throw this.failWith;
+  }
+
+  /** Wstawia bibliotekę wbudowaną — tak jak robi to seed serwera przy starcie. */
+  seedLibrary(): void {
+    const at = SEED_TIMESTAMP.toISOString();
+
+    for (const tag of SEED_TAGS) {
+      this.tags.set(tag.id, {
+        id: tag.id,
+        name: tag.name,
+        slug: tag.slug,
+        color: tag.color,
+        createdAt: at,
+        updatedAt: at,
+        deletedAt: null,
+        serverSeq: this.next(),
+        deviceId: null,
+      });
+    }
+
+    for (const exercise of SEED_EXERCISES) {
+      this.exercises.set(exercise.id, {
+        id: exercise.id,
+        name: exercise.name,
+        slug: exercise.slug,
+        authorId: exercise.authorId,
+        loggingType: exercise.loggingType,
+        primaryTagId: exercise.primaryTagId,
+        additionalTagIds: [...exercise.additionalTagIds],
+        note: null,
+        gym: null,
+        createdAt: at,
+        updatedAt: at,
+        deletedAt: null,
+        serverSeq: this.next(),
+        deviceId: null,
+      });
+    }
   }
 
   /** Wstawia konto, żeby pull miał czym zaspokoić klucz obcy serii. */
@@ -115,7 +174,7 @@ export class FakeSyncServer implements SyncTransport {
         });
       }
 
-      results.push({ entity: 'tag', id: incoming.id, decision, reason: null });
+      results.push({ entity: 'tag', id: incoming.id, decision, reason: null, reasonDetail: null });
       changes.tags.push(strip(this.tags.get(incoming.id) as Stored<SyncedTag>));
     }
 
@@ -139,7 +198,13 @@ export class FakeSyncServer implements SyncTransport {
         });
       }
 
-      results.push({ entity: 'exercise', id: incoming.id, decision, reason: null });
+      results.push({
+        entity: 'exercise',
+        id: incoming.id,
+        decision,
+        reason: null,
+        reasonDetail: null,
+      });
       changes.exercises.push(strip(this.exercises.get(incoming.id) as Stored<SyncedExercise>));
     }
 
@@ -161,13 +226,30 @@ export class FakeSyncServer implements SyncTransport {
         });
       }
 
-      results.push({ entity: 'cycle', id: incoming.id, decision, reason: null });
+      results.push({
+        entity: 'cycle',
+        id: incoming.id,
+        decision,
+        reason: null,
+        reasonDetail: null,
+      });
       changes.cycles.push(strip(this.cycles.get(incoming.id) as Stored<SyncedCycle>));
     }
 
     for (const incoming of request.sets) {
       const revision = clampRevision(revisionOf(incoming, request.deviceId), now);
       const decision = resolveSyncConflict(existing(this.sets.get(incoming.id)), revision);
+
+      if (this.refuse.has(incoming.id) || !this.exercises.has(incoming.exerciseId)) {
+        results.push({
+          entity: 'set',
+          id: incoming.id,
+          decision: 'rejected',
+          reason: this.refuse.has(incoming.id) ? 'not_owner' : 'missing_exercise',
+          reasonDetail: null,
+        });
+        continue;
+      }
 
       if (isWrite(decision)) {
         this.sets.set(incoming.id, {
@@ -187,7 +269,7 @@ export class FakeSyncServer implements SyncTransport {
         });
       }
 
-      results.push({ entity: 'set', id: incoming.id, decision, reason: null });
+      results.push({ entity: 'set', id: incoming.id, decision, reason: null, reasonDetail: null });
       changes.sets.push(strip(this.sets.get(incoming.id) as Stored<SyncedWorkoutSet>));
     }
 
@@ -233,6 +315,18 @@ export class FakeSyncServer implements SyncTransport {
   /** Wgląd w stan serwera — do sprawdzania, co faktycznie dojechało. */
   storedSets(): SyncedWorkoutSet[] {
     return [...this.sets.values()].map(strip);
+  }
+
+  storedExercises(): SyncedExercise[] {
+    return [...this.exercises.values()].map(strip);
+  }
+
+  storedCycles(): SyncedCycle[] {
+    return [...this.cycles.values()].map(strip);
+  }
+
+  storedTags(): SyncedTag[] {
+    return [...this.tags.values()].map(strip);
   }
 }
 

@@ -1,5 +1,5 @@
 /**
- * Eksport i import danych (etap 14).
+ * Eksport i import danych.
  *
  * Jeden serializer i jeden deserializer, używane przez trzy rzeczy: funkcję
  * eksportu i importu w aplikacji, endpointy `GET /export` i `POST /import` oraz

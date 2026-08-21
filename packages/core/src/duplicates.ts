@@ -38,7 +38,7 @@ export const duplicateSourceSchema = z.enum(DUPLICATE_SOURCES);
  * Najgłębsza warstwa, która się wykonała.
  *
  * `lexical` znaczy „warstwa semantyczna jest wyłączona albo nie miała czym
- * policzyć podobieństwa" — odpowiedź jest wtedy tym samym, co dawał etap 8,
+ * policzyć podobieństwa" — odpowiedź jest wtedy tym samym, co daje warstwa leksykalna,
  * tylko policzonym po stronie serwera.
  */
 export const DUPLICATE_LAYERS = ['lexical', 'hybrid', 'llm'] as const;

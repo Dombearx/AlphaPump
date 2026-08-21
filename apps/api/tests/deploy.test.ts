@@ -99,3 +99,28 @@ describe('rozdział ruchu w deploy/Caddyfile', () => {
     expect([...patterns].filter((pattern) => !covered.has(pattern))).toEqual([]);
   });
 });
+
+/**
+ * Seed przy starcie serwera.
+ *
+ * Testu na `main()` nie ma jak napisać uczciwie — wchodzi tam nasłuch na porcie
+ * — a to jest dokładnie ten jeden wiersz, którego brak nie zgłasza się niczym
+ * poza cichym rozjazdem danych: telefon seeduje swoją bazę sam, więc aplikacja
+ * pokazuje ćwiczenia wbudowane, których serwer i panel administracyjny nie
+ * widzą. Sprawdzamy więc źródło: seed **jest** i jedzie **po** migracjach.
+ */
+describe('start serwera', () => {
+  const entrypoint = readFileSync(`${repositoryRoot}apps/api/src/index.ts`, 'utf8');
+
+  it('wypełnia bazę danymi startowymi po migracjach', () => {
+    const migrations = entrypoint.indexOf('await runMigrations(');
+    const seed = entrypoint.indexOf('await seedPostgres(');
+
+    expect(migrations, 'start serwera nie uruchamia migracji').toBeGreaterThan(-1);
+    expect(
+      seed,
+      'start serwera nie uruchamia seeda — biblioteka wbudowana nigdy nie powstanie',
+    ).toBeGreaterThan(-1);
+    expect(seed).toBeGreaterThan(migrations);
+  });
+});

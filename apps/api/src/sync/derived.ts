@@ -14,7 +14,7 @@
  *    wszystkiego przy każdym pushu jest liniowe względem całej bazy.
  * 2. **Miejsce wpięcia przeliczeń** — lista wołana po każdym pushu.
  *
- * Samą listę wypełnia `../derived/index.ts` — do etapu 11 była pusta, bo jedyne
+ * Samą listę wypełnia `../derived/index.ts`; bywała pusta, bo jedyne
  * dane pochodne trzymane na serwerze to rekordy globalne i rankingi, a te
  * powstały dopiero tam. Rekordy indywidualne nie wchodzą tu w ogóle — nie
  * przechodzą przez synchronizację w żadną stronę, bo są funkcją serii

@@ -1,5 +1,5 @@
 /**
- * Konfiguracja aplikacji przekazana przez `app.config.ts`.
+ * Konfiguracja aplikacji przekazana przez `app.config.js`.
  *
  * Walidujemy ją raz, przy starcie, a nie przy pierwszym żądaniu sieciowym.
  * Literówka w adresie API ma się objawić od razu czytelnym komunikatem, a nie
