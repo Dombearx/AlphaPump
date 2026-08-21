@@ -70,7 +70,7 @@ export function CalendarScreen() {
   const total = totalSets(weeks);
 
   return (
-    <SafeAreaView className="flex-1 bg-base" edges={['bottom']}>
+    <SafeAreaView className="flex-1" edges={['bottom']}>
       <Stack.Screen options={{ title: 'Calendar' }} />
 
       <ScrollView contentContainerClassName="gap-4 p-4 pb-10">

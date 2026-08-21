@@ -96,7 +96,7 @@ export function EmptyState({ title, hint }: { title: string; hint?: string }) {
 
 export function Loading({ label }: { label?: string }) {
   return (
-    <View className="flex-1 items-center justify-center gap-3 bg-base">
+    <View className="flex-1 items-center justify-center gap-3">
       <ActivityIndicator size="large" color={COLORS.accent} />
       {label !== undefined && <Text className="text-muted">{label}</Text>}
     </View>

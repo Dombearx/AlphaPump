@@ -173,7 +173,7 @@ export function CycleFormScreen({ mode }: { mode: CycleFormMode }) {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-base" edges={['bottom']}>
+    <SafeAreaView className="flex-1" edges={['bottom']}>
       <Stack.Screen options={{ title: mode.kind === 'create' ? 'New cycle' : 'Edit cycle' }} />
 
       <KeyboardAvoidingView

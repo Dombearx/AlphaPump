@@ -23,6 +23,7 @@ import { describeSync } from '../src/sync/describe';
 import { useSyncEngine, useSyncSnapshot } from '../src/sync/provider';
 import { describeRunningBundle } from '../src/update/running';
 import { useRunningBundle } from '../src/update/use-update';
+import { BackgroundSettings } from '../src/ui/background';
 import { Button, Card, Loading, SectionTitle } from '../src/ui/primitives';
 
 export default function AccountRoute() {
@@ -41,7 +42,7 @@ export default function AccountRoute() {
   const running = describeRunningBundle(bundle, today());
 
   return (
-    <SafeAreaView className="flex-1 bg-base" edges={['bottom']}>
+    <SafeAreaView className="flex-1" edges={['bottom']}>
       <Stack.Screen options={{ title: 'Account' }} />
 
       <ScrollView contentContainerClassName="gap-4 p-4">
@@ -77,6 +78,8 @@ export default function AccountRoute() {
             />
           </View>
         </Card>
+
+        <BackgroundSettings />
 
         <Card className="gap-2">
           <SectionTitle>API tokens</SectionTitle>

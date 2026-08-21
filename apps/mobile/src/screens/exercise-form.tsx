@@ -200,7 +200,7 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-base" edges={['bottom']}>
+    <SafeAreaView className="flex-1" edges={['bottom']}>
       <Stack.Screen
         options={{ title: mode.kind === 'create' ? 'New exercise' : 'Edit exercise' }}
       />
@@ -358,7 +358,7 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
 
 function MissingExercise({ onBack }: { onBack: () => void }) {
   return (
-    <SafeAreaView className="flex-1 justify-center gap-4 bg-base p-6">
+    <SafeAreaView className="flex-1 justify-center gap-4 p-6">
       <EmptyState
         title="This exercise no longer exists"
         hint="It was removed from the library — pick another one."
