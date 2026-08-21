@@ -170,7 +170,7 @@ export function createApp(dependencies: AppDependencies, config: AppConfig) {
   secured.route('/', createRankingRouter(resolved));
   secured.route('/', createSyncRouter(resolved));
   secured.route('/', createTransferRouter(resolved));
-  secured.route('/', createAdminRouter(resolved));
+  secured.route('/', createAdminRouter(resolved, config.backupDir));
   secured.route('/', createAdminLibraryRouter(resolved));
   secured.route('/', createFeedbackRouter(config.feedbackDir));
 

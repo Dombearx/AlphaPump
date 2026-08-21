@@ -28,6 +28,8 @@
  * wchodzi w klucz ich identyfikatorów.
  */
 
+import { readdir, stat } from 'node:fs/promises';
+import path from 'node:path';
 import { SYSTEM_USER } from '@alphapump/db';
 import {
   adminUserListSchema,
@@ -149,7 +151,43 @@ export const adminRoutes: RouteSpec[] = [
 const total = async (rows: Promise<{ value: number }[]>): Promise<number> =>
   (await rows)[0]?.value ?? 0;
 
-export function createAdminRouter(dependencies: AppDependencies) {
+/**
+ * Stan katalogu kopii zapasowych — wiek i rozmiar najnowszej.
+ *
+ * `null` znaczy „nie ma jak zajrzeć": katalogu nie podmontowano, bo kopie stoją
+ * poza stosem (`scripts/backup.sh` pisze na gospodarza albo przez rclone).
+ * To jest inny stan niż pusty katalog i panel pokazuje go inaczej — „nie wiem"
+ * i „nie ma ani jednej kopii" prowadzą do zupełnie różnych reakcji.
+ *
+ * Nazwy plików odpowiadają temu, co produkuje `backup.sh`: przedrostek, data
+ * i rozszerzenie zależne od tego, czy kopia jest szyfrowana.
+ */
+async function readBackupState(directory: string | null) {
+  if (directory === null) return null;
+
+  try {
+    const names = (await readdir(directory)).filter((name) => /\.json\.gz(\.age)?$/.test(name));
+    const stats = await Promise.all(names.map(async (name) => stat(path.join(directory, name))));
+
+    const newest = stats.reduce<{ mtime: Date; size: number } | null>(
+      (best, entry) =>
+        best === null || entry.mtime > best.mtime ? { mtime: entry.mtime, size: entry.size } : best,
+      null,
+    );
+
+    return {
+      latestAt: newest === null ? null : newest.mtime.toISOString(),
+      count: names.length,
+      latestBytes: newest === null ? null : newest.size,
+    };
+  } catch {
+    // Katalog podmontowany, ale nieczytelny. Z punktu widzenia panelu to to samo
+    // co brak podmontowania: nie wiemy, kiedy powstała ostatnia kopia.
+    return null;
+  }
+}
+
+export function createAdminRouter(dependencies: AppDependencies, backupDir: string | null = null) {
   const router = new Hono<AppEnvironment>();
   const { db } = dependencies;
   const layers = dependencies.duplicates ?? NO_LAYERS;
@@ -260,50 +298,76 @@ export function createAdminRouter(dependencies: AppDependencies) {
     // krótsze niż konwersja przy każdym z kilkunastu pól.
     const scalar = { value: sql<number>`count(*)::int` };
 
-    const [lastDay] = await db
-      .select({ day: max(workoutSets.performedOn) })
-      .from(workoutSets)
-      .where(isNull(workoutSets.deletedAt));
+    // Wszystkie naraz, nie jedno po drugim. Kilkanaście `await` pod rząd nie
+    // boli przy tej skali, ale to jedyny ekran panelu, który zauważalnie się
+    // ładował — a zapytania nie zależą od siebie w żaden sposób.
+    const [
+      lastDay,
+      userTotal,
+      admins,
+      banned,
+      tagCount,
+      exerciseCount,
+      builtInExercises,
+      deletedExercises,
+      deletedTags,
+      setCount,
+      deletedSets,
+      cycleCount,
+      globalRecords,
+      embeddings,
+      cachedVerdicts,
+      backups,
+    ] = await Promise.all([
+      db
+        .select({ day: max(workoutSets.performedOn) })
+        .from(workoutSets)
+        .where(isNull(workoutSets.deletedAt)),
+      total(db.select(scalar).from(users)),
+      total(db.select(scalar).from(users).where(eq(users.role, 'admin'))),
+      total(db.select(scalar).from(users).where(eq(users.banned, true))),
+      total(db.select(scalar).from(tags).where(isNull(tags.deletedAt))),
+      total(db.select(scalar).from(exercises).where(isNull(exercises.deletedAt))),
+      total(
+        db
+          .select(scalar)
+          .from(exercises)
+          .where(and(isNull(exercises.deletedAt), eq(exercises.authorId, SYSTEM_USER.id))),
+      ),
+      total(db.select(scalar).from(exercises).where(isNotNull(exercises.deletedAt))),
+      total(db.select(scalar).from(tags).where(isNotNull(tags.deletedAt))),
+      total(db.select(scalar).from(workoutSets).where(isNull(workoutSets.deletedAt))),
+      total(db.select(scalar).from(workoutSets).where(isNotNull(workoutSets.deletedAt))),
+      total(db.select(scalar).from(cycles).where(isNull(cycles.deletedAt))),
+      total(db.select(scalar).from(exerciseRecords)),
+      total(db.select(scalar).from(exerciseEmbeddings)),
+      total(db.select(scalar).from(duplicateCheckCache)),
+      readBackupState(backupDir),
+    ]);
 
     return context.json({
-      users: {
-        total: await total(db.select(scalar).from(users)),
-        admins: await total(db.select(scalar).from(users).where(eq(users.role, 'admin'))),
-        banned: await total(db.select(scalar).from(users).where(eq(users.banned, true))),
-      },
+      users: { total: userTotal, admins, banned },
       library: {
-        tags: await total(db.select(scalar).from(tags).where(isNull(tags.deletedAt))),
-        exercises: await total(
-          db.select(scalar).from(exercises).where(isNull(exercises.deletedAt)),
-        ),
-        builtInExercises: await total(
-          db
-            .select(scalar)
-            .from(exercises)
-            .where(and(isNull(exercises.deletedAt), eq(exercises.authorId, SYSTEM_USER.id))),
-        ),
-        deletedExercises: await total(
-          db.select(scalar).from(exercises).where(isNotNull(exercises.deletedAt)),
-        ),
-        deletedTags: await total(db.select(scalar).from(tags).where(isNotNull(tags.deletedAt))),
+        tags: tagCount,
+        exercises: exerciseCount,
+        builtInExercises,
+        deletedExercises,
+        deletedTags,
       },
       training: {
-        sets: await total(db.select(scalar).from(workoutSets).where(isNull(workoutSets.deletedAt))),
-        deletedSets: await total(
-          db.select(scalar).from(workoutSets).where(isNotNull(workoutSets.deletedAt)),
-        ),
-        cycles: await total(db.select(scalar).from(cycles).where(isNull(cycles.deletedAt))),
-        lastPerformedOn: lastDay?.day ?? null,
+        sets: setCount,
+        deletedSets,
+        cycles: cycleCount,
+        lastPerformedOn: lastDay[0]?.day ?? null,
       },
-      derived: {
-        globalRecords: await total(db.select(scalar).from(exerciseRecords)),
-      },
+      derived: { globalRecords },
       duplicates: {
         semanticEnabled: layers.embedder !== null,
         rerankerEnabled: layers.reranker !== null,
-        embeddings: await total(db.select(scalar).from(exerciseEmbeddings)),
-        cachedVerdicts: await total(db.select(scalar).from(duplicateCheckCache)),
+        embeddings,
+        cachedVerdicts,
       },
+      backups,
     });
   });
 

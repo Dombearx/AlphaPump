@@ -90,6 +90,28 @@ export const systemStatsSchema = z.object({
     embeddings: z.int().min(0),
     cachedVerdicts: z.int().min(0),
   }),
+  /**
+   * Stan kopii zapasowych, widziany z katalogu, do którego pisze cron.
+   *
+   * `null` znaczy „serwer nie ma jak zajrzeć" — katalog nie jest podmontowany,
+   * bo kopie stoją poza stosem. To **nie** znaczy „kopii nie ma", i dlatego jest
+   * to osobny stan od pustego katalogu (`latestAt: null` przy `count: 0`).
+   *
+   * Istnieje, bo cron kopii instaluje się z ręki i nic nie sprawdzało, czy ktoś
+   * to zrobił: wynik `backup.sh` ląduje w pliku logu, do którego nikt nie
+   * zagląda, więc „kopie nie chodzą od trzech tygodni" wychodziło dopiero przy
+   * odtwarzaniu.
+   */
+  backups: z
+    .object({
+      /** Data najnowszej kopii; `null`, gdy katalog jest pusty. */
+      latestAt: z.string().nullable(),
+      /** Ile plików kopii leży w katalogu. */
+      count: z.int().min(0),
+      /** Rozmiar najnowszej kopii w bajtach; `null`, gdy katalog jest pusty. */
+      latestBytes: z.int().min(0).nullable(),
+    })
+    .nullable(),
 });
 
 export type SystemStats = z.infer<typeof systemStatsSchema>;

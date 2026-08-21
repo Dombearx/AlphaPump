@@ -78,6 +78,7 @@ from typing import Annotated, Any
 import uvicorn
 from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import JSONResponse, PlainTextResponse
+from pydantic import BaseModel
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -512,6 +513,8 @@ def current_updates() -> JSONResponse:
         if not directory.is_dir():
             continue
         for path in sorted(directory.glob("*.json")):
+            if path.name.endswith(".prev.json"):
+                continue
             try:
                 described = json.loads(path.read_text())
             except (OSError, json.JSONDecodeError):
@@ -809,15 +812,93 @@ def _write_pointer(
 
     Order matters the same way it does for `latest.json`: no phone may read a
     description of an update whose files are not all on disk yet.
+
+    The outgoing pointer is kept as `<runtimeVersion>.prev.json` so a release
+    that turns out to be wrong can be taken back -- see `POST /ota/rollback`.
+    It ends in `.json` on purpose: `_sweep_unreferenced_assets` globs for that,
+    so the files the previous release needs stay on disk instead of being
+    reclaimed the moment it stops being current.
     """
     target_dir = directory / platform
     target_dir.mkdir(parents=True, exist_ok=True)
 
     target = target_dir / f"{runtime_version}.json"
+    if target.is_file():
+        shutil.copyfile(target, _previous_pointer(directory, platform, runtime_version))
+
     staging = target.with_suffix(".json.part")
     staging.write_text(json.dumps(update, indent=2, ensure_ascii=False) + "\n")
     staging.chmod(0o644)
     staging.replace(target)
+
+
+def _previous_pointer(directory: Path, platform: str, runtime_version: str) -> Path:
+    return directory / platform / f"{runtime_version}.prev.json"
+
+
+class RollbackRequest(BaseModel):
+    platform: str
+    runtimeVersion: str
+
+
+@app.post("/ota/rollback", response_class=PlainTextResponse)
+def rollback_update(
+    body: RollbackRequest,
+    authorization: Annotated[str | None, Header()] = None,
+) -> PlainTextResponse:
+    """Puts the previous over-the-air update back in front of phones.
+
+    A bad release is the one failure `expo-updates` does not cover on its own:
+    the client falls back to the bundle inside the `.apk` when a downloaded one
+    refuses to launch, but a release that launches and behaves wrongly keeps
+    being handed out. Rebuilding the older export from CI is not an answer
+    either -- artifacts expire.
+
+    Swapping the two pointers is enough because updates are content-addressed:
+    the previous release's files were never deleted (`_sweep_unreferenced_assets`
+    counts `.prev.json` as a reference), so going back is a rename, not a
+    download. Swapping rather than dropping means the rollback is itself
+    reversible, for the case where the older release turns out to be the worse
+    of the two.
+    """
+    require_publish_token(authorization)
+
+    if body.platform not in OTA_PLATFORMS:
+        raise HTTPException(status_code=400, detail=f"Unknown platform {body.platform!r}")
+    if not RUNTIME_VERSION.fullmatch(body.runtimeVersion):
+        raise HTTPException(
+            status_code=400, detail=f"Unexpected runtime version: {body.runtimeVersion!r}"
+        )
+
+    directory = ota_dir()
+    current = directory / body.platform / f"{body.runtimeVersion}.json"
+    previous = _previous_pointer(directory, body.platform, body.runtimeVersion)
+
+    if not previous.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"No previous update kept for {body.platform}/{body.runtimeVersion} -- "
+                "there has only ever been one release for this native layer."
+            ),
+        )
+
+    # Through a third name, so an interrupted swap cannot leave both pointers
+    # describing the same release and the older one gone.
+    swapping = current.with_suffix(".json.swap")
+    if current.is_file():
+        current.replace(swapping)
+    previous.replace(current)
+    if swapping.is_file():
+        swapping.replace(previous)
+
+    restored = json.loads(current.read_text()).get("id")
+    logger.info(
+        "Rolled %s/%s back to %s", body.platform, body.runtimeVersion, restored
+    )
+    return PlainTextResponse(
+        f"Rolled {body.platform}/{body.runtimeVersion} back to {restored}\n"
+    )
 
 
 def _sweep_unreferenced_assets(directory: Path) -> list[str]:

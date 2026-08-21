@@ -12,10 +12,41 @@
  * wyłącznie w odniesieniu do liczby, która stoi obok.
  */
 
+import type { SystemStats } from '@alphapump/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Button, Card, CardTitle, Loading, Problem, Stat } from '../components/ui';
 import { getStats, pruneDuplicateCache, pruneTombstones } from '../lib/api';
+
+/**
+ * Wiek najnowszej kopii, po ludzku.
+ *
+ * `null` to **nie** „nie ma kopii", tylko „nie mam jak zajrzeć": katalog nie
+ * jest podmontowany do kontenera API, bo kopie z założenia stoją poza stosem
+ * (`BACKUP_DIR` w `deploy/.env`, albo `RCLONE_REMOTE` i wtedy w ogóle poza
+ * maszyną). Rozróżnienie jest tu całym sensem kafelka: „nie wiem" i „nie ma ani
+ * jednej kopii" prowadzą do dwóch zupełnie różnych reakcji.
+ */
+export function describeBackupAge(backups: SystemStats['backups']): string {
+  if (backups === null) return 'nie wiem';
+  if (backups.latestAt === null) return 'brak';
+
+  const hours = Math.floor((Date.now() - Date.parse(backups.latestAt)) / 3_600_000);
+  if (hours < 1) return 'przed chwilą';
+  if (hours < 48) return `${String(hours)} godz. temu`;
+  return `${String(Math.floor(hours / 24))} dni temu`;
+}
+
+/** Podpis pod wiekiem: rozmiar, ostrzeżenie albo powód, dla którego nie wiemy. */
+export function backupHint(backups: SystemStats['backups']): string {
+  if (backups === null) return 'ustaw BACKUP_DIR w deploy/.env, żeby to widzieć';
+  if (backups.latestAt === null) return 'katalog jest pusty — sprawdź cron';
+
+  const stale = Date.now() - Date.parse(backups.latestAt) > 48 * 3_600_000;
+  const size =
+    backups.latestBytes === null ? '' : `${String(Math.round(backups.latestBytes / 1024))} KB`;
+  return stale ? `${size} · starsza niż dwie doby` : size;
+}
 
 export function OverviewPage() {
   const stats = useQuery({ queryKey: ['stats'], queryFn: () => getStats() });
@@ -71,6 +102,27 @@ export function OverviewPage() {
                 ? 'brak zapisów'
                 : `ostatnia: ${data.training.lastPerformedOn}`
             }
+          />
+        </div>
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <CardTitle>Kopie zapasowe</CardTitle>
+        <p className="text-sm text-muted">
+          Odczyt z katalogu, do którego pisze cron. Cron instaluje się z ręki i nic poza tym
+          kafelkiem nie mówi, czy działa — a „kopie nie chodzą od trzech tygodni” to zdanie, które
+          ma się usłyszeć dzisiaj, a nie przy odtwarzaniu.
+        </p>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <Stat
+            label="Ostatnia kopia"
+            value={describeBackupAge(data.backups)}
+            hint={backupHint(data.backups)}
+          />
+          <Stat
+            label="Kopii w katalogu"
+            value={data.backups === null ? '—' : data.backups.count}
+            hint={data.backups === null ? 'katalog niepodmontowany' : undefined}
           />
         </div>
       </section>

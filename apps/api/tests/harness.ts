@@ -46,6 +46,10 @@ export const TEST_CONFIG: AppConfig = {
   // tymczasowym — testy zgłoszeń piszą naprawdę na dysk i nie mogą dzielić
   // katalogu między sobą.
   feedbackDir: './data/feedback',
+  // Katalog kopii zapasowych niepodmontowany — czyli dokładnie stan produkcyjny
+  // przy `RCLONE_REMOTE`, kiedy kopie stoją poza maszyną. `/admin/stats` oddaje
+  // wtedy `backups: null`, a testy sprawdzają właśnie ten wariant.
+  backupDir: null,
   // Jak `feedbackDir` wyżej: własny katalog na uruchomienie, bo testy
   // aktualizacji OTA kładą na dysku prawdziwe opisy wydań.
   otaDir: './data/ota',
@@ -70,6 +74,11 @@ export interface HarnessOptions {
    * wyłączona" — czyli dokładnie stan, w którym musi działać tworzenie ćwiczeń.
    */
   duplicates?: DuplicateLayers;
+  /**
+   * Katalog kopii zapasowych do podejrzenia. Pominięcie znaczy „niepodmontowany",
+   * czyli stan produkcyjny przy kopiach stojących poza stosem.
+   */
+  backupDir?: string;
   /** Klient usługi triage — pominięcie znaczy „panel nie wyzwoli przeglądu ręcznie". */
   triage?: TriageClient;
 }
@@ -106,7 +115,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 
   const feedbackDir = mkdtempSync(path.join(tmpdir(), 'alphapump-feedback-'));
   const otaDir = mkdtempSync(path.join(tmpdir(), 'alphapump-ota-'));
-  const config = { ...TEST_CONFIG, feedbackDir, otaDir };
+  const config = { ...TEST_CONFIG, feedbackDir, otaDir, backupDir: options.backupDir ?? null };
 
   const auth = createAuth(db, config);
   const app = createApp(

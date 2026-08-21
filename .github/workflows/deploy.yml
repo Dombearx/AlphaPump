@@ -7,7 +7,13 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Bramka. Bez niej wdrożenie startowało równolegle z CI i nie oglądało się na
+  # jego wynik — merge z czerwonym testem jechał na minipc.
+  sprawdzenia:
+    uses: ./.github/workflows/verify.yml
+
   deploy:
+    needs: sprawdzenia
     runs-on: ubuntu-latest
     steps:
       - name: Join Netbird network

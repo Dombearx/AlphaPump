@@ -1,0 +1,50 @@
+# Cztery sprawdzenia, które muszą przejść, zanim cokolwiek opuści repozytorium.
+#
+# Wydzielone do osobnego pliku, bo wołają je trzy workflow: `ci.yml` przy każdym
+# pull requeście, a `deploy.yml` i `android-release.yml` **przed** wypuszczeniem
+# czegokolwiek. Do tej pory wdrożenie i wydanie startowały na `push` do `main`
+# równolegle z CI i całkowicie niezależnie od jego wyniku — czyli merge
+# z czerwonym testem jechał na minipc, a jeśli warstwa natywna się nie zmieniła,
+# to natychmiast paczką OTA na każdy telefon w grupie.
+#
+# Kolejność jest odwrotna do tabeli w README świadomie: najtańsze sprawdzenie ma
+# odbić zepsutą zmianę jako pierwsze, zanim runner zdąży cokolwiek zbudować.
+
+name: Sprawdzenia
+
+on:
+  workflow_call:
+
+env:
+  TURBO_TELEMETRY_DISABLED: 1
+  DO_NOT_TRACK: 1
+
+jobs:
+  verify:
+    name: Lint, typecheck, build, test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test
+        run: pnpm test

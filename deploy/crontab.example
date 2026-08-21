@@ -19,6 +19,16 @@ SHELL=/bin/sh
 # minipc robi już aktualizacje systemu i odświeżanie NetBirda.
 17 3 * * * set -a; . /etc/alphapump/backup.env; set +a; /home/domin/AlphaPump/scripts/backup.sh >> /var/log/alphapump-backup.log 2>&1
 
-# Cotygodniowe sprawdzenie stosu. Nie zastępuje monitoringu — jest po to, żeby
+# Codzienne sprawdzenie stosu. Nie zastępuje monitoringu — jest po to, żeby
 # awaria bazy przy żywym procesie API nie czekała na zgłoszenie od użytkownika.
-23 6 * * 1 /home/domin/AlphaPump/deploy/smoke.sh http://localhost >> /var/log/alphapump-smoke.log 2>&1
+# Codziennie, a nie co tydzień: przy tygodniowym oknie „od kiedy to nie działa"
+# jest pytaniem bez odpowiedzi.
+23 6 * * * /home/domin/AlphaPump/deploy/smoke.sh http://localhost >> /var/log/alphapump-smoke.log 2>&1
+
+# Zadania porządkowe raz w miesiącu: tombstone'y i cache odpowiedzi modelu.
+# Oba mają też przycisk w panelu, ale przycisk wymaga, żeby ktoś pamiętał —
+# a objawem zapomnienia jest baza pełna wierszy, których nikt już nie zobaczy.
+# Okno retencji tombstone'ów zostaje domyślne (90 dni) i **nie** jest wartością
+# do skracania mimochodem: urządzenie offline dłużej niż okno nigdy nie dowie
+# się o usunięciu. Patrz `apps/api/src/sync/tombstones.ts`.
+41 4 1 * * docker compose -f /home/domin/AlphaPump/deploy/docker-compose.yml exec -T api node /app/apps/api/dist/cli/prune.js >> /var/log/alphapump-prune.log 2>&1

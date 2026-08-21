@@ -152,15 +152,86 @@ def test_changed_bundle_changes_the_identifier(updates: Path):
 
 
 def test_unreferenced_files_are_reclaimed(updates: Path):
-    publish(build_export(bundle=b"stare", assets={"assets/logo.png": b"udawany png"}))
-    stale = hashlib.md5(b"stare").hexdigest()
+    """Everything older than the release kept back for rollback goes away.
 
+    Three publishes, not two: the one directly before the current release is
+    still reachable through its `.prev.json` pointer, because that is what
+    `POST /ota/rollback` puts back. Only the one before *that* is garbage.
+    """
+    publish(build_export(bundle=b"najstarsze", assets={"assets/logo.png": b"udawany png"}))
+    stale = hashlib.md5(b"najstarsze").hexdigest()
+
+    publish(build_export(bundle=b"poprzednie", assets={"assets/logo.png": b"udawany png"}))
     publish(build_export(bundle=b"nowe", assets={"assets/logo.png": b"udawany png"}))
 
     assert not (updates / "assets" / stale).exists()
+    assert (updates / "assets" / hashlib.md5(b"poprzednie").hexdigest()).exists()
     # The unchanged image is still there: that is the whole point of naming
     # files after their contents.
     assert (updates / "assets" / hashlib.md5(b"udawany png").hexdigest()).exists()
+
+
+def test_rollback_puts_the_previous_release_back(updates: Path):
+    """The one failure `expo-updates` cannot cover: a release that launches and misbehaves."""
+    publish(build_export(bundle=b"dobre"))
+    good = pointer(updates)["id"]
+    publish(build_export(bundle=b"zepsute"))
+    assert pointer(updates)["id"] != good
+
+    with TestClient(update_server.app) as client:
+        response = client.post(
+            "/ota/rollback",
+            headers=AUTHORIZED,
+            json={"platform": "android", "runtimeVersion": RUNTIME},
+        )
+
+    assert response.status_code == 200, response.text
+    assert pointer(updates)["id"] == good
+    # Going back is a rename, not a download: the files were never swept.
+    assert (updates / "assets" / hashlib.md5(b"dobre").hexdigest()).exists()
+
+
+def test_rollback_is_itself_reversible(updates: Path):
+    """Sometimes the older release is the worse of the two."""
+    publish(build_export(bundle=b"pierwsze"))
+    publish(build_export(bundle=b"drugie"))
+    second = pointer(updates)["id"]
+
+    with TestClient(update_server.app) as client:
+        body = {"platform": "android", "runtimeVersion": RUNTIME}
+        client.post("/ota/rollback", headers=AUTHORIZED, json=body)
+        again = client.post("/ota/rollback", headers=AUTHORIZED, json=body)
+
+    assert again.status_code == 200, again.text
+    assert pointer(updates)["id"] == second
+
+
+def test_rollback_without_a_previous_release_says_so(updates: Path):
+    publish(build_export())
+
+    with TestClient(update_server.app) as client:
+        response = client.post(
+            "/ota/rollback",
+            headers=AUTHORIZED,
+            json={"platform": "android", "runtimeVersion": RUNTIME},
+        )
+
+    assert response.status_code == 404
+    assert "only ever been one release" in response.text
+
+
+def test_rollback_needs_the_token(updates: Path):
+    publish(build_export(bundle=b"dobre"))
+    publish(build_export(bundle=b"zepsute"))
+    current = pointer(updates)["id"]
+
+    with TestClient(update_server.app) as client:
+        response = client.post(
+            "/ota/rollback", json={"platform": "android", "runtimeVersion": RUNTIME}
+        )
+
+    assert response.status_code == 401
+    assert pointer(updates)["id"] == current
 
 
 def test_file_shared_with_another_runtime_version_survives(updates: Path):

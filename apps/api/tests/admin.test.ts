@@ -10,6 +10,9 @@
 
 import { SYSTEM_USER } from '@alphapump/db';
 import type { AdminUser, FeedbackTriageReport, SystemStats } from '@alphapump/core';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { conflict } from '../src/errors.js';
 import type { TriageClient } from '../src/triage.js';
@@ -174,6 +177,42 @@ describe('panel administracyjny', () => {
       rerankerEnabled: false,
       embeddings: 0,
     });
+    // Katalog kopii niepodmontowany — „nie mam jak zajrzeć", a nie „nie ma kopii".
+    expect(stats.body.backups).toBeNull();
+  });
+
+  /**
+   * Wiek najnowszej kopii zapasowej.
+   *
+   * Cron kopii instaluje się z ręki i nic dotąd nie sprawdzało, czy ktoś to
+   * zrobił: wynik `backup.sh` ląduje w pliku logu, do którego nikt nie zagląda.
+   * Test pilnuje dwóch stanów, które muszą się różnić — pustego katalogu
+   * („cron nie chodzi") i niepodmontowanego („kopie stoją poza stosem").
+   */
+  it('pokazuje wiek najnowszej kopii zapasowej, gdy katalog jest podmontowany', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'alphapump-kopie-'));
+    const local = await createHarness({ backupDir: directory });
+    const owner = await local.signUp('kopie@example.com');
+    await local.promoteToAdmin(owner);
+
+    const empty = await local.json<SystemStats>('GET', '/admin/stats', {
+      headers: owner.headers,
+    });
+    expect(empty.body.backups).toEqual({ latestAt: null, count: 0, latestBytes: null });
+
+    await writeFile(path.join(directory, 'alphapump-2026-08-20.json.gz.age'), 'udawana kopia');
+    // Plik, którego `backup.sh` nigdy nie tworzy, nie ma się liczyć jako kopia.
+    await writeFile(path.join(directory, 'notatka.txt'), 'nie kopia');
+
+    const filled = await local.json<SystemStats>('GET', '/admin/stats', {
+      headers: owner.headers,
+    });
+    expect(filled.body.backups?.count).toBe(1);
+    expect(filled.body.backups?.latestAt).not.toBeNull();
+    expect(filled.body.backups?.latestBytes).toBe('udawana kopia'.length);
+
+    await local.close();
+    await rm(directory, { recursive: true, force: true });
   });
 
   it('administrator zmienia i usuwa cudze ćwiczenie oraz tag — bez osobnych endpointów', async () => {
