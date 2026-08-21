@@ -34,7 +34,6 @@ apps/
 packages/
   core/         logika domenowa — bez I/O, w 100% testowalna
   db/           schematy Drizzle: Postgres (serwer) + SQLite (telefon)
-  api-client/   typowany klient (Hono RPC)
 ```
 
 `packages/core` jest sercem projektu. Zawiera:
@@ -163,12 +162,10 @@ Vite + React + TanStack Router + TanStack Query + shadcn/ui, korzystający z teg
 samego API. Osobne SPA, nie Next.js — specyfikacja mówi „prosty panel", a SPA
 jest tańsze w utrzymaniu i hostowaniu niż pełny framework SSR.
 
-> **Panel nie używa `@alphapump/api-client`** (ustalone przy realizacji etapu 13).
-> Odpowiedzi czyta schematami Zod z `@alphapump/core` — tymi samymi, którymi API je
-> opisuje i waliduje — więc kontrakt jest już wspólny i sprawdzany po obu stronach.
-> Klient RPC dołożyłby do tego zależność panelu od typów serwera, nie dając nowej
-> gwarancji. Pakiet zostaje pusty; wróci, jeśli pojawi się konsument, dla którego
-> wnioskowanie typów wprost z Hono coś zmienia.
+> **Panel nie ma osobnego klienta API.** Odpowiedzi czyta schematami Zod
+> z `@alphapump/core` — tymi samymi, którymi API je opisuje i waliduje — więc
+> kontrakt jest już wspólny i sprawdzany po obu stronach. Typowany klient RPC
+> dołożyłby do tego zależność panelu od typów serwera, nie dając nowej gwarancji.
 
 ## Konwencje modelu danych
 
@@ -420,8 +417,8 @@ zaczekać: aplikacja nie ma ani jednego `testID`, więc flow opierałby się na
 widocznych napisach, a napis jest tym, co zmienia się najczęściej. Sensowne
 Maestro zaczyna się więc od oznaczenia elementów w kilkunastu ekranach, a nie od
 napisania flow — i to jest ta praca, którą trzeba wykonać najpierw. Do tego czasu
-wydania pilnują: `ios-simulator.yml` (projekt się buduje), `android-release.yml`
-(wydanie powstaje) i `deploy-stack.yml` (serwer odpowiada).
+wydania pilnują: `android-release.yml` (wydanie powstaje) i `deploy-stack.yml`
+(serwer odpowiada).
 
 ### TLS — świadomie pominięty w MVP
 

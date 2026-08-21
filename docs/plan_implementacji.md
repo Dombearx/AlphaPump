@@ -34,7 +34,7 @@ Kolejność wynika z trzech zasad:
 - pnpm workspaces + Turborepo, wspólna konfiguracja TypeScript,
 - lint i formatowanie, jednolite dla wszystkich pakietów,
 - GitHub Actions: build, test, lint na każdym PR,
-- szkielety pakietów `core`, `db`, `api-client` i aplikacji `mobile`, `api`,
+- szkielety pakietów `core`, `db` i aplikacji `mobile`, `api`,
   `admin` — na razie puste.
 
 **Gotowe, gdy:** CI przechodzi na zielono na pustym repozytorium, a `pnpm build`,

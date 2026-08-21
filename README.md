@@ -29,7 +29,6 @@ apps/
 packages/
   core/         logika domenowa, bez I/O      — etapy 1 ✔, 4 ✔, 8 ✔, 9 ✔, 11 ✔, 12 ✔, 13 ✔ i 14 ✔
   db/           schematy Drizzle: PG + SQLite — etapy 2 ✔, 11 ✔ i 12 ✔
-  api-client/   typowany klient (Hono RPC)    — nieużywany: patrz „Panel administracyjny"
 services/
   triage/       segregacja zgłoszeń zwrotnych (Python) — patrz sekcja niżej
 deploy/         obrazy, Compose, Caddy        — etap 15 ✔
@@ -71,7 +70,6 @@ złapać nie może:
 
 | Zadanie | Kiedy | Czego pilnuje |
 | ------- | ----- | ------------- |
-| `ios-simulator.yml` | PR dotykający aplikacji | że projekt na iOS wciąż się buduje, mimo że wydanie idzie na Androida |
 | `backup-restore.yml` | co miesiąc i przy zmianie kodu kopii | że kopia daje się odtworzyć, a dane po odtworzeniu zgadzają się z oryginałem |
 | `deploy-stack.yml` | PR dotykający wdrożenia, backendu lub panelu | że stos z `deploy/` wstaje na czystej bazie i odpowiada przez Caddy'ego |
 | `android-release.yml` | merge do `main` ruszający aplikację, tag `v*` i ręcznie | wydanie aplikacji na minipc: paczka JavaScriptu, a gdy ruszyła warstwa natywna — pełny `.apk` |
@@ -1138,10 +1136,9 @@ Nie da się też zablokować ani zdegradować **własnego** konta (panel jest je
 narzędziem do nadawania roli) ani ruszyć konta systemowego, które jest autorem
 ćwiczeń wbudowanych.
 
-`@alphapump/api-client` pozostaje nieużywany. Panel czyta odpowiedzi schematami
-Zod z `@alphapump/core` — tymi samymi, którymi API je opisuje — więc kontrakt jest
-już wspólny, a klient RPC dołożyłby zależność panelu od typów serwera bez nowej
-gwarancji.
+Panel czyta odpowiedzi schematami Zod z `@alphapump/core` — tymi samymi, którymi
+API je opisuje — więc kontrakt jest już wspólny po obu stronach, bez osobnego
+klienta RPC i bez zależności panelu od typów serwera.
 
 ### Synchronizacja
 
@@ -1310,14 +1307,9 @@ dwukrotnie, do godzinnego sufitu.
 
 Telefon rozmawia z API zwykłym `fetch`em (`src/sync/transport.ts`), a odpowiedzi
 sprawdza schematami Zod z `@alphapump/core` — tymi samymi, którymi serwer
-waliduje własne wyjście. Z `@alphapump/api-client` nie korzysta i nie skorzysta:
-kontrakt jest już opisany schematami, a klient RPC dołożyłby zależność telefonu
-od typów serwera, nie dając nowej gwarancji — dokładnie ten sam wniosek, do
-którego doszedł panel administracyjny (patrz „Panel administracyjny").
-
-Osobny workflow (`.github/workflows/ios-simulator.yml`) kompiluje aplikację na
-symulator iOS. Buildy na symulator jako jedyne nie wymagają płatnego konta Apple
-i wyłapują to, co przy pracy wyłącznie na Androidzie psuje się niezauważenie.
+waliduje własne wyjście. Kontrakt jest więc opisany raz i sprawdzany po obu
+stronach, bez osobnego klienta RPC — dokładnie ten sam wniosek, do którego doszedł
+panel administracyjny (patrz „Panel administracyjny").
 
 ### Kontrakt identyfikatorów
 

@@ -242,58 +242,6 @@ export async function deleteSet(
   });
 }
 
-export type MoveDirection = 'up' | 'down';
-
-/**
- * Zmiana kolejności serii w obrębie dnia i ćwiczenia.
- *
- * Pozycje po przestawieniu są nadawane od zera, według nowego porządku, ale
- * zapisujemy **tylko wiersze, których numer faktycznie się zmienił**. Przy
- * gęstej numeracji przestawienie sąsiadów dotyka więc dwóch wierszy i tyle też
- * trafia do outboxu.
- *
- * Zwykła zamiana numerów byłaby krótsza i zawodziłaby po cichu tam, gdzie dwie
- * serie mają ten sam numer — a mają, gdy przyjechały z dwóch urządzeń albo
- * z importu. Przenumerowanie takie przypadki po prostu prostuje.
- *
- * Zwraca `false`, gdy nie ma dokąd przesuwać — seria jest już na skraju listy.
- */
-export async function moveSet(
-  db: SqliteDatabase,
-  setId: string,
-  direction: MoveDirection,
-  author: SetAuthor,
-  now: Date = new Date(),
-): Promise<boolean> {
-  const existing = await loadSet(db, setId);
-
-  return withTransaction(db, async () => {
-    const ordered = (await loadExerciseHistory(db, existing.userId, existing.exerciseId)).filter(
-      (set) => set.performedOn === existing.performedOn,
-    );
-
-    const index = ordered.findIndex((set) => set.id === existing.id);
-    const target = direction === 'up' ? index - 1 : index + 1;
-    if (index === -1 || target < 0 || target >= ordered.length) return false;
-
-    const moved = ordered[index] as WorkoutSetRow;
-    ordered[index] = ordered[target] as WorkoutSetRow;
-    ordered[target] = moved;
-
-    for (const [position, set] of ordered.entries()) {
-      if (set.position === position) continue;
-
-      await db
-        .update(workoutSets)
-        .set({ position, updatedAt: now, deviceId: author.deviceId })
-        .where(eq(workoutSets.id, set.id));
-      await enqueue(db, 'set', set.id, now);
-    }
-
-    return true;
-  });
-}
-
 async function loadSet(db: SqliteDatabase, setId: string): Promise<WorkoutSetRow> {
   const [row] = await db.select().from(workoutSets).where(eq(workoutSets.id, setId)).limit(1);
   if (!row || row.deletedAt !== null) throw new SetNotFoundError(setId);
