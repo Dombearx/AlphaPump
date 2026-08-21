@@ -80,11 +80,11 @@ describe('blokada usunięcia', () => {
         usage: { sets: 20, deletedSets: 0, users: 2, goals: 0, lastPerformedOn: '2026-04-01' },
       }),
     );
-    expect(problem).toContain('20 zapisanych serii');
-    expect(problem).toContain('2 osób');
+    expect(problem).toContain('20 logged sets');
+    expect(problem).toContain('2 people');
     // Sam zakaz nie wystarczy — powód musi wskazać wyjście, bo inaczej wygląda
     // jak ściana.
-    expect(problem).toContain('Scal');
+    expect(problem).toContain('Merge');
   });
 
   it('broni ćwiczenia wskazanego przez cel cyklu, choć nie ma serii', () => {
@@ -93,7 +93,7 @@ describe('blokada usunięcia', () => {
         usage: { sets: 0, deletedSets: 3, users: 0, goals: 1, lastPerformedOn: null },
       }),
     );
-    expect(problem).toContain('celów cyklu');
+    expect(problem).toContain('cycle goals');
   });
 
   it('rozbija użycie tagu na główne i dodatkowe, bo to różny nakład pracy', () => {
@@ -102,9 +102,9 @@ describe('blokada usunięcia', () => {
         usage: { primaryExercises: 3, additionalExercises: 2, exercises: 4, sets: 12, goals: 0 },
       }),
     );
-    expect(problem).toContain('4 ćwiczeń');
-    expect(problem).toContain('3 jako tag główny');
-    expect(problem).toContain('12 zapisanymi seriami');
+    expect(problem).toContain('4 exercises');
+    expect(problem).toContain('3 of them as the primary tag');
+    expect(problem).toContain('12 logged sets');
   });
 
   it('puszcza tag, którego nikt nie używa', () => {
@@ -200,7 +200,7 @@ describe('podsumowanie użycia', () => {
       goals: 0,
       lastPerformedOn: null,
     });
-    expect(solo).toBe('4 serii');
+    expect(solo).toBe('4 sets');
 
     const shared = usageSummary({
       sets: 4,
@@ -209,6 +209,6 @@ describe('podsumowanie użycia', () => {
       goals: 2,
       lastPerformedOn: null,
     });
-    expect(shared).toBe('4 serii · 3 osób · 2 celów · 1 skasowanych serii');
+    expect(shared).toBe('4 sets · 3 people · 2 goals · 1 deleted sets');
   });
 });

@@ -56,9 +56,11 @@ import {
   type UserRole,
 } from '@alphapump/core';
 import { eq, inArray, sql } from 'drizzle-orm';
+import { v7 as uuidv7 } from 'uuid';
 import type { Database } from '../db.js';
 import { badRequest, forbidden } from '../errors.js';
 import {
+  accounts,
   cycleGoals,
   cycles,
   exerciseTags,
@@ -106,6 +108,7 @@ function chunks<T>(rows: readonly T[], size: number = CHUNK_SIZE): T[][] {
 
 const emptySummary = (): ArchiveSummary => ({
   users: 0,
+  credentials: 0,
   tags: 0,
   exercises: 0,
   sets: 0,
@@ -145,11 +148,11 @@ export async function importArchive(
 
   const problems = findArchiveProblems(archive);
   if (problems.length > 0) {
-    throw badRequest('Archiwum jest niespójne — nie da się go odtworzyć', problems);
+    throw badRequest('The archive is inconsistent and cannot be restored', problems);
   }
 
   if (archive.scope === 'system' && !isAdmin) {
-    throw forbidden('Archiwum systemowe może wgrać wyłącznie administrator');
+    throw forbidden('Only an administrator can import a system archive');
   }
 
   const imported = emptySummary();
@@ -288,6 +291,54 @@ export async function importArchive(
           }
           imported.users = newUsers.length;
           skipped.users = archive.users.length - newUsers.length;
+          break;
+        }
+
+        /**
+         * Sposoby logowania. Bez nich odtworzone konto istnieje, ale nie da się
+         * na nie zalogować ani założyć go ponownie — adres jest już zajęty.
+         *
+         * `onConflictDoNothing`, bo baza docelowa może już znać to konto (import
+         * na żywy system, nie na czysty): wtedy jego obecne hasło jest nowsze niż
+         * to z kopii i nie ma powodu go cofać. Identyfikator wiersza nadajemy
+         * sami, bo archiwum go nie niesie — dla better-autha liczy się para
+         * `providerId` + `accountId` i to ona ma indeks unikalny.
+         *
+         * Konta, których import nie utworzył i których baza nie zna, wypadają
+         * razem ze swoim właścicielem: `userMap` nie ma dla nich wpisu.
+         */
+        case 'credentials': {
+          const usable = archive.credentials.flatMap((credential) => {
+            const userId = userMap.get(credential.userId);
+            if (userId === undefined) return [];
+            return [{ ...credential, userId }];
+          });
+
+          for (const batch of chunks(usable)) {
+            await tx
+              .insert(accounts)
+              .values(
+                batch.map((credential) => ({
+                  id: uuidv7(),
+                  userId: credential.userId,
+                  providerId: credential.providerId,
+                  accountId: credential.accountId,
+                  password: credential.password,
+                  createdAt: now,
+                  updatedAt: now,
+                })),
+              )
+              .onConflictDoNothing();
+          }
+
+          imported.credentials = usable.length;
+          skipped.credentials = archive.credentials.length - usable.length;
+          if (skipped.credentials > 0) {
+            notes.add(
+              'Pominięto sposoby logowania kont, których nie ma w bazie — ' +
+                'te konta i tak nie zostały odtworzone.',
+            );
+          }
           break;
         }
 

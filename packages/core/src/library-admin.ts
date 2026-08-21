@@ -153,17 +153,33 @@ export type TagMergeReport = z.infer<typeof tagMergeReportSchema>;
 /* ------------------------------------------------------------- embeddingi */
 
 /**
- * Raport przeliczenia wektorów całej biblioteki.
+ * Odpowiedź na prośbę o przeliczenie wektorów całej biblioteki.
  *
- * `enabled: false` znaczy, że warstwa semantyczna jest wyłączona — wtedy
- * wszystkie pozostałe liczby są zerami i nie jest to błąd, tylko konfiguracja.
- * Bez tego pola panel nie odróżniłby „nie ma czego liczyć" od „nie ma czym".
+ * Jest to **potwierdzenie przyjęcia zlecenia**, nie wynik pracy, i to jest
+ * zmiana względem pierwszej wersji. Wcześniej endpoint iterował po całej
+ * bibliotece w środku żądania — do ośmiu sekund na ćwiczenie — i odpowiadał
+ * dopiero na końcu. Caddy przerywa po dwóch minutach, więc przy większej
+ * bibliotece panel dostawał błąd bramy, podczas gdy zadanie po cichu leciało
+ * dalej; ponowne kliknięcie startowało drugi przebieg obok pierwszego.
+ *
+ * `enabled: false` znaczy, że warstwa semantyczna jest wyłączona — nie jest to
+ * błąd, tylko konfiguracja. Bez tego pola panel nie odróżniłby „nie ma czego
+ * liczyć" od „nie ma czym".
+ *
+ * Postęp widać w `/admin/stats` (`duplicates.embeddings`) — panel odświeża tę
+ * liczbę i nie potrzebuje osobnego kanału.
  */
 export const embeddingRefreshReportSchema = z.object({
   enabled: z.boolean(),
-  written: z.int().min(0),
-  unchanged: z.int().min(0),
-  failed: z.int().min(0),
+  /**
+   * `started` — zlecenie przyjęte, `busy` — przebieg już trwa i drugiego nie
+   * uruchamiamy, `disabled` — warstwa semantyczna wyłączona.
+   */
+  status: z.enum(['started', 'busy', 'disabled']),
+  /** Ile ćwiczeń trafiło do kolejki. */
+  queued: z.int().min(0),
+  /** Ile czeka w tej chwili — razem z tym, co zgłosiły wcześniejsze zapisy. */
+  pending: z.int().min(0),
 });
 
 export type EmbeddingRefreshReport = z.infer<typeof embeddingRefreshReportSchema>;

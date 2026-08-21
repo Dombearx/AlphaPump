@@ -162,10 +162,42 @@ export function daySetCounts(db: SqliteDatabase, userId: string, from: IsoDate, 
 
 export type DayCountRow = Awaited<ReturnType<typeof daySetCounts>>[number];
 
-/** Serie jednego ćwiczenia — cała historia użytkownika, w porządku chronologicznym. */
+/**
+ * Seria w zakresie, którego potrzebują rekordy, podpowiedź i lista dnia —
+ * bez kolumn synchronizacyjnych, których przez most React Native nie ma po co
+ * przenosić.
+ */
+export type HistorySetRow = Awaited<ReturnType<typeof exerciseHistory>>[number];
+
+/**
+ * Serie jednego ćwiczenia — cała historia użytkownika, chronologicznie.
+ *
+ * Bez ograniczenia liczby wierszy, i to jest decyzja: rekordy liczy front Pareto
+ * (`computeRecords`), a ten musi widzieć **wszystkie** serie. Ucięcie historii
+ * do ostatnich N sesji dałoby rekordy, które po cichu przestają być rekordami —
+ * najgorszy możliwy błąd w aplikacji, której cała rzecz polega na tym, że mówi
+ * prawdę o postępie.
+ *
+ * Ograniczamy za to **kolumny**. Przez most React Native przechodzi każdy wiersz
+ * z każdym polem, a `deviceId`, `serverSeq`, `createdAt` i `deletedAt` nie są
+ * potrzebne ani rekordom, ani podpowiedzi, ani liście dnia. Indeks
+ * `workout_sets_user_exercise_idx` pokrywa warunek, więc odczyt jest jednym
+ * przejściem po indeksie.
+ */
 export function exerciseHistory(db: SqliteDatabase, userId: string, exerciseId: string) {
   return db
-    .select()
+    .select({
+      id: workoutSets.id,
+      exerciseId: workoutSets.exerciseId,
+      performedOn: workoutSets.performedOn,
+      position: workoutSets.position,
+      weightG: workoutSets.weightG,
+      reps: workoutSets.reps,
+      durationS: workoutSets.durationS,
+      distanceM: workoutSets.distanceM,
+      bodyweightG: workoutSets.bodyweightG,
+      note: workoutSets.note,
+    })
     .from(workoutSets)
     .where(
       and(

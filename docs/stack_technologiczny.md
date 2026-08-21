@@ -34,7 +34,6 @@ apps/
 packages/
   core/         logika domenowa — bez I/O, w 100% testowalna
   db/           schematy Drizzle: Postgres (serwer) + SQLite (telefon)
-  api-client/   typowany klient (Hono RPC)
 ```
 
 `packages/core` jest sercem projektu. Zawiera:
@@ -163,12 +162,10 @@ Vite + React + TanStack Router + TanStack Query + shadcn/ui, korzystający z teg
 samego API. Osobne SPA, nie Next.js — specyfikacja mówi „prosty panel", a SPA
 jest tańsze w utrzymaniu i hostowaniu niż pełny framework SSR.
 
-> **Panel nie używa `@alphapump/api-client`** (ustalone przy realizacji etapu 13).
-> Odpowiedzi czyta schematami Zod z `@alphapump/core` — tymi samymi, którymi API je
-> opisuje i waliduje — więc kontrakt jest już wspólny i sprawdzany po obu stronach.
-> Klient RPC dołożyłby do tego zależność panelu od typów serwera, nie dając nowej
-> gwarancji. Pakiet zostaje pusty; wróci, jeśli pojawi się konsument, dla którego
-> wnioskowanie typów wprost z Hono coś zmienia.
+> **Panel nie ma osobnego klienta API.** Odpowiedzi czyta schematami Zod
+> z `@alphapump/core` — tymi samymi, którymi API je opisuje i waliduje — więc
+> kontrakt jest już wspólny i sprawdzany po obu stronach. Typowany klient RPC
+> dołożyłby do tego zależność panelu od typów serwera, nie dając nowej gwarancji.
 
 ## Konwencje modelu danych
 
@@ -390,7 +387,7 @@ API nie jest wystawione na publiczny internet.
 
 Docker Compose: PostgreSQL 17 (z `pgvector` i `pg_trgm`), API oraz panel admina
 za Caddy pełniącym rolę zwykłego reverse proxy, bez TLS. Pliki są w `deploy/`,
-a procedury uruchomienia, aktualizacji i odtworzenia w README. CI na GitHub
+a procedury uruchomienia, aktualizacji i odtworzenia w `docs/wdrozenie.md`. CI na GitHub
 Actions.
 
 Panel jest **wpieczony w obraz Caddy'ego**, a nie osobnym kontenerem (ustalone
@@ -408,20 +405,43 @@ czyli awarię wyglądającą jak błąd parsera u klienta. Pilnuje tego
 `apps/api/tests/deploy.test.ts`, sprawdzając obie strony rozdziału.
 
 Testy: Vitest we wszystkich pakietach — `core` i `db` jednostkowo, API
-integracyjnie na PGlite w procesie, a w aplikacji mobilnej i w panelu na czystych
-modułach (siatka kalendarza, punkty wykresu, silnik synchronizacji, wyliczanie
-wyjątków ATS). Osobno stoi `deploy-stack.yml`: stawia w CI ten sam stos, który
-jedzie na minipc, i sprawdza go z zewnątrz — bo wdrożenie da się zepsuć bez
-tknięcia jednej linijki kodu aplikacji.
+integracyjnie na PGlite w procesie. Aplikacja mobilna i panel mają po **dwa**
+zestawy, rozdzielone projektami Vitest:
 
-E2E na urządzeniu — rozważane było Maestro — w repozytorium **nadal nie ma**.
-Przy realizacji etapu 15 wróciło to na stół i zapadła decyzja, żeby jeszcze
-zaczekać: aplikacja nie ma ani jednego `testID`, więc flow opierałby się na
-widocznych napisach, a napis jest tym, co zmienia się najczęściej. Sensowne
-Maestro zaczyna się więc od oznaczenia elementów w kilkunastu ekranach, a nie od
-napisania flow — i to jest ta praca, którą trzeba wykonać najpierw. Do tego czasu
-wydania pilnują: `ios-simulator.yml` (projekt się buduje), `android-release.yml`
-(wydanie powstaje) i `deploy-stack.yml` (serwer odpowiada).
+- `logika` — czyste moduły w Node: siatka kalendarza, punkty wykresu, silnik
+  synchronizacji, wyliczanie wyjątków ATS, klient API panelu. Najtańsze
+  sprawdzenie, jakie mamy.
+- `ekrany` (aplikacja) i `komponenty` (panel) — renderowanie w jsdom. W aplikacji
+  ekran jedzie na **prawdziwej** bazie lokalnej: SQLite w pamięci, ten sam bundle
+  migracji i ten sam seed, co na telefonie. Dzięki temu test „naciśnij Add set"
+  kończy się asercją na wierszu w tabeli `workout_sets`, a nie na atrapie.
+
+W projekcie `ekrany` `react-native` jest podmieniony na `react-native-web`.
+Źródła React Native są w składni Flow i nie da się ich wykonać w Node bez
+przepuszczenia całej paczki przez Babel; `react-native-web` odwzorowuje `View`,
+`Text`, `Pressable`, `TextInput` i `ScrollView` na DOM, więc sprawdzane jest
+**nasze** drzewo komponentów, a nie implementacja warstwy natywnej. Przy okazji
+jest to dokładnie ta warstwa, na której stanie wersja PWA.
+
+Atrapowana jest wyłącznie warstwa, której poza telefonem nie ma: nawigacja
+(`expo-router`), obszar bezpieczny, identyfikator urządzenia, klient
+better-autha i zlecenie synchronizacji. Baza lokalna, zapytania, podpowiedzi,
+walidacja pomiarów i cały `src/ui` jadą prawdziwe — atrapa reguły sprawdzałaby
+atrapę.
+
+Osobno stoi `deploy-stack.yml`: stawia w CI ten sam stos, który jedzie na
+minipc, i sprawdza go z zewnątrz — bo wdrożenie da się zepsuć bez tknięcia
+jednej linijki kodu aplikacji.
+
+E2E na urządzeniu — rozważane było Maestro — w repozytorium **nadal nie ma**
+i testy ekranów tego nie zastępują. Nie sprawdzają nawigacji między ekranami,
+gestów, klawiatury ani zachowania SQLite na telefonie; zieleń w CI nie jest
+dowodem, że aplikacja działa na urządzeniu. Zmieniło się natomiast to, co było
+warunkiem wejścia Maestro: podpisy pól (`accessibilityLabel`) i role przycisków
+są już na miejscu, bo bez nich nie dało się napisać testów ekranów. Flow
+opierałyby się dziś na nich, a nie na widocznych napisach. Do tego czasu wydania
+pilnują: `android-release.yml` (wydanie powstaje) i `deploy-stack.yml` (serwer
+odpowiada).
 
 ### TLS — świadomie pominięty w MVP
 
@@ -631,8 +651,9 @@ jest tu wymaganiem twardym.
   w definicję kolumny.
 - Termin wejścia iOS i moment zakupu konta Apple Developer — patrz sekcja
   „iOS — odłożone, ale nie zamknięte".
-- Testy E2E aplikacji na urządzeniu — patrz „Infrastruktura". Warunkiem wejścia
-  jest oznaczenie elementów interfejsu (`testID`), nie sam wybór narzędzia.
+- Testy E2E aplikacji na urządzeniu — patrz „Infrastruktura". Testy ekranów
+  w jsdom pokrywają logikę ekranu i zapis do bazy lokalnej, ale nie nawigację,
+  gesty ani zachowanie SQLite na telefonie; to zostaje otwarte.
 - **Klucz podpisujący aplikację na Androida.** Bez sekretu
   `ANDROID_KEYSTORE_BASE64` wydanie jest podpisywane kluczem deweloperskim
   z szablonu React Native — publicznie znanym. Działa to do rozdania w grupie,

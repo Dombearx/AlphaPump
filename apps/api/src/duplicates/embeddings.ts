@@ -29,6 +29,12 @@ import { and, eq, inArray, isNull } from 'drizzle-orm';
 import type { Database } from '../db.js';
 import { exerciseEmbeddings, exercises, tags } from '../schema.js';
 import type { DuplicateLayers, Embedder } from './layers.js';
+import { logger } from '../logger.js';
+
+/** Błąd sprowadzony do napisu — logger dostaje pola, nie wyjątki. */
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 /**
  * Tekst, z którego liczony jest wektor.
@@ -96,15 +102,16 @@ export async function refreshEmbedding(
   try {
     embedding = await embedder.embed(source);
   } catch (error) {
-    console.warn(`Nie udało się policzyć embeddingu ćwiczenia ${exerciseId}:`, error);
+    logger.warn('nie udało się policzyć embeddingu', { exerciseId, error: describe(error) });
     return 'failed';
   }
 
   if (embedding.length !== EMBEDDING_DIMENSIONS) {
-    console.warn(
-      `Model ${embedder.model} zwrócił wektor o ${String(embedding.length)} wymiarach, ` +
-        `a schemat ma ${String(EMBEDDING_DIMENSIONS)} — pomijam zapis.`,
-    );
+    logger.warn('model zwrócił wektor o innym wymiarze niż schemat', {
+      model: embedder.model,
+      received: embedding.length,
+      expected: EMBEDDING_DIMENSIONS,
+    });
     return 'failed';
   }
 

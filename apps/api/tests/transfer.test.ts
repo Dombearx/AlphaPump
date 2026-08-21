@@ -1,7 +1,7 @@
 /**
- * Eksport i import danych (etap 14).
+ * Eksport i import danych.
  *
- * Kryterium ukończenia etapu brzmi: kopia zostaje odtworzona do **czystej bazy**,
+ * Wymaganie brzmi: kopia zostaje odtworzona do **czystej bazy**,
  * a dane po odtworzeniu zgadzają się z oryginałem — łącznie z powiązaniami
  * autorów ćwiczeń i właścicieli serii. Ten plik sprawdza to wprost: stawia drugą,
  * pustą bazę, wgrywa do niej archiwum z pierwszej i porównuje postacie kanoniczne
@@ -17,6 +17,7 @@
 import { canonicalArchive, type Archive } from '@alphapump/core';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { BODY_LIMIT_BYTES } from '../src/app.js';
 import { exportArchive, importArchive } from '../src/transfer/index.js';
 import { exercises, users, workoutSets } from '../src/schema.js';
 import { createHarness, type Harness, type TestUser } from './harness.js';
@@ -168,7 +169,7 @@ describe('eksport', () => {
   });
 });
 
-describe('odtworzenie do czystej bazy — kryterium etapu 14', () => {
+describe('odtworzenie do czystej bazy', () => {
   it('dane po odtworzeniu zgadzają się z oryginałem', async () => {
     const source = await seedData();
     await source.harness.promoteToAdmin(source.owner);
@@ -194,7 +195,7 @@ describe('odtworzenie do czystej bazy — kryterium etapu 14', () => {
     const restored = await exportArchive(target.db, { kind: 'system' });
     expect(canonicalArchive(restored)).toEqual(canonicalArchive(archive));
 
-    // Powiązania sprawdzone jeszcze raz wprost, bo to one są w kryterium etapu.
+    // Powiązania sprawdzone jeszcze raz wprost, bo to one są sednem wymagania.
     const [restoredSet] = await target.db
       .select()
       .from(workoutSets)
@@ -273,6 +274,98 @@ describe('dopasowanie po adresie e-mail', () => {
 
     await source.harness.close();
     await target.close();
+  });
+});
+
+describe('odtworzony system da się użyć', () => {
+  /**
+   * Kryterium, którego brakowało: nie „dane się zgadzają", tylko „da się wejść".
+   *
+   * Archiwum systemowe nie niosło poświadczeń, a import wstawia konta razem
+   * z adresami — po odtworzeniu na czystą bazę konto **istniało**, ale nie miało
+   * sposobu logowania. Zalogować się nie było jak, a założyć konta ponownie też
+   * nie, bo adres jest zajęty; resetu hasła przez e-mail nie ma. Porównanie
+   * danych tego nie widziało: poświadczeń nie było po obu stronach, więc zera
+   * się zgadzały.
+   */
+  it('po odtworzeniu z kopii systemowej można się zalogować tym samym hasłem', async () => {
+    const source = await createHarness();
+    const owner = await source.signUp('wraca@example.com', 'haslo-testowe-123', 'Kuba');
+    await source.promoteToAdmin(owner);
+
+    const archive = await exportArchive(source.db, { kind: 'system' });
+    expect(archive.credentials.length).toBeGreaterThan(0);
+
+    const target = await createHarness();
+    const report = await importArchive(target.db, archive, {
+      actor: { id: owner.id, email: 'restore@example.local', role: 'admin' },
+    });
+    expect(report.imported.credentials).toBe(archive.credentials.length);
+
+    // Prawdziwy endpoint logowania na odtworzonej bazie — rozjazd formatu hasha
+    // wychodzi wyłącznie tędy.
+    const headers = await target.signIn('wraca@example.com', 'haslo-testowe-123');
+    const me = await target.json<{ email: string }>('GET', '/me', { headers });
+    expect(me.status).toBe(200);
+    expect(me.body.email).toBe('wraca@example.com');
+
+    await source.close();
+    await target.close();
+  });
+
+  it('archiwum jednego konta nie wywozi hasha hasła — także własnego', async () => {
+    const source = await createHarness();
+    const owner = await source.signUp('moje@example.com');
+
+    const mine = await exportArchive(source.db, { kind: 'user', userId: owner.id });
+    expect(mine.credentials).toEqual([]);
+
+    // Ta sama reguła po stronie endpointu, którym pobiera to użytkownik.
+    const downloaded = await source.json<{ credentials: unknown[] }>('GET', '/export', {
+      headers: owner.headers,
+    });
+    expect(downloaded.body.credentials).toEqual([]);
+
+    await source.close();
+  });
+});
+
+describe('sufit rozmiaru żądania', () => {
+  /**
+   * Ciało jest parsowane w całości do pamięci, zanim Zod zobaczy pierwsze pole,
+   * więc bez limitu jedno żądanie kładzie proces API — a razem z nim panel, bo
+   * wychodzi tym samym Caddym. Limit ma dwie wartości i test pilnuje obu:
+   * zwykłej trasy i podniesionej dla importu archiwum.
+   */
+  it('odrzuca ciało większe niż sufit zwykłej trasy', async () => {
+    const source = await seedData();
+
+    const response = await source.harness.request('/sets', {
+      method: 'POST',
+      headers: { ...source.owner.headers, 'content-type': 'application/json' },
+      body: 'x'.repeat(BODY_LIMIT_BYTES + 1),
+    });
+
+    expect(response.status).toBe(400);
+    await source.harness.close();
+  });
+
+  it('import archiwum ma własny, wyższy sufit', async () => {
+    const source = await seedData();
+    await source.harness.promoteToAdmin(source.owner);
+
+    // Ciało większe od limitu zwykłej trasy, mniejsze od limitu importu:
+    // ma odbić się dopiero o walidację, a nie o rozmiar.
+    const response = await source.harness.request('/import', {
+      method: 'POST',
+      headers: { ...source.owner.headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ nieznane: 'x'.repeat(BODY_LIMIT_BYTES + 1024) }),
+    });
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: { message: string } };
+    expect(body.error.message).not.toContain('większe niż');
+    await source.harness.close();
   });
 });
 

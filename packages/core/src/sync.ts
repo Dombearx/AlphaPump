@@ -19,6 +19,7 @@
 
 import { z } from 'zod';
 import { v7 as uuidv7 } from 'uuid';
+import { syncRejectionSchema } from './rejections.js';
 import {
   cycleGoalSchema,
   cycleSchema,
@@ -256,8 +257,16 @@ export const syncResultSchema = z.object({
   entity: syncEntitySchema,
   id: uuidSchema,
   decision: z.enum(SYNC_DECISIONS),
-  /** Powód odrzucenia — wypełniany tylko wtedy, gdy wiersz nie wszedł. */
-  reason: z.string().nullable().default(null),
+  /**
+   * Powód odrzucenia — wypełniany tylko wtedy, gdy wiersz nie wszedł.
+   *
+   * Kod, nie zdanie: zdanie buduje ta strona, która je pokazuje (patrz
+   * `describeRejection`). Telefon może na tym oprzeć decyzję, czy w ogóle
+   * warto ponawiać, zamiast dopasowywać napisy.
+   */
+  reason: syncRejectionSchema.nullable().default(null),
+  /** Zmienna część komunikatu: lista identyfikatorów, nazwa, typ logowania. */
+  reasonDetail: z.string().nullable().default(null),
 });
 
 export type SyncResult = z.infer<typeof syncResultSchema>;

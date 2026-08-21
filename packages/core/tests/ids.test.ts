@@ -34,10 +34,14 @@ describe('kontrakt złotych wartości', () => {
     expect(SYSTEM_USER_ID).toBe(uuidv5('system-user', NS_ALPHAPUMP));
   });
 
-  it.each(GOLDEN_TAGS)('tag $name zachowuje slug, id i kolor', (golden) => {
+  it.each(GOLDEN_TAGS)('tag $name zachowuje slug i id', (golden) => {
     expect(slug(golden.name)).toBe(golden.slug);
     expect(tagId(golden.name)).toBe(golden.id);
-    expect(tagColor(golden.name)).toBe(golden.color);
+    // Kolor **nie** jest tu sprawdzany: siedzi w kolumnie `tags.color`, więc
+    // zmiana wzoru dotyczy tagów tworzonych od tej chwili i niczego nie
+    // osieroci. Zamrożony w tym pliku kosztował tablicę wyjątków w kodzie
+    // produkcyjnym — patrz `tag-color.ts`.
+    expect(tagColor(golden.name)).toMatch(/^#[0-9a-f]{6}$/);
   });
 
   it.each(GOLDEN_EXERCISES)('ćwiczenie $name zachowuje slug i id', (golden) => {

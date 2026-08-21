@@ -27,7 +27,7 @@ export function SignInPage() {
       // better-auth oddaje błąd w wyniku, a nie wyjątkiem — komunikat serwera
       // pokazujemy wprost, bo „nie udało się zalogować" nie mówi, czy problem
       // jest w haśle, czy w tym, że API jest poza zasięgiem VPN.
-      if (result.error) setProblem(result.error.message ?? 'Nie udało się zalogować');
+      if (result.error) setProblem(result.error.message ?? 'Could not sign in');
       setBusy(false);
     })();
   };
@@ -36,7 +36,7 @@ export function SignInPage() {
     <main className="flex min-h-full items-center justify-center p-6">
       <Card className="w-full max-w-sm">
         <h1 className="text-xl font-semibold text-text">AlphaPump</h1>
-        <p className="mt-1 mb-4 text-sm text-muted">Panel administracyjny</p>
+        <p className="mt-1 mb-4 text-sm text-muted">Admin panel</p>
 
         <form className="flex flex-col gap-3" onSubmit={submit}>
           <Field label="E-mail">
@@ -48,7 +48,7 @@ export function SignInPage() {
               required
             />
           </Field>
-          <Field label="Hasło">
+          <Field label="Password">
             <Input
               type="password"
               autoComplete="current-password"
@@ -61,7 +61,7 @@ export function SignInPage() {
           {problem !== null && <Problem error={new Error(problem)} />}
 
           <Button type="submit" disabled={busy}>
-            {busy ? 'Logowanie…' : 'Zaloguj'}
+            {busy ? 'Signing in…' : 'Sign in'}
           </Button>
         </form>
       </Card>

@@ -5,7 +5,8 @@ aplikacji. Zakłada, że minipc jest widoczny w NetBirdzie pod
 `domin-server.iron.sq` — jeśli adres jest inny, podstaw swój **wszędzie**, bo
 wchodzi w trzy różne miejsca i musi być w nich identyczny.
 
-Szczegóły i uzasadnienia są w `README.md`; tutaj jest sama kolejność.
+Szczegóły są w `wdrozenie.md`, a zmienne środowiskowe w `konfiguracja.md`;
+tutaj jest sama kolejność.
 
 ## Gdzie co trafia
 

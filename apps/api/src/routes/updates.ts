@@ -93,10 +93,10 @@ export function createUpdateRouter(otaDir: string) {
     }
 
     if (!isUpdatePlatform(request.platform)) {
-      return context.text('Nagłówek expo-platform musi mieć wartość „android" albo „ios"', 400);
+      return context.text('The expo-platform header must be "android" or "ios"', 400);
     }
     if (request.runtimeVersion === undefined || request.runtimeVersion.trim() === '') {
-      return context.text('Brak nagłówka expo-runtime-version', 400);
+      return context.text('Missing expo-runtime-version header', 400);
     }
 
     const update = await readCurrentUpdate(otaDir, request.platform, request.runtimeVersion);

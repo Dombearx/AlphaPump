@@ -41,9 +41,22 @@
  * pięć, pół godziny, dwie godziny, doba. Wiersz nie do przyjęcia kosztuje więc
  * jedno miejsce w paczce na dobę, a wiersz, którego powód odrzucenia da się
  * naprawić po stronie serwera, wraca sam, gdy odstęp minie.
+ *
+ * Jeden powód jest z tego wyjęty. Serwer przysyła teraz **kod**, a nie zdanie,
+ * więc telefon widzi różnicę między „ta reguła cię nie wpuści" a „wiersz zniknął
+ * mi między odczytem a zapisem". To drugie jest wyścigiem, nie rozstrzygnięciem:
+ * przy następnej wymianie serwer zastanie inny stan, więc czekanie minuty jest
+ * czystą stratą. Dwie takie próby pod rząd i wiersz wraca do normalnego odstępu —
+ * wyścig przegrany dwa razy z rzędu przestaje być wyścigiem.
  */
 
-import { SYNC_ENTITIES, type SyncEntity, type SyncResult } from '@alphapump/core';
+import {
+  SYNC_ENTITIES,
+  isRetryableRejection,
+  type SyncEntity,
+  type SyncRejection,
+  type SyncResult,
+} from '@alphapump/core';
 import {
   cycles,
   exercises,
@@ -77,7 +90,18 @@ type SyncedColumns = (typeof TABLES)[SyncEntity];
 
 const key = (entity: SyncEntity, rowId: string): string => `${entity}:${rowId}`;
 
-function backoffFor(attempts: number): number {
+/**
+ * Ile prób pod rząd wolno ponowić od razu, zanim wiersz wejdzie w normalny
+ * odstęp. Wyścig przegrany dwa razy z rzędu przestaje być wyścigiem.
+ */
+const IMMEDIATE_RETRIES = 2;
+
+function backoffFor(attempts: number, reason: SyncRejection | null): number {
+  // Wiersz, który zniknął serwerowi między odczytem a zapisem, nie ma na co
+  // czekać: przy następnej wymianie zastanie już inny stan. Reszta kodów jest
+  // rozstrzygnięciem reguły — ten sam wiersz odbije się tak samo, więc odstęp
+  // rośnie, żeby nie zajmował miejsca w każdej paczce.
+  if (reason !== null && isRetryableRejection(reason) && attempts <= IMMEDIATE_RETRIES) return 0;
   return BACKOFF_MS[Math.min(attempts, BACKOFF_MS.length) - 1] ?? BACKOFF_MS[0];
 }
 
@@ -101,9 +125,10 @@ export async function recordRejections(
       entity: result.entity,
       rowId: result.id,
       reason: result.reason,
+      reasonDetail: result.reasonDetail,
       attempts,
       rejectedAt: now,
-      retryAfter: new Date(now.getTime() + backoffFor(attempts)),
+      retryAfter: new Date(now.getTime() + backoffFor(attempts, result.reason)),
     };
 
     await db

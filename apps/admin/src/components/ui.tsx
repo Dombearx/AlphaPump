@@ -241,7 +241,7 @@ export function Loading({ label = 'Wczytywanie…' }: { label?: string }) {
 }
 
 export function Problem({ error }: { error: unknown }) {
-  const message = error instanceof Error ? error.message : 'Nieznany błąd';
+  const message = error instanceof Error ? error.message : 'Unknown error';
   return (
     <div className="rounded-lg border border-danger/40 bg-danger/10 p-3 text-sm text-danger">
       {message}

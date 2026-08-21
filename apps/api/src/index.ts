@@ -27,7 +27,8 @@ import { createApp } from './app.js';
 import { createAuth } from './auth.js';
 import { loadConfig } from './config.js';
 import { createDatabase, runMigrations } from './db.js';
-import { createOpenRouterLayers } from './duplicates/index.js';
+import { createEmbeddingBacklog, createOpenRouterLayers } from './duplicates/index.js';
+import { logger } from './logger.js';
 import { createTriageClient } from './triage.js';
 
 export { createApp, type App } from './app.js';
@@ -44,10 +45,11 @@ export async function main(): Promise<void> {
 
   await runMigrations(connection);
   const seeded = await seedPostgres(connection.db);
-  console.warn(
-    `Dane startowe: ${String(seeded.tags)} tagów i ${String(seeded.exercises)} ćwiczeń wbudowanych ` +
-      'w zestawie (wstawione zostały tylko te, których brakowało).',
-  );
+  logger.info('dane startowe w zestawie', {
+    tags: seeded.tags,
+    exercises: seeded.exercises,
+    note: 'wstawione zostały tylko te, których brakowało',
+  });
 
   const auth = createAuth(connection.db, config);
   // Warstwy wykrywania duplikatów powstają **tutaj**, z konfiguracji — nie
@@ -60,17 +62,21 @@ export async function main(): Promise<void> {
   // `createAdminRouter` traktuje pominięcie pola jako „panel nie wyzwoli
   // przeglądu ręcznie".
   const triage = config.triage ? createTriageClient(config.triage) : undefined;
-  const app = createApp({ db: connection.db, auth, duplicates, triage }, config);
+  // Jedna kolejka na proces, złożona z tych samych warstw co wykrywanie
+  // duplikatów: liczenie wektorów zeszło ze ścieżki żądania, bo wywołanie
+  // u dostawcy modeli trwa dłużej, niż telefon czeka na odpowiedź pushu.
+  const embeddings = createEmbeddingBacklog(connection.db, duplicates);
+  const app = createApp({ db: connection.db, auth, duplicates, embeddings, triage }, config);
 
   if (config.llm === null) {
-    console.warn(
-      'Warstwa semantyczna jest wyłączona (brak OPENROUTER_API_KEY albo LLM_ENABLED=false) — ' +
-        'ostrzeżenia o duplikatach liczone leksykalnie.',
-    );
+    logger.warn('warstwa semantyczna wyłączona', {
+      reason: 'brak OPENROUTER_API_KEY albo LLM_ENABLED=false',
+      effect: 'ostrzeżenia o duplikatach liczone leksykalnie',
+    });
   }
 
   const server = serve({ fetch: app.fetch, hostname: config.host, port: config.port }, (info) => {
-    console.warn(`AlphaPump API słucha na http://${config.host}:${info.port}`);
+    logger.info('API słucha', { host: config.host, port: info.port });
   });
 
   const shutdown = () => {

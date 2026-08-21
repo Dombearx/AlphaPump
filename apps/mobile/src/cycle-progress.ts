@@ -4,7 +4,7 @@
  * Moduł jest czysty: dostaje to, co przyniosły zapytania, i oddaje gotowe do
  * pokazania obiekty. Nie ma tu ani bazy, ani komponentów, więc da się go
  * przetestować bez renderowania ekranu — i tam właśnie sprawdzamy kryterium
- * etapu 9: „cykl poprawnie zlicza serie, czas i dystans, a usunięcie serii
+ * produktu: „cykl poprawnie zlicza serie, czas i dystans, a usunięcie serii
  * odpowiednio zmniejsza postęp".
  *
  * Samego zliczania tu nie ma. Robi je `computeCycleProgress` z `@alphapump/core`

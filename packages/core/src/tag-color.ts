@@ -15,29 +15,25 @@
  * przestrzeń możliwych kolorów jest przez to nieporównywalnie większa niż 20
  * czy nawet 60 slotów, więc dwa niepowiązane tagi trafiają w ten sam albo
  * bardzo bliski odcień dopiero przy naprawdę dużej liczbie tagów.
+ *
+ * ## Kolor nie jest kontraktem danych
+ *
+ * Stała tu tablica ośmiu wyjątków (`GOLDEN_COLOR_OVERRIDES`), dopisana po to,
+ * żeby zmiana wzoru nie złamała złotego pliku z identyfikatorami. Było to
+ * obejście, i to podwójne. Po pierwsze, kolor **jest zapisany w bazie**
+ * (`tags.color`), więc istniejące tagi mają swój niezależnie od wzoru — zmiana
+ * wzoru dotyczy wyłącznie tagów tworzonych od tej chwili. Po drugie, siedem
+ * z ośmiu wyjątków dotyczyło slugów, których produkt już nie ma: słownik
+ * startowy został przepisany na angielski, więc `klatka-piersiowa` czy
+ * `nogi-przod` nie powstają nigdzie poza testem.
+ *
+ * Kontraktem danych są slug i identyfikator — ich zmiana przepisuje wiersze
+ * i osierocone serie. Kolor jest wartością wyliczaną, i tak też go traktujemy.
  */
 
 import { slug } from './slug.js';
 
 export type TagColor = `#${string}`;
-
-/**
- * Kolory kilku tagów są zamrożone przez `tests/golden/identifiers.ts` — zmiana
- * złamałaby kolor istniejącym, już zapisanym tagom. Formuła oparta o odcień
- * nie trafia z reguły dokładnie w te historyczne heksy, więc dla tych
- * konkretnych slugów wygrywa jawny wyjątek, a wszystkie pozostałe tagi (w tym
- * cała reszta produkcyjnego słownika) liczą kolor ze wzoru.
- */
-const GOLDEN_COLOR_OVERRIDES: Readonly<Record<string, TagColor>> = {
-  biceps: '#06b6d4',
-  'klatka-piersiowa': '#10b981',
-  'nogi-przod': '#a3e635',
-  grzbiet: '#fb7185',
-  lydki: '#22c55e',
-  'cwiczenia-zlozone': '#f59e0b',
-  'triceps-ramie': '#14b8a6',
-  barki: '#fb7185',
-};
 
 /** Nasycenie i jasność stałe dla każdego odcienia — żaden tag nie ginie na ciemnym tle ani nie razi jako jedyny. */
 const SATURATION = 68;
@@ -73,9 +69,6 @@ function hslToHex(hue: number, saturationPercent: number, lightnessPercent: numb
 }
 
 export function tagColorForSlug(tagSlug: string): TagColor {
-  const override = GOLDEN_COLOR_OVERRIDES[tagSlug];
-  if (override !== undefined) return override;
-
   const hue = hashString(tagSlug) % 360;
   return hslToHex(hue, SATURATION, LIGHTNESS);
 }

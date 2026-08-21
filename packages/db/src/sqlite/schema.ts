@@ -31,7 +31,7 @@
  * zostałby odrzucony — a to znaczy albo wywróconą transakcję pullu i kursor,
  * który nigdy nie rusza do przodu, albo cicho zgubiony wiersz.
  *
- * Rozwiązaniem jest **odroczenie**, nie usunięcie: transakcja pullu (etap 7)
+ * Rozwiązaniem jest **odroczenie**, nie usunięcie: transakcja pullu
  * ustawia `PRAGMA defer_foreign_keys = ON`, przez co SQLite przenosi
  * sprawdzenie na `COMMIT`. Kolejność wewnątrz paczki przestaje mieć znaczenie,
  * a niespójność faktyczna — taka, której nie domyka żaden wiersz z tej samej
@@ -39,7 +39,14 @@
  */
 
 import { GOAL_METRICS, LOGGING_TYPES, SYNC_ENTITIES, USER_ROLES } from '@alphapump/core';
-import type { GoalMetric, IsoDate, LoggingType, SyncEntity, UserRole } from '@alphapump/core';
+import type {
+  GoalMetric,
+  IsoDate,
+  LoggingType,
+  SyncEntity,
+  SyncRejection,
+  UserRole,
+} from '@alphapump/core';
 import { sql } from 'drizzle-orm';
 import {
   check,
@@ -87,6 +94,10 @@ export const users = sqliteTable(
   },
   (table) => [
     uniqueIndex('users_email_unique').on(table.email),
+    // Odpowiednik indeksu z Postgresa. Tabela jest na telefonie mała, ale
+    // parzystość schematów jest tu celem samym w sobie: rozjazd, którego nie
+    // widać, jest gorszy niż indeks, który nic nie kosztuje.
+    index('users_server_seq_idx').on(table.serverSeq),
     check('users_role_check', oneOf('role', USER_ROLES)),
   ],
 );
@@ -334,8 +345,13 @@ export const syncRejections = sqliteTable(
   {
     entity: text('entity').$type<SyncEntity>().notNull(),
     rowId: text('row_id').notNull(),
-    /** Powód podany przez serwer; pokazywany użytkownikowi wprost. */
-    reason: text('reason'),
+    /**
+     * Kod powodu podany przez serwer. Zdanie buduje z niego aplikacja
+     * (`describeRejection`) — serwer nie zna języka, w którym mówi ten ekran.
+     */
+    reason: text('reason').$type<SyncRejection>(),
+    /** Zmienna część komunikatu: lista identyfikatorów, nazwa, typ logowania. */
+    reasonDetail: text('reason_detail'),
     attempts: integer('attempts').notNull().default(1),
     rejectedAt: integer('rejected_at', { mode: 'timestamp_ms' }).notNull(),
     /** Do tego czasu `reconcile` nie kolejkuje wiersza ponownie. */

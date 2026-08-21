@@ -50,7 +50,7 @@ export const cycleRoutes: RouteSpec[] = [
     params: idParamSchema,
     responses: [
       { status: 200, description: 'Cykl', schema: cycleSchema },
-      { status: 404, description: 'Cykl nie istnieje' },
+      { status: 404, description: 'No such cycle' },
     ],
   },
   {
@@ -75,7 +75,7 @@ export const cycleRoutes: RouteSpec[] = [
     body: updateCycleBodySchema,
     responses: [
       { status: 200, description: 'Cykl zmieniony', schema: cycleSchema },
-      { status: 404, description: 'Cykl nie istnieje' },
+      { status: 404, description: 'No such cycle' },
     ],
   },
   {
@@ -87,7 +87,7 @@ export const cycleRoutes: RouteSpec[] = [
     params: idParamSchema,
     responses: [
       { status: 204, description: 'Cykl usunięty' },
-      { status: 404, description: 'Cykl nie istnieje' },
+      { status: 404, description: 'No such cycle' },
     ],
   },
 ];
@@ -119,7 +119,7 @@ export function createCycleRouter(dependencies: AppDependencies) {
       .from(cycles)
       .where(and(eq(cycles.id, id), eq(cycles.userId, userId)))
       .limit(1);
-    if (!row || row.deletedAt !== null) throw notFound('Cykl nie istnieje');
+    if (!row || row.deletedAt !== null) throw notFound('No such cycle');
     return { row, goals: (await goalsOf([id])).get(id) ?? [] };
   };
 

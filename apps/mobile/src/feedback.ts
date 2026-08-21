@@ -12,10 +12,11 @@
  * to ta sama rozmowa z tym samym API, tylko w jedną stronę zamiast w dwie.
  */
 
+import { FEEDBACK_MESSAGE_MAX_LENGTH } from '@alphapump/core';
 import type { AppLogEntry } from './app-log';
 import { SyncAuthError, SyncOfflineError, SyncServerError } from './sync/transport';
 
-export const FEEDBACK_MESSAGE_MAX_LENGTH = 2000;
+export { FEEDBACK_MESSAGE_MAX_LENGTH };
 
 const TIMEOUT_MS = 10_000;
 

@@ -16,7 +16,7 @@
  *
  * | `layer`   | Co się wykonało                                    |
  * | --------- | -------------------------------------------------- |
- * | `lexical` | tylko trigramy i `tsvector` — zachowanie z etapu 8 |
+ * | `lexical` | tylko trigramy i `tsvector` — sama pisownia        |
  * | `hybrid`  | dołączyła warstwa wektorowa                        |
  * | `llm`     | doszła ocena i uzasadnienie z re-rankera           |
  *
@@ -43,6 +43,12 @@ import { exercises, tags, users } from '../schema.js';
 import { cacheKey, readCachedVerdicts, writeCachedVerdicts } from './cache.js';
 import type { DuplicateLayers, RerankCandidate } from './layers.js';
 import { LAYER_LIMIT, lexicalSearch, semanticSearch } from './search.js';
+import { logger } from '../logger.js';
+
+/** Błąd sprowadzony do napisu — logger dostaje pola, nie wyjątki. */
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 export interface FindDuplicatesInput {
   name: string;
@@ -101,7 +107,7 @@ export async function findDuplicates(
     } catch (error) {
       // Dostawca modeli nie odpowiedział. Zostajemy z warstwą leksykalną —
       // ostrzeżenie o duplikacie ma się pokazać zawsze, choćby węższe.
-      console.warn('Warstwa semantyczna nie odpowiedziała:', error);
+      logger.warn('warstwa semantyczna nie odpowiedziała', { error: describe(error) });
     }
   }
 
@@ -186,7 +192,7 @@ async function rerank(
     // Model odmówił, przekroczył limit czasu albo zwrócił coś, czego nie
     // przepuścił schemat. Odpowiedź zostaje na warstwie 2 — bez oceny, ale
     // z kandydatami.
-    console.warn('Re-ranker nie odpowiedział:', error);
+    logger.warn('re-ranker nie odpowiedział', { error: describe(error) });
     return null;
   }
 }

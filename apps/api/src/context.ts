@@ -5,6 +5,7 @@
 import type { UserRole } from '@alphapump/core';
 import type { Auth } from './auth.js';
 import type { Database } from './db.js';
+import type { EmbeddingBacklog } from './duplicates/backlog.js';
 import type { DuplicateLayers } from './duplicates/layers.js';
 import type { DerivedRecomputation } from './sync/derived.js';
 import type { TriageClient } from './triage.js';
@@ -23,6 +24,8 @@ export interface Principal {
 export interface AppEnvironment {
   Variables: {
     principal: Principal;
+    /** Identyfikator żądania — wraca nagłówkiem `x-request-id` i wchodzi do logu. */
+    requestId: string;
   };
   Bindings: Record<string, never>;
 }
@@ -39,13 +42,20 @@ export interface AppDependencies {
    */
   derived?: readonly DerivedRecomputation[];
   /**
-   * Warstwy semantyczna i LLM-owa wykrywania duplikatów (etap 12). Pominięcie
+   * Warstwy semantyczna i LLM-owa wykrywania duplikatów. Pominięcie
    * pola znaczy **warstwy wyłączone** — odwrotnie niż przy `derived`, i jest to
    * asymetria zamierzona: brak przeliczenia rekordów jest cichym błędem
    * poprawności, a warstwa LLM włączona przez przeoczenie to wychodzące żądania
    * i rachunek u dostawcy modeli. Produkcja składa je z konfiguracji w `index.ts`.
    */
   duplicates?: DuplicateLayers;
+  /**
+   * Kolejka przeliczania wektorów, wołana **poza** ścieżką żądania. Pominięcie
+   * pola znaczy „nie ma czego liczyć" — tak samo jak wyłączona warstwa
+   * semantyczna, bo jedno bez drugiego nie ma sensu. Produkcja składa ją
+   * w `index.ts` z tych samych warstw co `duplicates`.
+   */
+  embeddings?: EmbeddingBacklog;
   /**
    * Klient usługi `services/triage` do ręcznego wyzwolenia przeglądu zgłoszeń
    * z panelu administracyjnego. Pominięcie pola znaczy **panel nie może

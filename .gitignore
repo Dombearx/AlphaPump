@@ -36,6 +36,11 @@ deploy/ota/*
 deploy/feedback/*
 !deploy/feedback/.gitkeep
 
+# Awaryjny cel woluminu kopii zapasowych. Compose nie umie „nie podmontować"
+# warunkowo, więc bez `BACKUP_DIR` w `deploy/.env` wolumin wskazuje tutaj i jest
+# pusty. Prawdziwe kopie leżą poza repozytorium — patrz `deploy/backup.env.example`.
+deploy/backups/
+
 # To samo lokalnie: domyślny FEEDBACK_DIR poza deploy/, gdy API chodzi z `pnpm start`.
 apps/api/data/
 

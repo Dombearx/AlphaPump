@@ -24,8 +24,8 @@ async function loadPrincipal(
   credential: Principal['credential'],
 ): Promise<Principal> {
   const [row] = await dependencies.db.select().from(users).where(eq(users.id, userId)).limit(1);
-  if (!row) throw unauthorized('Konto powiązane z tym uwierzytelnieniem już nie istnieje');
-  if (row.banned) throw forbidden('Konto jest zablokowane');
+  if (!row) throw unauthorized('The account behind this credential no longer exists');
+  if (row.banned) throw forbidden('This account is banned');
 
   return {
     id: row.id,
@@ -50,10 +50,10 @@ export function authenticate(dependencies: AppDependencies) {
         body: { key: apiKeyValue },
       });
       if (result.error?.code === 'RATE_LIMITED') {
-        throw rateLimited('Przekroczony limit żądań dla tego klucza API');
+        throw rateLimited('Rate limit exceeded for this API key');
       }
       if (!result.valid || !result.key) {
-        throw unauthorized('Klucz API jest nieprawidłowy, wyłączony albo wygasł');
+        throw unauthorized('The API key is invalid, disabled or expired');
       }
       context.set(
         'principal',
@@ -73,7 +73,7 @@ export function authenticate(dependencies: AppDependencies) {
 /** Operacje zastrzeżone dla administratora — edycja i usuwanie tagów. */
 export const requireAdmin = createMiddleware<AppEnvironment>(async (context, next) => {
   if (context.get('principal').role !== 'admin') {
-    throw forbidden('Operacja zastrzeżona dla administratora');
+    throw forbidden('This operation is reserved for administrators');
   }
   return next();
 });

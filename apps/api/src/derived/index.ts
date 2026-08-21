@@ -1,5 +1,5 @@
 /**
- * Lista przeliczeń danych pochodnych — dług z etapu 4, spłacony w etapie 11.
+ * Lista przeliczeń danych pochodnych.
  *
  * Do tej pory `sync/derived.ts` zbierał zakres dotknięty pushem i przepuszczał
  * go przez **pustą** listę. Był to stan zamierzony: jedyne dane pochodne

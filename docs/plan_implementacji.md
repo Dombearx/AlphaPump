@@ -34,7 +34,7 @@ Kolejność wynika z trzech zasad:
 - pnpm workspaces + Turborepo, wspólna konfiguracja TypeScript,
 - lint i formatowanie, jednolite dla wszystkich pakietów,
 - GitHub Actions: build, test, lint na każdym PR,
-- szkielety pakietów `core`, `db`, `api-client` i aplikacji `mobile`, `api`,
+- szkielety pakietów `core`, `db` i aplikacji `mobile`, `api`,
   `admin` — na razie puste.
 
 **Gotowe, gdy:** CI przechodzi na zielono na pustym repozytorium, a `pnpm build`,
@@ -251,7 +251,7 @@ i właścicieli serii.
 - Docker Compose na minipc: Postgres, API, panel, Caddy jako reverse proxy,
 - dostęp przez NetBird, cron kopii zapasowych,
 - dystrybucja aplikacji na Androida,
-- procedura aktualizacji i odtwarzania spisana w README.
+- procedura aktualizacji i odtwarzania spisana w `docs/wdrozenie.md`.
 
 **Gotowe, gdy:** grupa korzysta z aplikacji na własnych telefonach, a odtworzenie
 z kopii zostało wykonane co najmniej raz na sucho.

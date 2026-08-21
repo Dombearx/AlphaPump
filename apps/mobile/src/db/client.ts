@@ -14,6 +14,15 @@
  * - **`PRAGMA foreign_keys = ON`.** SQLite ma więzy domyślnie wyłączone.
  *   Schemat lokalny ma komplet kluczy obcych i to jest celowe — pull odracza
  *   ich sprawdzanie do `COMMIT`, zamiast je zdejmować.
+ * - **`PRAGMA journal_mode = WAL`.** Domyślny dziennik (`delete`) blokuje odczyty
+ *   na czas zapisu, a aplikacja zapisuje serię dokładnie wtedy, gdy
+ *   `useLiveQuery` czyta historię, żeby przeliczyć rekordy. Przy zapisie paczki
+ *   pullu — do pięciuset wierszy w jednej transakcji — widać to jako zacięcie
+ *   interfejsu. WAL puszcza czytających obok piszącego.
+ * - **`PRAGMA synchronous = NORMAL`.** Razem z WAL to zalecane ustawienie
+ *   SQLite: `FULL` wymusza `fsync` przy każdym zatwierdzeniu, a przy WAL grozi
+ *   to wyłącznie utratą ostatnich transakcji przy nagłym padzie systemu — nie
+ *   uszkodzeniem bazy. Zapis serii ma być natychmiastowy.
  */
 
 import {
@@ -42,6 +51,8 @@ export const schema = {
 
 export const sqlite = openDatabaseSync(DATABASE_NAME, { enableChangeListener: true });
 
+sqlite.execSync('PRAGMA journal_mode = WAL;');
+sqlite.execSync('PRAGMA synchronous = NORMAL;');
 sqlite.execSync('PRAGMA foreign_keys = ON;');
 
 export const db = drizzle(sqlite, { schema });

@@ -9,6 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import { deriveNickname } from '../src/auth.js';
 import { loadConfig } from '../src/config.js';
+import { retentionDays } from '../src/cli/prune.js';
 
 const MINIMAL = {
   DATABASE_URL: 'postgres://alphapump@localhost:5432/alphapump',
@@ -118,5 +119,26 @@ describe('nick', () => {
     // musi więc istnieć wartość, którą da się pokazać przy rekordzie globalnym.
     expect(deriveNickname({ name: null, email: 'kuba.nowak@example.com' })).toBe('kuba.nowak');
     expect(deriveNickname({ name: '   ', email: 'pusty@example.com' })).toBe('pusty');
+  });
+});
+
+describe('okno retencji zadania porządkowego', () => {
+  it('bez argumentu bierze wartość domyślną', () => {
+    expect(retentionDays(undefined, 90)).toBe(90);
+  });
+
+  it('przyjmuje liczbę dni z wiersza poleceń', () => {
+    expect(retentionDays('120', 90)).toBe(120);
+  });
+
+  /**
+   * Cron podaje argumenty jako napisy i nikt ich po drodze nie waliduje.
+   * Literówka nie może zamienić się w „zdejmij tombstone'y starsze niż NaN dni",
+   * bo to jest operacja nieodwracalna na cudzej historii treningowej.
+   */
+  it('odrzuca to, co nie jest dodatnią liczbą dni', () => {
+    expect(() => retentionDays('0', 90)).toThrow();
+    expect(() => retentionDays('-5', 90)).toThrow();
+    expect(() => retentionDays('dużo', 90)).toThrow();
   });
 });

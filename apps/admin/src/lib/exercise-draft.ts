@@ -40,22 +40,22 @@ const NOTE_MAX = 1000;
 
 /** `null` znaczy „można zapisać" — ten sam kształt co walidatory w aplikacji. */
 export function exerciseProblem(draft: ExerciseDraft, tags: readonly Tag[]): string | null {
-  if (draft.name.trim().length === 0) return 'Podaj nazwę ćwiczenia.';
-  if (draft.name.trim().length > NAME_MAX) return `Nazwa może mieć najwyżej ${NAME_MAX} znaków.`;
+  if (draft.name.trim().length === 0) return 'Enter an exercise name.';
+  if (draft.name.trim().length > NAME_MAX) return `The name can be at most ${NAME_MAX} characters.`;
 
   // Sprawdzamy istnienie tagu, a nie samą niepustość: lista tagów mogła się
   // zmienić w innej karcie, a wybór wskazywałby wtedy na tag, którego nie ma.
   if (!tags.some((tag) => tag.id === draft.primaryTagId)) {
     return tags.length === 0
-      ? 'Najpierw dodaj choć jeden tag — ćwiczenie musi mieć tag główny.'
-      : 'Wybierz tag główny.';
+      ? 'Add at least one tag first — an exercise needs a primary tag.'
+      : 'Pick a primary tag.';
   }
 
   if (draft.additionalTagIds.includes(draft.primaryTagId)) {
-    return 'Tag główny nie może być jednocześnie dodatkowym.';
+    return 'The primary tag cannot also be an additional one.';
   }
-  if (draft.gym.trim().length > GYM_MAX) return `Siłownia może mieć najwyżej ${GYM_MAX} znaków.`;
-  if (draft.note.trim().length > NOTE_MAX) return `Notatka może mieć najwyżej ${NOTE_MAX} znaków.`;
+  if (draft.gym.trim().length > GYM_MAX) return `The gym can be at most ${GYM_MAX} characters.`;
+  if (draft.note.trim().length > NOTE_MAX) return `The note can be at most ${NOTE_MAX} characters.`;
 
   return null;
 }

@@ -12,9 +12,10 @@
  *    dysku.
  */
 
-import { readdir, readFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, utimes, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { FEEDBACK_RATE_LIMIT } from '../src/routes/feedback.js';
 import { createHarness, type Harness, type TestUser } from './harness.js';
 
 interface FeedbackFile {
@@ -125,5 +126,62 @@ describe('POST /feedback', () => {
     });
 
     expect(await readdir(harness.feedbackDir)).toHaveLength(2);
+  });
+
+  /**
+   * Zgłoszenie to plik na dysku minipc, do ~62 KB, a katalog nie miał ani limitu
+   * tempa, ani retencji — jedno konto w pętli zapełniało dysk, na którym leży
+   * też baza.
+   */
+  it('ucina lawinę zgłoszeń z jednego konta', async () => {
+    const spammer = await harness.signUp('lawina-zgloszen@example.com');
+
+    const statuses: number[] = [];
+    for (let index = 0; index <= FEEDBACK_RATE_LIMIT; index += 1) {
+      const response = await harness.json('POST', '/feedback', {
+        headers: spammer.headers,
+        body: { message: `Zgłoszenie ${String(index)}` },
+      });
+      statuses.push(response.status);
+    }
+
+    expect(statuses.filter((status) => status === 201)).toHaveLength(FEEDBACK_RATE_LIMIT);
+    expect(statuses.at(-1)).toBe(429);
+
+    // Limit jest per konto, nie globalny: cudzy spam nie zamyka skrzynki reszcie.
+    const other = await harness.signUp('spokojny@example.com');
+    const allowed = await harness.json('POST', '/feedback', {
+      headers: other.headers,
+      body: { message: 'Normalne zgłoszenie' },
+    });
+    expect(allowed.status).toBe(201);
+  });
+});
+
+describe('retencja zgłoszeń', () => {
+  /**
+   * Pliki niosą adres e-mail i przechwycone logi konsoli, więc katalog rósł jako
+   * zbiór danych osobowych, którego nic nie kasowało.
+   */
+  it('zdejmuje zgłoszenia starsze niż okno retencji przy najbliższym zapisie', async () => {
+    const local = await createHarness();
+    const user = await local.signUp('retencja@example.com');
+
+    const stary = path.join(local.feedbackDir, '2020-01-01T00-00-00-000Z_ktos_abcd1234.json');
+    await mkdir(local.feedbackDir, { recursive: true });
+    await writeFile(stary, '{"message":"sprzed epoki"}');
+    await utimes(stary, new Date('2020-01-01'), new Date('2020-01-01'));
+
+    const response = await local.json('POST', '/feedback', {
+      headers: user.headers,
+      body: { message: 'Świeże zgłoszenie' },
+    });
+    expect(response.status).toBe(201);
+
+    const left = await readdir(local.feedbackDir);
+    expect(left).toHaveLength(1);
+    expect(left[0]).not.toContain('2020-01-01');
+
+    await local.close();
   });
 });

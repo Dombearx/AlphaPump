@@ -11,6 +11,7 @@
     "start": "node dist/index.js",
     "export": "node dist/cli/export.js",
     "import": "node dist/cli/import.js",
+    "prune": "node dist/cli/prune.js",
     "regenerate-seed": "node dist/cli/regenerate-seed.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",

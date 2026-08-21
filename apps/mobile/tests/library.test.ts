@@ -1,8 +1,8 @@
 /**
- * Biblioteka i tagi — kryterium ukończenia etapu 8.
+ * Biblioteka i tagi, w całości offline.
  *
  * Testy jadą po prawdziwym schemacie lokalnym i **nigdy nie dotykają sieci**.
- * To jest sedno tego etapu: przepływ „wybierz tag, zobacz ćwiczenia, dodaj nowe"
+ * To jest sedno biblioteki: przepływ „wybierz tag, zobacz ćwiczenia, dodaj nowe"
  * ma działać w trybie samolotowym, razem z ostrzeżeniem o duplikacie. Gdyby
  * cokolwiek tutaj wymagało serwera, test by nie przeszedł.
  */

@@ -66,6 +66,18 @@ const environmentSchema = z.object({
   OTA_DIR: nonEmpty.default('./data/ota'),
 
   /**
+   * Katalog z kopiami zapasowymi, podmontowany **tylko do odczytu**. Serwer nic
+   * tu nie pisze — kopie robi cron na gospodarzu (`scripts/backup.sh`), a API
+   * wyłącznie sprawdza, kiedy powstała najnowsza, i pokazuje to w panelu.
+   *
+   * Pominięcie jest w pełni obsłużonym stanem, a nie brakiem konfiguracji:
+   * kopie z założenia leżą poza stosem (przy `RCLONE_REMOTE` nawet poza
+   * maszyną), więc `/admin/stats` mówi wtedy „nie mam jak zajrzeć" zamiast
+   * zmyślać, że kopii nie ma.
+   */
+  BACKUP_DIR: z.string().optional(),
+
+  /**
    * Adres usługi `services/triage` w sieci Compose (np. `http://triage:8090`)
    * i token, którym panel administracyjny wyzwala u niej przegląd na żądanie —
    * patrz `POST /admin/feedback/run`. Bez obu naraz endpoint istnieje, ale
@@ -81,13 +93,13 @@ const environmentSchema = z.object({
   TRIAGE_URL: z.string().optional(),
   TRIAGE_HTTP_TOKEN: z.string().optional(),
 
-  /* ------------------------------------------- warstwa semantyczna (etap 12) */
+  /* ------------------------------------------------------ warstwa semantyczna */
 
   /**
    * Wyłącznik **całej** warstwy semantycznej i LLM-owej. `false` cofa wykrywanie
-   * duplikatów do zachowania z etapu 8: ostrzeżenie liczone z samej pisowni.
+   * duplikatów do samej warstwy leksykalnej: ostrzeżenie liczone z pisowni.
    * Tworzenie ćwiczeń działa dalej bez zmian — to jest kryterium ukończenia
-   * etapu 12 i dlatego wyłącznik jest jedną zmienną, a nie ćwiczeniem
+   * produktu i dlatego wyłącznik jest jedną zmienną, a nie ćwiczeniem
    * z komentowania kodu.
    */
   LLM_ENABLED: z.stringbool().default(true),
@@ -161,6 +173,8 @@ export interface AppConfig {
   feedbackDir: string;
   /** Katalog z wydaniami OTA — patrz `OTA_DIR`. */
   otaDir: string;
+  /** Katalog z kopiami zapasowymi do podejrzenia; `null`, gdy niepodmontowany. */
+  backupDir: string | null;
   /** `null`, gdy panel nie ma jak wyzwolić przeglądu zgłoszeń ręcznie — patrz `TRIAGE_URL`. */
   triage: TriageConfig | null;
 }
@@ -207,6 +221,8 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
         }
       : null;
 
+  const backupDir = environmentVariables.BACKUP_DIR?.trim() ?? '';
+
   const triageUrl = environmentVariables.TRIAGE_URL?.trim() ?? '';
   const triageToken = environmentVariables.TRIAGE_HTTP_TOKEN?.trim() ?? '';
   const triage =
@@ -224,6 +240,7 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
     llm,
     feedbackDir: environmentVariables.FEEDBACK_DIR,
     otaDir: environmentVariables.OTA_DIR,
+    backupDir: backupDir.length > 0 ? backupDir : null,
     triage,
   };
 }

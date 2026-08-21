@@ -1,8 +1,8 @@
 /**
  * Rekordy globalne ćwiczeń — przeliczenie wpięte w listę z `sync/derived.ts`.
  *
- * To jest ten kawałek, który spłaca dług z etapu 4: zakres dotknięty pushem był
- * zbierany od tamtego etapu, ale lista przeliczeń stała pusta, bo jedyne dane
+ * Zakres dotknięty pushem był
+ * zbierany od początku, ale lista przeliczeń stała pusta, bo jedyne dane
  * pochodne trzymane na serwerze — właśnie rekordy globalne — powstają dopiero
  * tutaj.
  *

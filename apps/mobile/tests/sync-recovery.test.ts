@@ -8,15 +8,18 @@
  * 2. seria zgubiona wcześniej (odrzucona, zdjęta z kolejki, została w bazie bez
  *    `server_seq`) — `reconcile` znajduje ją i dosyła,
  * 3. odmowa, która nie mija — wiersz czeka w kwarantannie, nie kręci kolejką
- *    w kółko i wraca, gdy odstęp minie.
+ *    w kółko i wraca, gdy odstęp minie,
+ * 4. wiersz odsiany **przed wysłaniem** — paczka bywa przycięta przy składaniu,
+ *    a jego wpis znikał wtedy razem z całym odcinkiem kolejki.
  */
 
 import { builtInExerciseId, SYSTEM_USER_ID } from '@alphapump/core';
-import { outbox, syncRejections, workoutSets } from '@alphapump/db/sqlite';
+import { cycleGoals, cycles, outbox, syncRejections, workoutSets } from '@alphapump/db/sqlite';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { createCycle } from '../src/db/cycles';
 import { createSet, type SetValues } from '../src/db/sets';
-import { stuckRows } from '../src/sync/reconcile';
+import { recordRejections, stuckRows } from '../src/sync/reconcile';
 import { runSync } from '../src/sync/run';
 import { FakeSyncServer } from './fake-server';
 import { EXERCISES, TEST_USER, createLocalDatabase, insertTestUser } from './local-database';
@@ -111,6 +114,66 @@ describe('odzyskiwanie zapisów', () => {
     expect(row?.serverSeq).toBeGreaterThan(0);
   });
 
+  /**
+   * Cykl bez pozycji celu nie przejdzie walidacji serwera, więc `payload.ts`
+   * odsiewa go już przy składaniu paczki. Wcześniej jego wpis znikał mimo to,
+   * bo `clearThrough` kasował cały odcinek kolejki — a `reconcile` po niego nie
+   * wracał, bo szuka wyłącznie wierszy z pustym `server_seq`.
+   *
+   * Cykl **potwierdzony** przez serwer takiego `server_seq` już ma, więc jego
+   * edycja przepadała po cichu i na zawsze. Tu jest ten przypadek wprost.
+   */
+  it('wiersz odsiany przed wysłaniem wraca do kolejki, zamiast przepaść', async () => {
+    const phone = withServer(new FakeSyncServer({ userId: TEST_USER.id }));
+
+    const cycleId = await createCycle(local.db, {
+      userId: TEST_USER.id,
+      deviceId: DEVICE,
+      name: 'Sierpień',
+      startsOn: DAY,
+      endsOn: null,
+      goals: [{ metric: 'sets', target: 20, exerciseId: EXERCISES.bench!.id, tagId: null }],
+    });
+
+    await phone.sync();
+    const [confirmed] = await local.db.select().from(cycles).where(eq(cycles.id, cycleId));
+    expect(confirmed?.serverSeq).toBeGreaterThan(0);
+    expect(await local.db.select().from(outbox)).toHaveLength(0);
+
+    // Stan przejściowy, który `withoutIncompleteRows` odsiewa: cykl bez pozycji
+    // celu nie przejdzie walidacji serwera, więc nie ma go po co wysyłać.
+    // Powstaje, gdy pull skasuje pozycje tuż przed wysyłką.
+    await local.db.delete(cycleGoals).where(eq(cycleGoals.cycleId, cycleId));
+    await local.db
+      .update(cycles)
+      .set({ name: 'Sierpień, poprawiony', updatedAt: new Date() })
+      .where(eq(cycles.id, cycleId));
+    await local.db.insert(outbox).values({ entity: 'cycle', rowId: cycleId, queuedAt: new Date() });
+
+    const result = await phone.sync();
+
+    // Nic nie pojechało — i to jest w porządku. Nie w porządku było to, że wpis
+    // znikał razem z odcinkiem kolejki, a `reconcile` po niego nie wracał, bo
+    // wiersz ma już `server_seq`. Edycja cyklu przepadałaby wtedy na zawsze.
+    expect(result.pushed).toBe(0);
+    expect(await local.db.select().from(outbox)).toHaveLength(1);
+
+    // Gdy pozycje celu wrócą, ta sama edycja wyjeżdża normalnie.
+    await local.db.insert(cycleGoals).values({
+      id: '00000000-0000-7000-8000-0000000000a1',
+      cycleId,
+      metric: 'sets',
+      target: 20,
+      exerciseId: EXERCISES.bench!.id,
+      tagId: null,
+      position: 0,
+    });
+
+    await phone.sync();
+    expect(phone.server.storedCycles()[0]?.name).toBe('Sierpień, poprawiony');
+    expect(await local.db.select().from(outbox)).toHaveLength(0);
+  });
+
   it('odmowa trafia do kwarantanny, a nie do kosza', async () => {
     const phone = withServer(new FakeSyncServer({ userId: TEST_USER.id }));
     const refused = await phone.add(reps(120, 3));
@@ -121,12 +184,48 @@ describe('odzyskiwanie zapisów', () => {
 
     const quarantined = await stuckRows(local.db);
     expect(quarantined).toHaveLength(1);
-    expect(quarantined[0]?.reason).toBe('Serwer odmawia');
+    expect(quarantined[0]?.reason).toBe('not_owner');
 
     // Druga wymiana nie kręci kolejką: odstęp jeszcze nie minął.
     const second = await phone.sync();
     expect(second.requeued).toBe(0);
     expect(second.rejected).toEqual([]);
+  });
+
+  it('wyścig o zniknięty wiersz ponawia się od razu, a nie po minucie', async () => {
+    // `vanished` jest jedynym kodem, który nie jest rozstrzygnięciem reguły:
+    // wiersz zniknął serwerowi między odczytem a zapisem, więc przy następnej
+    // wymianie zastanie już inny stan. Czekanie minuty byłoby tu czystą stratą,
+    // a przy zdaniu zamiast kodu telefon nie miałby po czym tego poznać.
+    const phone = withServer(new FakeSyncServer({ userId: TEST_USER.id }));
+    const row = await phone.add(reps(100, 5));
+    const now = new Date('2026-08-11T10:00:00.000Z');
+
+    await recordRejections(
+      local.db,
+      [{ entity: 'set', id: row.id, decision: 'rejected', reason: 'vanished', reasonDetail: null }],
+      now,
+    );
+    expect((await stuckRows(local.db))[0]?.retryAfter).toEqual(now);
+
+    // Ten sam wiersz odrzucony po raz trzeci przestaje być wyścigiem i wchodzi
+    // w normalny odstęp — inaczej kręciłby kolejką przy każdej wymianie.
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await recordRejections(
+        local.db,
+        [
+          {
+            entity: 'set',
+            id: row.id,
+            decision: 'rejected',
+            reason: 'vanished',
+            reasonDetail: null,
+          },
+        ],
+        now,
+      );
+    }
+    expect((await stuckRows(local.db))[0]?.retryAfter.getTime()).toBeGreaterThan(now.getTime());
   });
 
   it('po upływie odstępu ponawia i przyjmuje wiersz, gdy serwer zmienia zdanie', async () => {

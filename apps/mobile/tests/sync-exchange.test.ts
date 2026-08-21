@@ -1,5 +1,5 @@
 /**
- * Wymiana danych z serwerem — kryterium ukończenia etapu 7.
+ * Wymiana danych z serwerem: push, pull i kursor.
  *
  * Najważniejszy test to ten na końcu: dwa urządzenia pracujące offline, po
  * synchronizacji ani jednej zgubionej serii i ani jednego duplikatu. Reszta

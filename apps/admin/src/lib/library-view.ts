@@ -22,18 +22,18 @@ import type { LibraryExercise, LibraryTag } from '@alphapump/core';
 /**
  * Dlaczego tego ćwiczenia nie da się usunąć; `null` — da się.
  *
- * Odpowiada regule z `apps/api/src/exercise-usage.ts`: liczą się serie żywe
+ * Odpowiada regule z `apps/api/src/domain/exercises.ts`: liczą się serie żywe
  * i cele żywych cykli.
  */
 export function exerciseDeletionProblem(entry: LibraryExercise): string | null {
   const { sets, users, goals } = entry.usage;
 
   if (sets > 0) {
-    const owners = users === 1 ? '1 osoby' : `${String(users)} osób`;
-    return `Ma ${String(sets)} zapisanych serii (${owners}). Scal je z innym ćwiczeniem — serie przejdą razem z nim.`;
+    const owners = users === 1 ? '1 person' : `${String(users)} people`;
+    return `Has ${String(sets)} logged sets (${owners}). Merge it into another exercise — the sets move with it.`;
   }
   if (goals > 0) {
-    return `Wskazuje na nie ${String(goals)} celów cyklu. Scal je z innym ćwiczeniem albo popraw cele.`;
+    return `${String(goals)} cycle goals point at it. Merge it into another exercise, or fix the goals.`;
   }
   return null;
 }
@@ -44,12 +44,12 @@ export function tagDeletionProblem(entry: LibraryTag): string | null {
 
   if (exercises > 0) {
     const asPrimary =
-      primaryExercises > 0 ? `, w tym ${String(primaryExercises)} jako tag główny` : '';
-    const logged = sets > 0 ? `, z ${String(sets)} zapisanymi seriami` : '';
-    return `Używa go ${String(exercises)} ćwiczeń${asPrimary}${logged}. Scal go z innym tagiem.`;
+      primaryExercises > 0 ? `, ${String(primaryExercises)} of them as the primary tag` : '';
+    const logged = sets > 0 ? `, with ${String(sets)} logged sets` : '';
+    return `Used by ${String(exercises)} exercises${asPrimary}${logged}. Merge it into another tag.`;
   }
   if (goals > 0) {
-    return `Wskazuje na niego ${String(goals)} celów cyklu. Scal go z innym tagiem albo popraw cele.`;
+    return `${String(goals)} cycle goals point at it. Merge it into another tag, or fix the goals.`;
   }
   return null;
 }
@@ -152,9 +152,9 @@ export function tagMergeTargets(rows: readonly LibraryTag[], source: LibraryTag)
 /** Krótkie „co na tym wisi" do kolumny użycia — puste znaczy „nic". */
 export function usageSummary(usage: LibraryExercise['usage']): string {
   const parts: string[] = [];
-  if (usage.sets > 0) parts.push(`${String(usage.sets)} serii`);
-  if (usage.users > 1) parts.push(`${String(usage.users)} osób`);
-  if (usage.goals > 0) parts.push(`${String(usage.goals)} celów`);
-  if (usage.deletedSets > 0) parts.push(`${String(usage.deletedSets)} skasowanych serii`);
+  if (usage.sets > 0) parts.push(`${String(usage.sets)} sets`);
+  if (usage.users > 1) parts.push(`${String(usage.users)} people`);
+  if (usage.goals > 0) parts.push(`${String(usage.goals)} goals`);
+  if (usage.deletedSets > 0) parts.push(`${String(usage.deletedSets)} deleted sets`);
   return parts.join(' · ');
 }

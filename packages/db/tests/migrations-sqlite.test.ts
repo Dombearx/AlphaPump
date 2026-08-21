@@ -1,5 +1,5 @@
 /**
- * Migracje SQLite na czystym pliku — druga połowa kryterium ukończenia etapu 2.
+ * Migracje SQLite na czystym pliku.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';

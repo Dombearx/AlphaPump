@@ -24,7 +24,7 @@ import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { admin, bearer } from 'better-auth/plugins';
 import { v7 as uuidv7 } from 'uuid';
-import { accounts, apiKeys, sessions, users, verifications } from '@alphapump/db/pg';
+import { accounts, apiKeys, rateLimits, sessions, users, verifications } from '@alphapump/db/pg';
 import type { AppConfig } from './config.js';
 import type { Database } from './db.js';
 
@@ -55,6 +55,7 @@ export function createAuth(db: Database, config: AppConfig) {
         account: accounts,
         verification: verifications,
         apikey: apiKeys,
+        rateLimit: rateLimits,
       },
     }),
 
@@ -69,6 +70,29 @@ export function createAuth(db: Database, config: AppConfig) {
       requireEmailVerification: false,
       autoSignIn: true,
       minPasswordLength: 8,
+    },
+
+    /**
+     * Limit żądań do `/api/auth/*`, ustawiony jawnie zamiast domyślnego.
+     *
+     * Domyślny działa wyłącznie w produkcji i liczy w pamięci procesu — czyli
+     * zeruje się przy każdym wdrożeniu, a wdrożenie idzie z każdym wejściem na
+     * `main`. Licznik w bazie przeżywa restart, więc okno jest oknem, a nie
+     * „oknem do najbliższego wydania".
+     *
+     * Logowanie ma osobne, ostrzejsze okno: reszta tras autoryzacji to odczyt
+     * sesji, wołany przy każdym uruchomieniu aplikacji, a zgadywanie hasła
+     * potrzebuje wielu prób i to je ma powstrzymać.
+     */
+    rateLimit: {
+      enabled: true,
+      storage: 'database',
+      window: 60,
+      max: 60,
+      customRules: {
+        '/sign-in/email': { window: 60, max: 10 },
+        '/sign-up/email': { window: 3600, max: 10 },
+      },
     },
 
     socialProviders: config.google

@@ -139,9 +139,17 @@ jobs:
   # Brak odpowiedzi z minipc znaczy „nie wiem" i wypada na `.apk`. Wydanie
   # pełne jest wolniejsze, ale zawsze poprawne; paczka wydana pod nieznany
   # odcisk kończy się aplikacją, która nie wstaje.
+  # Bramka przed wydaniem. Stoi **za** `zmiany`, żeby wejście, które aplikacji
+  # nie rusza, nie płaciło za nią minut — i **przed** `plan`, bo od `plan`
+  # zaczyna się droga, której końcem jest paczka na cudzych telefonach.
+  sprawdzenia:
+    needs: zmiany
+    if: needs.zmiany.outputs.wydawac == 'tak'
+    uses: ./.github/workflows/verify.yml
+
   plan:
     name: Odcisk warstwy natywnej
-    needs: zmiany
+    needs: [zmiany, sprawdzenia]
     if: needs.zmiany.outputs.wydawac == 'tak'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -192,7 +200,9 @@ jobs:
           echo "Odcisk tego commita: ${odcisk}"
 
       - name: Wejdź do sieci NetBird
-        uses: hackiron/public-actions/netbird-connect@main
+        # Przypięte do commita, nie do gałęzi: akcja jest cudza, a startuje w tym
+        # samym runnerze co klucz podpisujący wydanie i token publikacji.
+        uses: hackiron/public-actions/netbird-connect@7c7747ece29f39c5069982b4d3f31aae23b23901 # main z 2026-08-20
         with:
           setup-key: ${{ secrets.NETBIRD_ACCESS_KEY }}
           hostname: github-actions-plan-alphapump
@@ -331,7 +341,9 @@ jobs:
 
       - name: Wejdź do sieci NetBird
         if: ${{ env.PUBLIKUJ == 'true' }}
-        uses: hackiron/public-actions/netbird-connect@main
+        # Przypięte do commita, nie do gałęzi: akcja jest cudza, a startuje w tym
+        # samym runnerze co klucz podpisujący wydanie i token publikacji.
+        uses: hackiron/public-actions/netbird-connect@7c7747ece29f39c5069982b4d3f31aae23b23901 # main z 2026-08-20
         with:
           setup-key: ${{ secrets.NETBIRD_ACCESS_KEY }}
           hostname: github-actions-ota-alphapump
@@ -416,10 +428,13 @@ jobs:
       # o odcisku SHA-1 klucza podpisującego w Google Cloud — bez niego natywny
       # Sign-In kończy się `DEVELOPER_ERROR` dopiero na telefonie.
       EXPO_PUBLIC_GOOGLE_SIGN_IN_ENABLED: ${{ vars.EXPO_PUBLIC_GOOGLE_SIGN_IN_ENABLED || 'false' }}
-      # Numer wydania widziany przez system Android. Musi rosnąć między
-      # wydaniami, inaczej telefon odmówi aktualizacji. To także numer, po
-      # którym aplikacja rozpoznaje, że `latest.json` opisuje coś nowszego.
-      ANDROID_VERSION_CODE: ${{ github.run_number }}
+      # Numer wydania widziany przez system Android liczony jest w kroku
+      # „Ustal numer wydania" niżej, z liczby commitów. Wcześniej stał tu
+      # `github.run_number` — licznik przypisany do **nazwy** workflow, więc
+      # zmiana nazwy pliku albo odtworzenie workflow zerowałaby go, a Android
+      # odmawia instalacji pakietu o numerze niższym niż zainstalowany. Objaw
+      # pojawia się dopiero na cudzym telefonie i nie da się go cofnąć bez
+      # odinstalowania aplikacji.
       # Odcisk warstwy natywnej policzony w zadaniu `plan`. Wchodzi do
       # `latest.json`, dzięki czemu **następne** wydanie ma z czym porównać swój
       # i rozstrzygnąć, czy wystarczy paczka JavaScriptu.
@@ -487,6 +502,23 @@ jobs:
           exit 1
 
       - uses: actions/checkout@v4
+        with:
+          # Numer wydania liczy się z liczby commitów, a płytka kopia zna jeden.
+          fetch-depth: 0
+
+      # Numer wydania widziany przez system Android. Musi rosnąć między
+      # wydaniami, inaczej telefon odmówi aktualizacji.
+      #
+      # `git rev-list --count HEAD` rośnie monotonicznie, nie zależy od
+      # infrastruktury CI i da się odtworzyć z samego repozytorium. Przesunięcie
+      # jest jednorazowym długiem po `github.run_number`: wydania rozdane do tej
+      # pory niosą numery z tamtego licznika, a numer nowego wydania musi być od
+      # nich wyższy. Zmniejszać go już nie wolno — patrz wyżej.
+      - name: Ustal numer wydania
+        run: |
+          set -euo pipefail
+          echo "ANDROID_VERSION_CODE=$(( 10000 + $(git rev-list --count HEAD) ))" >> "$GITHUB_ENV"
+          echo "versionCode: $(( 10000 + $(git rev-list --count HEAD) ))"
 
       # Wersja dla człowieka. Poza tagiem zostaje ta z `app.config.js`, a
       # rozróżnia wydania numer `versionCode` pokazywany obok niej — zmienna
@@ -604,7 +636,9 @@ jobs:
 
       - name: Wejdź do sieci NetBird
         if: ${{ env.PUBLIKUJ == 'true' }}
-        uses: hackiron/public-actions/netbird-connect@main
+        # Przypięte do commita, nie do gałęzi: akcja jest cudza, a startuje w tym
+        # samym runnerze co klucz podpisujący wydanie i token publikacji.
+        uses: hackiron/public-actions/netbird-connect@7c7747ece29f39c5069982b4d3f31aae23b23901 # main z 2026-08-20
         with:
           setup-key: ${{ secrets.NETBIRD_ACCESS_KEY }}
           hostname: github-actions-release-alphapump

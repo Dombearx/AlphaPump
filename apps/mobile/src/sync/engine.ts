@@ -28,7 +28,8 @@
  * jawne `request()`.
  */
 
-import type { SqliteDatabase } from '@alphapump/db/sqlite';
+import { describeRejection } from '@alphapump/core';
+import type { SqliteDatabase, SyncRejectionRow } from '@alphapump/db/sqlite';
 import { pendingCount } from './outbox';
 import { stuckRows } from './reconcile';
 import { runSync, type SyncRunResult } from './run';
@@ -61,8 +62,25 @@ export interface SyncSnapshot {
    * odrzuceń i nie da się przeoczyć zapisu, który utknął.
    */
   rejected: number;
-  /** Powód pierwszego z nich — do pokazania wprost. */
+  /**
+   * Powód pierwszego z nich, zdaniem po angielsku.
+   *
+   * Serwer przysyła kod, nie zdanie — zdanie powstaje tutaj, bo serwer nie zna
+   * języka, w którym mówi ten ekran (patrz `describeRejection` w rdzeniu).
+   */
   rejectedReason: string | null;
+}
+
+/**
+ * Zdanie o pierwszym wierszu, który utknął.
+ *
+ * Bierze pierwszy z powodem, a nie pierwszy z brzegu: wiersz z pustym `reason`
+ * to odrzucenie ze starego serwera, który jeszcze nie przysyłał kodu.
+ */
+function describeStuck(rows: readonly SyncRejectionRow[]): string | null {
+  const withReason = rows.find((row) => row.reason !== null);
+  if (!withReason?.reason) return null;
+  return describeRejection(withReason.reason, withReason.reasonDetail);
 }
 
 export interface SyncEngine {
@@ -151,7 +169,7 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
     const rows = await stuckRows(options.db);
     return {
       rejected: rows.length,
-      rejectedReason: rows.find((row) => row.reason !== null)?.reason ?? null,
+      rejectedReason: describeStuck(rows),
     };
   };
 
@@ -176,8 +194,16 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
       });
 
       // Kolejka nie musi być pusta: paczka ma limit, a serwer mógł w tym czasie
-      // przyjąć tylko część. Dopóki coś czeka, wracamy od razu.
-      if (snapshot.pending > 0) requestedAgain = true;
+      // przyjąć tylko część. Dopóki coś czeka **i coś się ruszyło**, wracamy od
+      // razu.
+      //
+      // Drugi warunek jest bezpiecznikiem, nie optymalizacją. Paczka bywa
+      // przycięta przed wysłaniem (`payload.ts`), a odsiane wiersze wracają do
+      // kolejki — więc „coś czeka" potrafi być prawdą w kółko. Bez sprawdzenia,
+      // czy poprzedni przebieg cokolwiek wysłał, wymiana kręciłaby się bez
+      // przerwy, zjadając baterię na paczce, z której i tak nic nie wychodzi.
+      // Gdy nic nie pojechało, następna próba idzie zwykłym odstępem.
+      if (snapshot.pending > 0 && result.pushed > 0) requestedAgain = true;
       return result;
     } catch (error) {
       attempt += 1;

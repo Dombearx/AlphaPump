@@ -1,5 +1,5 @@
 /**
- * Kalendarz — kryterium ukończenia etapu 10: „kalendarz pokazuje liczbę serii
+ * Kalendarz. Wymaganie: „kalendarz pokazuje liczbę serii
  * dla każdego dnia".
  *
  * Siatka jest liczona czystą funkcją, więc sprawdzamy ją bez renderowania

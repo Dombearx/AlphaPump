@@ -1,5 +1,5 @@
 /**
- * Autoryzacja — kryterium ukończenia etapu 3 wprost:
+ * Autoryzacja. Zakres wprost:
  *
  * > można założyć konto, zalogować się oboma metodami, wygenerować token API
  * > i wykonać nim CRUD serii.
@@ -162,5 +162,40 @@ describe('autoryzacja', () => {
     const response = await harness.json<{ status: string; database: string }>('GET', '/health');
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({ status: 'ok', database: 'up' });
+  });
+
+  /**
+   * Limit prób logowania (`rateLimit` w `src/auth.ts`).
+   *
+   * Test istnieje dlatego, że licznik siedzi w bazie, a nie w pamięci procesu —
+   * a to jest dokładnie ta zmiana, której nie widać w żadnym innym teście
+   * i która psuje się cicho: przy braku tabeli `rate_limits` albo przy
+   * rozjeździe jej kolumn z tym, czego szuka better-auth, limit po prostu
+   * przestaje działać, zamiast rzucić błędem.
+   */
+  it('ucina lawinę prób logowania', async () => {
+    const user = await harness.signUp('lawina@example.com');
+
+    const attempt = () =>
+      harness.request('/api/auth/sign-in/email', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: user.email, password: 'zle-haslo-do-zgadywania' }),
+      });
+
+    const statuses: number[] = [];
+    for (let index = 0; index < 12; index += 1) {
+      statuses.push((await attempt()).status);
+    }
+
+    expect(statuses).toContain(429);
+    // Poprawne hasło też odbija się od limitu — inaczej wystarczyłoby zgadywać
+    // dalej, byle z prawidłową odpowiedzią na końcu.
+    const afterLimit = await harness.request('/api/auth/sign-in/email', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: user.email, password: user.password }),
+    });
+    expect(afterLimit.status).toBe(429);
   });
 });

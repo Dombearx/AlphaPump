@@ -177,3 +177,97 @@ def test_reading_the_current_release_stays_open(releases: Path):
     with TestClient(update_server.app) as client:
         assert client.get("/health").status_code == 200
         assert client.get("/apk").status_code == 404
+
+
+def test_redeploying_needs_the_token(monkeypatch: pytest.MonkeyPatch):
+    """`/update` runs git and docker as a host user; it may not be anonymous.
+
+    The call is also POST now. A state-changing GET fires from any page someone
+    in the VPN opens, from a browser prefetch, and from anything that follows a
+    URL it was handed -- so the old shape answers 405 with instructions instead
+    of quietly still working.
+    """
+    ran: list[list[str]] = []
+    monkeypatch.setattr(
+        update_server.subprocess,
+        "run",
+        lambda command, **_: ran.append(command) or _CompletedFake(),
+    )
+
+    with TestClient(update_server.app) as client:
+        anonymous = client.post("/update")
+        wrong = client.post("/update", headers={"Authorization": "Bearer nie-ten-token"})
+        old_shape = client.get("/update")
+
+    assert anonymous.status_code == 401
+    assert wrong.status_code == 401
+    assert old_shape.status_code == 405
+    assert "POST /update" in old_shape.text
+    assert ran == [], "nothing may run before the token checks out"
+
+
+def test_redeploying_tags_images_with_the_commit(monkeypatch: pytest.MonkeyPatch):
+    """Going back to a previous version has to be possible without a rebuild."""
+    seen: list[tuple[list[str], str | None]] = []
+
+    def fake_run(command, **kwargs):
+        seen.append((command, (kwargs.get("env") or {}).get("IMAGE_TAG")))
+        if command[:2] == ["git", "rev-parse"]:
+            return _CompletedFake(stdout="abc1234\n")
+        return _CompletedFake()
+
+    monkeypatch.setattr(update_server.subprocess, "run", fake_run)
+
+    with TestClient(update_server.app) as client:
+        response = client.post("/update", headers=AUTHORIZED)
+
+    assert response.status_code == 200, response.text
+    compose = [tag for command, tag in seen if command[:2] == ["docker", "compose"]]
+    assert compose == ["abc1234"]
+
+
+class _CompletedFake:
+    """Stands in for `subprocess.CompletedProcess` without running anything."""
+
+    def __init__(self, returncode: int = 0, stdout: str = "", stderr: str = ""):
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def test_all_three_integrity_fields_are_checked(releases: Path):
+    """The manifest requires md5 and size, so leaving them unread made them decoration.
+
+    A number nobody verifies is a number nobody keeps correct, and the next
+    reader cannot tell which of the three to trust.
+    """
+    content = b"pakiet, ktory nie zgadza sie z opisem"
+    base = {
+        "versionCode": 71,
+        "versionName": "0.1.0",
+        "file": "alphapump-71.apk",
+        "size": len(content),
+        "md5": hashlib.md5(content).hexdigest(),
+        "sha256": hashlib.sha256(content).hexdigest(),
+    }
+    files = {"apk": ("alphapump-71.apk", content, "application/vnd.android.package-archive")}
+
+    with TestClient(update_server.app) as client:
+        wrong_md5 = client.post(
+            "/apk",
+            headers=AUTHORIZED,
+            data={"manifest": json.dumps({**base, "md5": "0" * 32})},
+            files=files,
+        )
+        wrong_size = client.post(
+            "/apk",
+            headers=AUTHORIZED,
+            data={"manifest": json.dumps({**base, "size": len(content) + 1})},
+            files=files,
+        )
+
+    assert wrong_md5.status_code == 400
+    assert "md5" in wrong_md5.text
+    assert wrong_size.status_code == 400
+    assert "size" in wrong_size.text
+    assert list(releases.glob("*.apk")) == [], "nothing may land when the description is wrong"

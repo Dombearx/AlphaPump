@@ -46,6 +46,16 @@ export async function enqueue(
   await db.insert(outbox).values({ entity, rowId, queuedAt: now });
 }
 
+/**
+ * Ile wpisów kolejki przeglądamy, licząc od limitu paczki.
+ *
+ * Wpisy się powtarzają — paczka bierze wiersze bez powtórzeń — więc żeby ją
+ * wypełnić, trzeba przejrzeć więcej wpisów, niż zmieści się wierszy. Czterokrotny
+ * zapas wystarcza przy każdym realnym wzorcu edycji; gdyby nie wystarczył,
+ * paczka jest po prostu mniejsza i reszta pojedzie następną.
+ */
+const OUTBOX_SCAN_FACTOR = 4;
+
 export async function pendingCount(db: SqliteDatabase): Promise<number> {
   const [row] = await db.select({ total: count() }).from(outbox);
   return row?.total ?? 0;
@@ -63,10 +73,16 @@ export async function takeBatch(
   db: SqliteDatabase,
   limit: number = SYNC_PUSH_LIMIT,
 ): Promise<OutboxBatch> {
+  // Z sufitem, nie całą kolejką. Telefon poza VPN-em przez miesiąc ma
+  // w outboksie dziesiątki tysięcy wpisów, a bez `limit` wszystkie lądowały
+  // w pamięci przy **każdej** próbie wymiany, także nieudanej. Zapas nad limitem
+  // paczki jest po to, że wpisy się powtarzają: trzy edycje tej samej serii to
+  // trzy wiersze kolejki i jeden wiersz paczki.
   const entries = await db
     .select({ seq: outbox.seq, entity: outbox.entity, rowId: outbox.rowId })
     .from(outbox)
-    .orderBy(asc(outbox.seq));
+    .orderBy(asc(outbox.seq))
+    .limit(limit * OUTBOX_SCAN_FACTOR);
 
   const rows: PendingRow[] = [];
   const seen = new Set<string>();

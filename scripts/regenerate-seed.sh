@@ -6,7 +6,7 @@
 # rzeczy naraz: dostępu do Postgresa i zapisu do `packages/db/src/seed/data.ts`
 # w checkoucie repozytorium. Na minipc gospodarz nie ma żadnego z nich osobno —
 # baza nie wystawia portu poza sieć Compose (patrz `deploy/docker-compose.yml`
-# i sekcja „Kopie zapasowe" w README), a kontener `api` nie ma w sobie źródeł,
+# i sekcja „Kopie zapasowe" w `docs/wdrozenie.md`), a kontener `api` nie ma w sobie źródeł,
 # tylko zbudowane `dist/` (patrz `deploy/Dockerfile.api`). Ten skrypt łączy oba:
 # buduje ten sam obraz co produkcja, ale zatrzymuje się na etapie `build` (tam
 # jeszcze jest TypeScript i `dist/` po kompilacji), podłącza go do sieci

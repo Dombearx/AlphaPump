@@ -3,7 +3,7 @@
  *
  * Najważniejsze są tu dwa zachowania. Pierwsze: **brak odpowiedzi serwera nie
  * zabiera ostrzeżenia** — telefon poza VPN-em i wyłączona warstwa semantyczna
- * dają dokładnie to, co dawał etap 8. Drugie: pozycja, którą model wprost
+ * dają dokładnie to, co warstwa leksykalna. Drugie: pozycja, którą model wprost
  * odrzucił, nie zaśmieca listy — ale nie wypada, jeśli warstwa lokalna też ją
  * znalazła, bo „to nie to samo ćwiczenie" nie unieważnia faktu, że nazwa jest
  * podobna do złudzenia.

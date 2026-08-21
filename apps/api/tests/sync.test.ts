@@ -1,5 +1,5 @@
 /**
- * Synchronizacja — kryterium ukończenia etapu 4.
+ * Synchronizacja: push, pull i rozstrzyganie konfliktów.
  *
  * „Testy integracyjne symulujące dwa urządzenia pracujące offline potwierdzają
  * wszystkie trzy reguły konfliktów, w tym scenariusz «jedno usuwa, drugie
@@ -341,7 +341,8 @@ describe('synchronizacja', () => {
       const byId = new Map(response.body.results.map((result) => [result.id, result]));
       expect(byId.get(good)?.decision).toBe('insert');
       expect(byId.get(bad)?.decision).toBe('rejected');
-      expect(byId.get(bad)?.reason).toContain('weight_reps');
+      expect(byId.get(bad)?.reason).toBe('measurements_mismatch');
+      expect(byId.get(bad)?.reasonDetail).toBe('weight_reps');
 
       const pulled = await phone.pull();
       expect(pulled.body.changes.sets.map((set) => set.id)).toEqual([good]);
@@ -352,7 +353,7 @@ describe('synchronizacja', () => {
         sets: [weightReps({ id: newSetId(), exerciseId: newSetId(), kilograms: 80, reps: 8 })],
       });
       expect(response.body.results[0]?.decision).toBe('rejected');
-      expect(response.body.results[0]?.reason).toContain('Ćwiczenie');
+      expect(response.body.results[0]?.reason).toBe('missing_exercise');
     });
 
     it('przyjmuje cykl razem z pozycjami celu', async () => {
@@ -527,7 +528,7 @@ describe('synchronizacja', () => {
       });
 
       expect(response.body.results[0]?.decision).toBe('rejected');
-      expect(response.body.results[0]?.reason).toContain('administrator');
+      expect(response.body.results[0]?.reason).toBe('admin_only');
     });
 
     it('odrzuca tag o identyfikatorze niewynikającym z nazwy', async () => {
@@ -589,7 +590,7 @@ describe('synchronizacja', () => {
       });
 
       expect(response.body.results[0]?.decision).toBe('rejected');
-      expect(response.body.results[0]?.reason).toContain('używany');
+      expect(response.body.results[0]?.reason).toBe('tag_in_use');
       // Odpowiedź niesie stan serwerowy, więc telefon nie zostaje z tombstonem,
       // który przegrał.
       expect(response.body.changes.tags[0]?.deletedAt).toBeNull();
@@ -637,7 +638,7 @@ describe('synchronizacja', () => {
       });
 
       expect(response.body.results[0]?.decision).toBe('rejected');
-      expect(response.body.results[0]?.reason).toContain('nieedytowalny');
+      expect(response.body.results[0]?.reason).toBe('logging_type_frozen');
     });
   });
 
@@ -681,8 +682,8 @@ describe('synchronizacja', () => {
       });
 
       expect(response.body.results).toEqual([
-        { entity: 'exercise', id: BENCH, decision: 'insert', reason: null },
-        { entity: 'set', id, decision: 'insert', reason: null },
+        { entity: 'exercise', id: BENCH, decision: 'insert', reason: null, reasonDetail: null },
+        { entity: 'set', id, decision: 'insert', reason: null, reasonDetail: null },
       ]);
 
       const [row] = await harness.db.select().from(exercises).where(eq(exercises.id, BENCH));
@@ -713,7 +714,7 @@ describe('synchronizacja', () => {
       });
 
       expect(response.body.results[0]?.decision).toBe('rejected');
-      expect(response.body.results[0]?.reason).toContain('Identyfikator ćwiczenia');
+      expect(response.body.results[0]?.reason).toBe('id_not_from_name');
 
       const rows = await harness.db.select().from(exercises).where(eq(exercises.id, BENCH));
       expect(rows).toHaveLength(0);
