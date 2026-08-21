@@ -30,8 +30,8 @@ manifests the API reads -- see `deploy/docker-compose.yml`.
 
 Reading is not authenticated, matching the trust model the rest of the
 deployment already uses: reachability inside the VPN *is* the authorization
-(`docs/stack_technologiczny.md`). **Publishing is**, and that asymmetry is the
-point.
+(`docs/stack_technologiczny.md`). **Publishing and redeploying are**, and that
+asymmetry is the point.
 
 For `.apk` uploads authorization was never the only line -- Android refuses to
 replace an installed package unless the new file carries the same signature, so
@@ -55,6 +55,7 @@ real change in shape, not a flag, and it is not worth it while the whole stack
 is one minipc that already holds the database.
 """
 
+import asyncio
 import base64
 import hashlib
 import json
@@ -65,8 +66,10 @@ import re
 import secrets
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
@@ -143,11 +146,15 @@ RUNTIME_VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 # the client keys off this string, not off the file extension.
 LAUNCH_CONTENT_TYPE = "application/javascript"
 
-# Shared secret the release workflow proves it holds before publishing anything.
-# Deliberately *not* optional-if-unset: an unset token disables publishing with
-# a loud 503 rather than quietly accepting uploads from anyone. It gates only
-# publishing, so `/update` keeps working and the deploy channel cannot be bricked
-# by forgetting to set it.
+# Shared secret the release workflow proves it holds before it may change
+# anything on this host: publishing a release, or redeploying the stack.
+# Deliberately *not* optional-if-unset -- an unset token answers a loud 503
+# rather than quietly accepting whatever arrives.
+#
+# Unset therefore stops deployments too, which is the intended trade: the
+# alternative was an unauthenticated `git pull` plus `docker compose` running as
+# a host user in the `docker` group. Reading (`GET /apk`, `GET /ota`, `/health`)
+# stays open, so it is always possible to see what the host is offering.
 PUBLISH_TOKEN_VARIABLE = "UPDATE_SERVER_PUBLISH_TOKEN"
 
 # An export is single-digit megabytes. The ceiling is not tuning, it is the
@@ -156,6 +163,11 @@ PUBLISH_TOKEN_VARIABLE = "UPDATE_SERVER_PUBLISH_TOKEN"
 MAX_EXPORT_BYTES = 256 * 1024 * 1024
 
 app = FastAPI()
+
+# One redeploy at a time. Two overlapping `docker compose up --build` runs on the
+# same stack race each other over the same containers and the same build cache,
+# and the loser's failure is indistinguishable from a broken commit.
+redeploy_lock = asyncio.Lock()
 
 
 def apk_dir() -> Path:
@@ -195,14 +207,62 @@ def health() -> PlainTextResponse:
 
 
 @app.get("/update", response_class=PlainTextResponse)
-def update() -> PlainTextResponse:
+def update_wrong_method() -> PlainTextResponse:
+    """Answers the shape this endpoint used to have, and says what replaced it.
+
+    Kept because the old call was a plain `GET` with no credentials: a bare 405
+    would look like a broken deployment to whoever is still making it.
+    """
+    return PlainTextResponse(
+        "Redeploying is POST /update with the publishing token:\n"
+        '  curl -X POST -H "Authorization: Bearer $UPDATE_SERVER_PUBLISH_TOKEN" .../update\n',
+        status_code=405,
+    )
+
+
+@app.post("/update", response_class=PlainTextResponse)
+async def update(
+    authorization: Annotated[str | None, Header()] = None,
+) -> PlainTextResponse:
+    """Pulls the latest code and rebuilds the stack.
+
+    `POST` with the publishing token, not the bare `GET` this used to be. Both
+    halves matter. The token, because this endpoint runs `git pull` and `docker
+    compose` as a host user in the `docker` group -- the most powerful thing in
+    the deployment, and until now the only one reachable without proving
+    anything, while publishing a release next to it needed a secret. The method,
+    because a state-changing `GET` fires from any page someone in the VPN opens
+    (`<img src="http://minipc:40002/update">`), from a browser prefetch, and from
+    anything that crawls a URL it was handed.
+    """
+    require_publish_token(authorization)
+
+    if redeploy_lock.locked():
+        raise HTTPException(status_code=409, detail="A redeploy is already running")
+
+    async with redeploy_lock:
+        return await asyncio.to_thread(_redeploy)
+
+
+def _redeploy() -> PlainTextResponse:
     logger.info("Received update request")
+
+    before = _own_source_digest()
 
     pull = subprocess.run(["git", "pull"], capture_output=True, text=True)
     if pull.returncode != 0:
         return PlainTextResponse(
             f"Failed to pull latest code\n{pull.stderr}", status_code=500
         )
+
+    # Images are tagged with the commit they were built from, so `docker images`
+    # answers "what is actually running" and going back is `IMAGE_TAG=<older sha>
+    # docker compose up -d` against an image still on disk -- rather than a
+    # checkout plus a fifteen-minute rebuild on the live stack.
+    revision = subprocess.run(
+        ["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True
+    )
+    tag = revision.stdout.strip() if revision.returncode == 0 else "local"
 
     up = subprocess.run(
         [
@@ -217,6 +277,7 @@ def update() -> PlainTextResponse:
         ],
         capture_output=True,
         text=True,
+        env={**os.environ, "IMAGE_TAG": tag},
     )
     if up.returncode != 0:
         return PlainTextResponse(
@@ -225,9 +286,52 @@ def update() -> PlainTextResponse:
             status_code=500,
         )
 
+    restarting = _own_source_digest() != before
+    if restarting:
+        _restart_after_response()
+
     return PlainTextResponse(
-        f"Service restarted successfully\n{pull.stdout}\n{up.stdout}"
+        f"Service restarted successfully ({tag})\n{pull.stdout}\n{up.stdout}"
+        + (
+            "\nThis server's own code changed in the pull; restarting into it.\n"
+            if restarting
+            else ""
+        )
     )
+
+
+def _own_source_digest() -> str:
+    """Hash of this file, to notice when a pull replaced the running code."""
+    try:
+        return hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    except OSError:
+        return ""
+
+
+def _restart_after_response() -> None:
+    """Re-executes this process once the response is on the wire.
+
+    `/update` pulls the repository but runs from memory, so a deploy that adds a
+    route here left the server answering 404 on it while `/health` looked fine --
+    which reads as a broken release rather than as stale code. The release
+    workflow used to work around that by asking `/openapi.json` whether the route
+    it was about to call even existed.
+
+    `os.execv` rather than `systemctl restart`: it needs no privileges the
+    service does not already have, and systemd keeps supervising the same PID.
+    If the new code cannot start, the process exits and `Restart=always` brings
+    it back through `ExecStart`.
+    """
+
+    def relaunch() -> None:
+        time.sleep(1)
+        logger.info("Restarting into the code that was just pulled")
+        try:
+            os.execv(sys.executable, [sys.executable, str(Path(__file__).resolve())])
+        except OSError:
+            logger.exception("Could not restart; systemd will pick this up if the process dies")
+
+    threading.Thread(target=relaunch, daemon=True).start()
 
 
 @app.get("/apk")

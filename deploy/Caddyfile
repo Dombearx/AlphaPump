@@ -27,6 +27,14 @@
 :80 {
 	encode gzip
 
+	# Sufit na ciało żądania. API ma własny, ciaśniejszy limit (`BODY_LIMIT_BYTES`
+	# w `apps/api/src/app.ts`) — ten jest przed nim i chroni to, czego tamten nie
+	# widzi: pliki oddawane przez `file_server` i sam proces Caddy'ego. Wartość
+	# jest z zapasem względem limitu archiwum, bo import jedzie tędy.
+	request_body {
+		max_size 160MB
+	}
+
 	# Ścieżki API. `path` przyjmuje wiele wzorców i łączy je alternatywą;
 	# gwiazdka pasuje do dowolnego dalszego ciągu, brak gwiazdki znaczy
 	# dopasowanie dokładne. Pary w rodzaju `/tags /tags/*` są celowe: samo

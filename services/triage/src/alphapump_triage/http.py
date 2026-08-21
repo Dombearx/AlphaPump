@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import secrets
 from collections.abc import Awaitable, Callable
 
 from aiohttp import web
@@ -46,7 +47,12 @@ def create_http_app(token: str, run_daily: RunDaily, lock: asyncio.Lock) -> web.
         return web.json_response({"status": "ok"})
 
     async def run(request: web.Request) -> web.Response:
-        if request.headers.get("Authorization") != f"Bearer {token}":
+        presented = request.headers.get("Authorization", "")
+        # `compare_digest`, nie `!=` — tak samo jak w `deploy/update_server.py`.
+        # Różnica jest tu teoretyczna (port stoi wyłącznie w sieci Compose), ale
+        # sprawdzenie tokenu napisane wprost jest tym, co ktoś kiedyś skopiuje
+        # w miejsce, w którym teoretyczna przestaje być.
+        if not secrets.compare_digest(presented, f"Bearer {token}"):
             return web.json_response({"error": "brak albo zły token"}, status=401)
 
         # Sprawdzenie przed wejściem do `async with` jest świadomie nieszczelne

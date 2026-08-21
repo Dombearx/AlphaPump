@@ -192,7 +192,9 @@ jobs:
           echo "Odcisk tego commita: ${odcisk}"
 
       - name: Wejdź do sieci NetBird
-        uses: hackiron/public-actions/netbird-connect@main
+        # Przypięte do commita, nie do gałęzi: akcja jest cudza, a startuje w tym
+        # samym runnerze co klucz podpisujący wydanie i token publikacji.
+        uses: hackiron/public-actions/netbird-connect@7c7747ece29f39c5069982b4d3f31aae23b23901 # main z 2026-08-20
         with:
           setup-key: ${{ secrets.NETBIRD_ACCESS_KEY }}
           hostname: github-actions-plan-alphapump
@@ -331,7 +333,9 @@ jobs:
 
       - name: Wejdź do sieci NetBird
         if: ${{ env.PUBLIKUJ == 'true' }}
-        uses: hackiron/public-actions/netbird-connect@main
+        # Przypięte do commita, nie do gałęzi: akcja jest cudza, a startuje w tym
+        # samym runnerze co klucz podpisujący wydanie i token publikacji.
+        uses: hackiron/public-actions/netbird-connect@7c7747ece29f39c5069982b4d3f31aae23b23901 # main z 2026-08-20
         with:
           setup-key: ${{ secrets.NETBIRD_ACCESS_KEY }}
           hostname: github-actions-ota-alphapump
@@ -604,7 +608,9 @@ jobs:
 
       - name: Wejdź do sieci NetBird
         if: ${{ env.PUBLIKUJ == 'true' }}
-        uses: hackiron/public-actions/netbird-connect@main
+        # Przypięte do commita, nie do gałęzi: akcja jest cudza, a startuje w tym
+        # samym runnerze co klucz podpisujący wydanie i token publikacji.
+        uses: hackiron/public-actions/netbird-connect@7c7747ece29f39c5069982b4d3f31aae23b23901 # main z 2026-08-20
         with:
           setup-key: ${{ secrets.NETBIRD_ACCESS_KEY }}
           hostname: github-actions-release-alphapump

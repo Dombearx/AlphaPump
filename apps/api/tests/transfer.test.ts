@@ -17,6 +17,7 @@
 import { canonicalArchive, type Archive } from '@alphapump/core';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { BODY_LIMIT_BYTES } from '../src/app.js';
 import { exportArchive, importArchive } from '../src/transfer/index.js';
 import { exercises, users, workoutSets } from '../src/schema.js';
 import { createHarness, type Harness, type TestUser } from './harness.js';
@@ -273,6 +274,45 @@ describe('dopasowanie po adresie e-mail', () => {
 
     await source.harness.close();
     await target.close();
+  });
+});
+
+describe('sufit rozmiaru żądania', () => {
+  /**
+   * Ciało jest parsowane w całości do pamięci, zanim Zod zobaczy pierwsze pole,
+   * więc bez limitu jedno żądanie kładzie proces API — a razem z nim panel, bo
+   * wychodzi tym samym Caddym. Limit ma dwie wartości i test pilnuje obu:
+   * zwykłej trasy i podniesionej dla importu archiwum.
+   */
+  it('odrzuca ciało większe niż sufit zwykłej trasy', async () => {
+    const source = await seedData();
+
+    const response = await source.harness.request('/sets', {
+      method: 'POST',
+      headers: { ...source.owner.headers, 'content-type': 'application/json' },
+      body: 'x'.repeat(BODY_LIMIT_BYTES + 1),
+    });
+
+    expect(response.status).toBe(400);
+    await source.harness.close();
+  });
+
+  it('import archiwum ma własny, wyższy sufit', async () => {
+    const source = await seedData();
+    await source.harness.promoteToAdmin(source.owner);
+
+    // Ciało większe od limitu zwykłej trasy, mniejsze od limitu importu:
+    // ma odbić się dopiero o walidację, a nie o rozmiar.
+    const response = await source.harness.request('/import', {
+      method: 'POST',
+      headers: { ...source.owner.headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ nieznane: 'x'.repeat(BODY_LIMIT_BYTES + 1024) }),
+    });
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: { message: string } };
+    expect(body.error.message).not.toContain('większe niż');
+    await source.harness.close();
   });
 });
 

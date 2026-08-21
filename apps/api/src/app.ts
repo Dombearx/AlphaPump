@@ -12,6 +12,7 @@
  */
 
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import type { AppConfig } from './config.js';
@@ -61,6 +62,29 @@ export const documentedRoutes: RouteSpec[] = [
   ...updateRoutes,
 ];
 
+/**
+ * Ile bajtów wolno przysłać w ciele żądania.
+ *
+ * Ciało jest parsowane w całości do pamięci, **zanim** Zod zobaczy pierwsze
+ * pole — bez tego limitu każde zalogowane konto kładzie proces jednym żądaniem
+ * o rozmiarze kilkuset megabajtów, a razem z nim panel, bo wychodzi tym samym
+ * Caddym.
+ *
+ * Dwie wartości, bo dwie różne rzeczy tu jadą. Zwykłe żądanie to formularz albo
+ * paczka synchronizacji: 500 serii z notatkami po tysiąc znaków mieści się
+ * w megabajcie z zapasem. Archiwum jest tego innym rzędem wielkości — historia
+ * treningowa całej grupy w jednym pliku — i ma własny, wyraźnie wyższy sufit.
+ */
+export const BODY_LIMIT_BYTES = 4 * 1024 * 1024;
+export const ARCHIVE_BODY_LIMIT_BYTES = 128 * 1024 * 1024;
+
+const tooLarge = (limitBytes: number) => () => {
+  throw new ApiError(
+    'bad_request',
+    `Żądanie jest większe niż ${String(Math.round(limitBytes / (1024 * 1024)))} MB`,
+  );
+};
+
 export function createApp(dependencies: AppDependencies, config: AppConfig) {
   const app = new Hono<AppEnvironment>();
 
@@ -73,6 +97,21 @@ export function createApp(dependencies: AppDependencies, config: AppConfig) {
   };
 
   if (config.nodeEnv !== 'test') app.use('*', logger());
+
+  // Jedno przejście, dwie wartości. Dwa osobne `app.use` nie zadziałałyby:
+  // Hono uruchamia **wszystkie** pasujące warstwy pośrednie, więc ta ogólna
+  // odcięłaby archiwum na czterech megabajtach, zanim doszłoby do podniesionej.
+  const archiveLimit = bodyLimit({
+    maxSize: ARCHIVE_BODY_LIMIT_BYTES,
+    onError: tooLarge(ARCHIVE_BODY_LIMIT_BYTES),
+  });
+  const generalLimit = bodyLimit({
+    maxSize: BODY_LIMIT_BYTES,
+    onError: tooLarge(BODY_LIMIT_BYTES),
+  });
+  app.use('*', (context, next) =>
+    (context.req.path === '/import' ? archiveLimit : generalLimit)(context, next),
+  );
 
   app.use(
     '*',

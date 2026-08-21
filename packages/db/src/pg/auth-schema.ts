@@ -15,6 +15,7 @@
  */
 
 import {
+  bigint,
   boolean,
   index,
   integer,
@@ -140,7 +141,32 @@ export const apiKeys = pgTable(
   (table) => [index('api_keys_reference_idx').on(table.referenceId)],
 );
 
+/**
+ * Licznik limitu żądań do `/api/auth/*`.
+ *
+ * W bazie, a nie w pamięci procesu, i to jest cała różnica: licznik w pamięci
+ * zeruje się przy każdym restarcie, a restart idzie z każdym wdrożeniem — czyli
+ * okno „dziesięć prób logowania na minutę" trwałoby do najbliższego wydania,
+ * a nie minutę.
+ *
+ * Kształt narzuca better-auth (`api/rate-limiter`): szuka wiersza po polu
+ * `key`, podbija `count` i porównuje `lastRequest` z czasem uniksowym
+ * w milisekundach. Stąd `bigint` zamiast znacznika czasu — wartość jest liczbą,
+ * nie datą, i porównywana jest arytmetycznie.
+ */
+export const rateLimits = pgTable(
+  'rate_limits',
+  {
+    id: text('id').primaryKey(),
+    key: text('key').notNull(),
+    count: integer('count').notNull().default(0),
+    lastRequest: bigint('last_request', { mode: 'number' }).notNull().default(0),
+  },
+  (table) => [uniqueIndex('rate_limits_key_unique').on(table.key)],
+);
+
 export type SessionRow = typeof sessions.$inferSelect;
 export type AccountRow = typeof accounts.$inferSelect;
 export type VerificationRow = typeof verifications.$inferSelect;
 export type ApiKeyRow = typeof apiKeys.$inferSelect;
+export type RateLimitRow = typeof rateLimits.$inferSelect;
