@@ -41,7 +41,7 @@ export function createMeRouter(dependencies: AppDependencies) {
       .from(users)
       .where(eq(users.id, principal.id))
       .limit(1);
-    if (!row) throw notFound('Konto nie istnieje');
+    if (!row) throw notFound('No such account');
 
     return context.json({ ...toUserDto(row), credential: principal.credential });
   });

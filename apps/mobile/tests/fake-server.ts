@@ -174,7 +174,7 @@ export class FakeSyncServer implements SyncTransport {
         });
       }
 
-      results.push({ entity: 'tag', id: incoming.id, decision, reason: null });
+      results.push({ entity: 'tag', id: incoming.id, decision, reason: null, reasonDetail: null });
       changes.tags.push(strip(this.tags.get(incoming.id) as Stored<SyncedTag>));
     }
 
@@ -198,7 +198,13 @@ export class FakeSyncServer implements SyncTransport {
         });
       }
 
-      results.push({ entity: 'exercise', id: incoming.id, decision, reason: null });
+      results.push({
+        entity: 'exercise',
+        id: incoming.id,
+        decision,
+        reason: null,
+        reasonDetail: null,
+      });
       changes.exercises.push(strip(this.exercises.get(incoming.id) as Stored<SyncedExercise>));
     }
 
@@ -220,7 +226,13 @@ export class FakeSyncServer implements SyncTransport {
         });
       }
 
-      results.push({ entity: 'cycle', id: incoming.id, decision, reason: null });
+      results.push({
+        entity: 'cycle',
+        id: incoming.id,
+        decision,
+        reason: null,
+        reasonDetail: null,
+      });
       changes.cycles.push(strip(this.cycles.get(incoming.id) as Stored<SyncedCycle>));
     }
 
@@ -233,7 +245,8 @@ export class FakeSyncServer implements SyncTransport {
           entity: 'set',
           id: incoming.id,
           decision: 'rejected',
-          reason: this.refuse.has(incoming.id) ? 'Serwer odmawia' : 'Ćwiczenie serii nie istnieje',
+          reason: this.refuse.has(incoming.id) ? 'not_owner' : 'missing_exercise',
+          reasonDetail: null,
         });
         continue;
       }
@@ -256,7 +269,7 @@ export class FakeSyncServer implements SyncTransport {
         });
       }
 
-      results.push({ entity: 'set', id: incoming.id, decision, reason: null });
+      results.push({ entity: 'set', id: incoming.id, decision, reason: null, reasonDetail: null });
       changes.sets.push(strip(this.sets.get(incoming.id) as Stored<SyncedWorkoutSet>));
     }
 

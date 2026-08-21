@@ -22,6 +22,7 @@ export * from './duplicates.js';
 export * from './cycles.js';
 export * from './suggestions.js';
 export * from './schemas.js';
+export * from './rejections.js';
 export * from './sync.js';
 export * from './transfer.js';
 export * from './fitnotes.js';

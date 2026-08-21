@@ -82,7 +82,7 @@ export const ARCHIVE_BODY_LIMIT_BYTES = 128 * 1024 * 1024;
 const tooLarge = (limitBytes: number) => () => {
   throw new ApiError(
     'bad_request',
-    `Żądanie jest większe niż ${String(Math.round(limitBytes / (1024 * 1024)))} MB`,
+    `The request is larger than ${String(Math.round(limitBytes / (1024 * 1024)))} MB`,
   );
 };
 
@@ -165,9 +165,7 @@ export function createApp(dependencies: AppDependencies, config: AppConfig) {
     // Identyfikator w komunikacie, żeby użytkownik mógł go przepisać do
     // zgłoszenia zamiast opisywać, co robił o 19:40.
     return context.json(
-      toErrorResponse(
-        new ApiError('internal', `Wewnętrzny błąd serwera (identyfikator żądania: ${requestId})`),
-      ),
+      toErrorResponse(new ApiError('internal', `Internal server error (request id: ${requestId})`)),
       500,
     );
   });

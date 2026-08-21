@@ -27,6 +27,7 @@ import {
   type SyncChanges,
   type SyncDecision,
   type SyncEntity,
+  type SyncRejection,
   type SyncResult,
   type SyncRevision,
 } from '@alphapump/core';
@@ -55,7 +56,18 @@ export interface PushContext {
   scope: AffectedScope;
   /** Podbija najwyższy `server_seq` nadany w tej paczce. */
   advance(serverSeq: number): void;
-  record(entity: SyncEntity, id: string, decision: SyncDecision, reason?: string): void;
+  /**
+   * `reason` jest kodem, a nie zdaniem — zdanie buduje ta strona, która je
+   * pokazuje. `detail` niesie tę część komunikatu, której w kodzie zapisać się
+   * nie da: listę identyfikatorów, nazwę, typ logowania.
+   */
+  record(
+    entity: SyncEntity,
+    id: string,
+    decision: SyncDecision,
+    reason?: SyncRejection,
+    detail?: string,
+  ): void;
 }
 
 /** Pola, po których jedzie rozstrzyganie konfliktu, wyjęte z wiersza paczki. */

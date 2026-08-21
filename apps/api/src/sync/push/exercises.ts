@@ -28,10 +28,10 @@ import {
   slug,
   SYSTEM_USER_ID,
 } from '@alphapump/core';
-import type { ExercisePush } from '@alphapump/core';
+import type { ExercisePush, SyncRejection } from '@alphapump/core';
 import { asc, eq, inArray } from 'drizzle-orm';
 import {
-  EXERCISE_IN_USE_MESSAGE,
+  EXERCISE_IN_USE,
   EXERCISE_RULES,
   exerciseNameTaken,
   isExerciseInUse,
@@ -79,8 +79,8 @@ export async function applyExercises(
 
     const currentTagIds = (): string[] => linksByExercise.get(row.id) ?? [];
 
-    const reject = (reason: string): void => {
-      context.record('exercise', row.id, 'rejected', reason);
+    const reject = (reason: SyncRejection, detail?: string): void => {
+      context.record('exercise', row.id, 'rejected', reason, detail);
       if (existing) context.changes.exercises.push(toSyncedExerciseDto(existing, currentTagIds()));
     };
 
@@ -103,7 +103,7 @@ export async function applyExercises(
       // swojego właściciela, więc tombstone potrafi tu przyjechać dla ćwiczenia,
       // na którym trenuje ktoś inny.
       if (await isExerciseInUse(tx, row.id)) {
-        reject(EXERCISE_IN_USE_MESSAGE);
+        reject(EXERCISE_IN_USE);
         continue;
       }
 
@@ -114,7 +114,7 @@ export async function applyExercises(
         .where(eq(exercises.id, row.id))
         .returning();
       if (written === undefined) {
-        reject('Ćwiczenie zniknęło w trakcie zapisu — spróbuj ponownie');
+        reject('vanished');
         continue;
       }
 
@@ -139,7 +139,7 @@ export async function applyExercises(
       aliveOnly: false,
     });
     if (missing.length > 0) {
-      reject(TAG_RULES.missing(missing));
+      reject(TAG_RULES.missing, missing.join(', '));
       continue;
     }
 
@@ -181,7 +181,7 @@ export async function applyExercises(
             .returning();
 
     if (written === undefined) {
-      reject('Ćwiczenie zniknęło w trakcie zapisu — spróbuj ponownie');
+      reject('vanished');
       continue;
     }
 

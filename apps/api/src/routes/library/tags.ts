@@ -107,12 +107,12 @@ export function createLibraryTagRouter(dependencies: AppDependencies) {
       const { id } = context.req.valid('param');
       const { targetId } = context.req.valid('json');
 
-      if (id === targetId) throw conflict('Tagi źródłowy i docelowy są tym samym wierszem');
+      if (id === targetId) throw conflict('Source and target are the same tag');
 
       const source = await loadTag(id);
-      if (!source) throw notFound('Tag źródłowy nie istnieje');
+      if (!source) throw notFound('No such source tag');
       const target = await loadTag(targetId);
-      if (!target || target.deletedAt !== null) throw notFound('Tag docelowy nie istnieje');
+      if (!target || target.deletedAt !== null) throw notFound('No such target tag');
 
       // Ćwiczenia z tombstonem też przepinamy: gdyby zostały przy tagu zdjętym,
       // ich przywrócenie odbiłoby się o „tag główny jest usunięty".
@@ -260,8 +260,8 @@ export function createLibraryTagRouter(dependencies: AppDependencies) {
     const { id } = context.req.valid('param');
 
     const existing = await loadTag(id);
-    if (!existing) throw notFound('Tag nie istnieje');
-    if (existing.deletedAt === null) throw conflict('Tag nie jest usunięty');
+    if (!existing) throw notFound('No such tag');
+    if (existing.deletedAt === null) throw conflict('This tag is not deleted');
 
     // Identyfikator tagu wynika ze sluga, więc kolizja slugów pod innym id znaczy,
     // że ktoś zdążył utworzyć tag o tej nazwie po zmianie nazwy tego wiersza.
@@ -272,7 +272,7 @@ export function createLibraryTagRouter(dependencies: AppDependencies) {
       .limit(1);
     if (collision) {
       throw conflict(
-        'Tag o tej nazwie już istnieje pod innym identyfikatorem — scal je zamiast tego',
+        'A tag with that name already exists under a different identifier — merge them instead',
       );
     }
 

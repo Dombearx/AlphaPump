@@ -59,13 +59,13 @@ describe('poprawność formularza', () => {
   });
 
   it('wymaga nazwy', () => {
-    expect(exerciseProblem({ ...DRAFT, name: '   ' }, TAGS)).toMatch(/nazwę/);
+    expect(exerciseProblem({ ...DRAFT, name: '   ' }, TAGS)).toMatch(/name/);
   });
 
   it('nie pozwala, by tag główny był jednocześnie dodatkowym', () => {
     // Inaczej to samo ćwiczenie liczyłoby się do celu cyklu dwa razy.
     const problem = exerciseProblem({ ...DRAFT, additionalTagIds: [PLECY, BICEPS] }, TAGS);
-    expect(problem).toMatch(/jednocześnie dodatkowym/);
+    expect(problem).toMatch(/also be an additional one/);
   });
 
   it('odrzuca tag główny, którego nie ma na liście', () => {
@@ -76,12 +76,12 @@ describe('poprawność formularza', () => {
 
   it('tłumaczy pustą bibliotekę tagów osobno', () => {
     const problem = exerciseProblem({ ...DRAFT, primaryTagId: '' }, []);
-    expect(problem).toMatch(/dodaj choć jeden tag/i);
+    expect(problem).toMatch(/add at least one tag/i);
   });
 
   it('pilnuje długości notatki i siłowni', () => {
-    expect(exerciseProblem({ ...DRAFT, note: 'x'.repeat(1001) }, TAGS)).toMatch(/Notatka/);
-    expect(exerciseProblem({ ...DRAFT, gym: 'x'.repeat(81) }, TAGS)).toMatch(/Siłownia/);
+    expect(exerciseProblem({ ...DRAFT, note: 'x'.repeat(1001) }, TAGS)).toMatch(/note/);
+    expect(exerciseProblem({ ...DRAFT, gym: 'x'.repeat(81) }, TAGS)).toMatch(/gym/);
   });
 });
 

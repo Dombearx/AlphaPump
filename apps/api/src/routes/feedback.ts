@@ -148,8 +148,8 @@ export function createFeedbackRouter(
 
     if (!withinLimit(principal.id, at)) {
       throw rateLimited(
-        `Za dużo zgłoszeń naraz — przyjmujemy ${String(FEEDBACK_RATE_LIMIT)} na godzinę. ` +
-          'Spróbuj ponownie później.',
+        `Too many reports at once — we accept ${String(FEEDBACK_RATE_LIMIT)} per hour. ` +
+          'Try again later.',
       );
     }
 

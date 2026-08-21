@@ -54,7 +54,7 @@ export const setRoutes: RouteSpec[] = [
     params: idParamSchema,
     responses: [
       { status: 200, description: 'Seria', schema: workoutSetSchema },
-      { status: 404, description: 'Seria nie istnieje' },
+      { status: 404, description: 'No such set' },
     ],
   },
   {
@@ -71,7 +71,7 @@ export const setRoutes: RouteSpec[] = [
     responses: [
       { status: 201, description: 'Seria zapisana', schema: workoutSetSchema },
       { status: 400, description: 'Pomiary nie pasują do typu logowania ćwiczenia' },
-      { status: 404, description: 'Ćwiczenie nie istnieje' },
+      { status: 404, description: 'No such exercise' },
     ],
   },
   {
@@ -85,7 +85,7 @@ export const setRoutes: RouteSpec[] = [
     responses: [
       { status: 200, description: 'Seria zmieniona', schema: workoutSetSchema },
       { status: 400, description: 'Pomiary nie pasują do typu logowania ćwiczenia' },
-      { status: 404, description: 'Seria nie istnieje' },
+      { status: 404, description: 'No such set' },
     ],
   },
   {
@@ -98,7 +98,7 @@ export const setRoutes: RouteSpec[] = [
     params: idParamSchema,
     responses: [
       { status: 204, description: 'Seria usunięta' },
-      { status: 404, description: 'Seria nie istnieje' },
+      { status: 404, description: 'No such set' },
     ],
   },
 ];
@@ -126,7 +126,7 @@ export function createSetRouter(dependencies: AppDependencies) {
       .from(exercises)
       .where(and(eq(exercises.id, exerciseId), isNull(exercises.deletedAt)))
       .limit(1);
-    if (!row) throw notFound('Ćwiczenie nie istnieje');
+    if (!row) throw notFound('No such exercise');
     return row;
   };
 
@@ -136,7 +136,7 @@ export function createSetRouter(dependencies: AppDependencies) {
       .from(workoutSets)
       .where(and(eq(workoutSets.id, id), eq(workoutSets.userId, userId)))
       .limit(1);
-    if (!row || row.deletedAt !== null) throw notFound('Seria nie istnieje');
+    if (!row || row.deletedAt !== null) throw notFound('No such set');
     return row;
   };
 
@@ -163,7 +163,7 @@ export function createSetRouter(dependencies: AppDependencies) {
     const result = setInputSchemaFor(loggingType).safeParse(candidate);
     if (!result.success) {
       throw badRequest(
-        `Pomiary nie pasują do typu logowania ${loggingType}`,
+        `Measurements do not match the ${loggingType} logging type`,
         result.error.issues.map((issue) => ({
           path: issue.path.join('.'),
           message: issue.message,
@@ -214,7 +214,7 @@ export function createSetRouter(dependencies: AppDependencies) {
     if (existing) {
       // Ten sam identyfikator to ta sama seria wysłana ponownie, a nie nowa.
       // Zwracamy stan bieżący zamiast tworzyć duplikat albo krzyczeć błędem.
-      if (existing.userId !== principal.id) throw notFound('Seria nie istnieje');
+      if (existing.userId !== principal.id) throw notFound('No such set');
       return context.json(toSetDto(await loadOwnSet(setId, principal.id)), 200);
     }
 

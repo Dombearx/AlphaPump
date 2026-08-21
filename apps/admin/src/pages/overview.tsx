@@ -28,24 +28,24 @@ import { getStats, pruneDuplicateCache, pruneTombstones } from '../lib/api';
  * jednej kopii" prowadzą do dwóch zupełnie różnych reakcji.
  */
 export function describeBackupAge(backups: SystemStats['backups']): string {
-  if (backups === null) return 'nie wiem';
-  if (backups.latestAt === null) return 'brak';
+  if (backups === null) return 'unknown';
+  if (backups.latestAt === null) return 'none';
 
   const hours = Math.floor((Date.now() - Date.parse(backups.latestAt)) / 3_600_000);
-  if (hours < 1) return 'przed chwilą';
-  if (hours < 48) return `${String(hours)} godz. temu`;
-  return `${String(Math.floor(hours / 24))} dni temu`;
+  if (hours < 1) return 'just now';
+  if (hours < 48) return `${String(hours)} h ago`;
+  return `${String(Math.floor(hours / 24))} days ago`;
 }
 
 /** Podpis pod wiekiem: rozmiar, ostrzeżenie albo powód, dla którego nie wiemy. */
 export function backupHint(backups: SystemStats['backups']): string {
-  if (backups === null) return 'ustaw BACKUP_DIR w deploy/.env, żeby to widzieć';
-  if (backups.latestAt === null) return 'katalog jest pusty — sprawdź cron';
+  if (backups === null) return 'set BACKUP_DIR in deploy/.env to see this';
+  if (backups.latestAt === null) return 'the directory is empty — check the cron job';
 
   const stale = Date.now() - Date.parse(backups.latestAt) > 48 * 3_600_000;
   const size =
     backups.latestBytes === null ? '' : `${String(Math.round(backups.latestBytes / 1024))} KB`;
-  return stale ? `${size} · starsza niż dwie doby` : size;
+  return stale ? `${size} · older than two days` : size;
 }
 
 export function OverviewPage() {
@@ -56,7 +56,7 @@ export function OverviewPage() {
   const cache = useMutation({
     mutationFn: () => pruneDuplicateCache(90),
     onSuccess: (result) => {
-      setMessage(`Zdjęto ${String(result.removed)} wpisów cache’u re-rankera.`);
+      setMessage(`Removed ${String(result.removed)} re-ranker cache entries.`);
       void queryClient.invalidateQueries({ queryKey: ['stats'] });
     },
   });
@@ -65,12 +65,12 @@ export function OverviewPage() {
     mutationFn: () => pruneTombstones(),
     onSuccess: (result) => {
       const total = Object.values(result.removed).reduce((sum, value) => sum + value, 0);
-      setMessage(`Zdjęto ${String(total)} wierszy usuniętych trwale.`);
+      setMessage(`Removed ${String(total)} rows for good.`);
       void queryClient.invalidateQueries({ queryKey: ['stats'] });
     },
   });
 
-  if (stats.isPending) return <Loading label="Wczytywanie danych systemowych…" />;
+  if (stats.isPending) return <Loading label="Loading system data…" />;
   if (stats.error) return <Problem error={stats.error} />;
 
   const data = stats.data;
@@ -78,81 +78,81 @@ export function OverviewPage() {
   return (
     <div className="flex flex-col gap-6">
       <section className="flex flex-col gap-3">
-        <CardTitle>Dane nieodtwarzalne</CardTitle>
+        <CardTitle>Data that cannot be recomputed</CardTitle>
         <p className="text-sm text-muted">
-          Tego nie da się przeliczyć — wyłącznie odtworzyć z kopii zapasowej.
+          Nothing here can be recomputed — only restored from a backup.
         </p>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Stat
-            label="Konta"
+            label="Accounts"
             value={data.users.total}
-            hint={`${String(data.users.admins)} adm. · ${String(data.users.banned)} zablokowanych`}
+            hint={`${String(data.users.admins)} admins · ${String(data.users.banned)} banned`}
           />
           <Stat
-            label="Ćwiczenia"
+            label="Exercises"
             value={data.library.exercises}
-            hint={`${String(data.library.builtInExercises)} wbudowanych`}
+            hint={`${String(data.library.builtInExercises)} built in`}
           />
-          <Stat label="Tagi" value={data.library.tags} />
+          <Stat label="Tags" value={data.library.tags} />
           <Stat
-            label="Serie"
+            label="Sets"
             value={data.training.sets}
             hint={
               data.training.lastPerformedOn === null
-                ? 'brak zapisów'
-                : `ostatnia: ${data.training.lastPerformedOn}`
+                ? 'nothing logged'
+                : `latest: ${data.training.lastPerformedOn}`
             }
           />
         </div>
       </section>
 
       <section className="flex flex-col gap-3">
-        <CardTitle>Kopie zapasowe</CardTitle>
+        <CardTitle>Backups</CardTitle>
         <p className="text-sm text-muted">
-          Odczyt z katalogu, do którego pisze cron. Cron instaluje się z ręki i nic poza tym
-          kafelkiem nie mówi, czy działa — a „kopie nie chodzą od trzech tygodni” to zdanie, które
-          ma się usłyszeć dzisiaj, a nie przy odtwarzaniu.
+          Read from the directory the cron job writes to. That job is installed by hand and nothing
+          but this tile says whether it runs — and „the backups have been dead for three weeks” is a
+          sentence to hear today, not while restoring.
         </p>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Stat
-            label="Ostatnia kopia"
+            label="Latest backup"
             value={describeBackupAge(data.backups)}
             hint={backupHint(data.backups)}
           />
           <Stat
-            label="Kopii w katalogu"
+            label="Backups in the directory"
             value={data.backups === null ? '—' : data.backups.count}
-            hint={data.backups === null ? 'katalog niepodmontowany' : undefined}
+            hint={data.backups === null ? 'directory not mounted' : undefined}
           />
         </div>
       </section>
 
       <section className="flex flex-col gap-3">
-        <CardTitle>Dane odtwarzalne</CardTitle>
+        <CardTitle>Data that can be recomputed</CardTitle>
         <p className="text-sm text-muted">
-          Cache. Można je usunąć w każdej chwili — policzą się od nowa z serii i nazw ćwiczeń.
+          Caches. They can go at any moment — they are rebuilt from the sets and exercise names.
         </p>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Stat label="Rekordy globalne" value={data.derived.globalRecords} hint="front Pareto" />
+          <Stat label="Global records" value={data.derived.globalRecords} hint="Pareto front" />
           <Stat
-            label="Embeddingi"
+            label="Vectors"
             value={data.duplicates.embeddings}
-            hint={data.duplicates.semanticEnabled ? 'warstwa włączona' : 'warstwa wyłączona'}
+            hint={data.duplicates.semanticEnabled ? 'layer on' : 'layer off'}
           />
           <Stat
-            label="Werdykty w cache’u"
+            label="Cached verdicts"
             value={data.duplicates.cachedVerdicts}
-            hint={data.duplicates.rerankerEnabled ? 're-ranker włączony' : 're-ranker wyłączony'}
+            hint={data.duplicates.rerankerEnabled ? 're-ranker on' : 're-ranker off'}
           />
-          <Stat label="Cykle" value={data.training.cycles} />
+          <Stat label="Cycles" value={data.training.cycles} />
         </div>
       </section>
 
       <Card className="flex flex-col gap-3">
-        <CardTitle>Porządkowanie</CardTitle>
+        <CardTitle>Housekeeping</CardTitle>
         <p className="text-sm text-muted">
-          Tombstone’y to wiersze usunięte miękko: zostają, dopóki mogą być potrzebne urządzeniu,
-          które przespało synchronizację. Obecnie czeka ich{' '}
+          Tombstones are softly deleted rows: they stay for as long as a device that slept through a
+          sync might still need them. Right now there are{' '}
           {String(
             data.library.deletedExercises + data.library.deletedTags + data.training.deletedSets,
           )}
@@ -164,10 +164,10 @@ export function OverviewPage() {
             disabled={tombstones.isPending}
             onClick={() => tombstones.mutate()}
           >
-            Zdejmij tombstone’y poza oknem retencji
+            Drop tombstones past the retention window
           </Button>
           <Button variant="secondary" disabled={cache.isPending} onClick={() => cache.mutate()}>
-            Wyczyść cache re-rankera starszy niż 90 dni
+            Clear re-ranker cache older than 90 days
           </Button>
         </div>
         {message !== null && <p className="text-sm text-success">{message}</p>}

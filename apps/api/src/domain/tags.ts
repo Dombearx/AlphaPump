@@ -21,6 +21,7 @@
  * docelowy, a dopiero pusty źródłowy znika.
  */
 
+import type { SyncRejection } from '@alphapump/core';
 import { and, eq, inArray, isNull, ne } from 'drizzle-orm';
 import type { Database } from '../db.js';
 import { cycleGoals, cycles, exerciseTags, exercises, tags } from '../schema.js';
@@ -63,18 +64,22 @@ export async function isTagInUse(db: Database, tagId: string): Promise<boolean> 
   return (await isTagOnExercise(db, tagId)) || (await isTagOnGoal(db, tagId));
 }
 
-/** Komunikat wspólny dla obu wejść — jedna reguła, jedno zdanie. */
-export const TAG_IN_USE_MESSAGE =
-  'Tag jest używany przez ćwiczenia albo cele cyklu i nie może zostać usunięty. ' +
-  'Scal go z innym tagiem (panel administracyjny) albo zdejmij go tam, gdzie jest używany';
+/** Kod wspólny dla obu wejść — jedna reguła, jeden kod, jedno zdanie. */
+export const TAG_IN_USE: SyncRejection = 'tag_in_use';
 
-/** Zdania, którymi obie drogi zapisu tłumaczą odmowę. */
+/**
+ * Kody, którymi obie drogi zapisu tłumaczą odmowę.
+ *
+ * Kody, nie zdania — zdanie stoi raz, w `describeRejection` w rdzeniu.
+ * `slugTaken` i `missing` niosą jeszcze `detail`: nazwę tagu i listę
+ * identyfikatorów, czyli tę część komunikatu, której w kodzie zapisać się nie da.
+ */
 export const TAG_RULES = {
-  adminOnly: 'Tag może zmieniać wyłącznie administrator',
-  nameTaken: 'Tag o takiej nazwie już istnieje',
-  idNotFromName: 'Identyfikator tagu nie wynika z jego nazwy',
-  missing: (ids: readonly string[]) => `Nie ma takich tagów: ${ids.join(', ')}`,
-} as const;
+  adminOnly: 'admin_only',
+  slugTaken: 'slug_taken',
+  idNotFromName: 'id_not_from_name',
+  missing: 'missing_tags',
+} as const satisfies Record<string, SyncRejection>;
 
 /**
  * Tag o tym samym slugu, ale innym identyfikatorze — albo `null`.

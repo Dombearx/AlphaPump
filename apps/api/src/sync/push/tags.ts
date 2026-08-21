@@ -6,9 +6,9 @@
  */
 
 import { clampRevision, resolveSyncConflict, slug, tagColor, tagId } from '@alphapump/core';
-import type { TagPush } from '@alphapump/core';
+import type { SyncRejection, TagPush } from '@alphapump/core';
 import { eq, inArray } from 'drizzle-orm';
-import { TAG_IN_USE_MESSAGE, TAG_RULES, findTagBySlug, isTagInUse } from '../../domain/tags.js';
+import { TAG_IN_USE, TAG_RULES, findTagBySlug, isTagInUse } from '../../domain/tags.js';
 import { tags } from '../../schema.js';
 import { revisionOf, toSyncedTagDto } from '../rows.js';
 import { incomingRevision, isWrite, stampFrom, writeStamp, type PushContext } from './shared.js';
@@ -38,8 +38,8 @@ export async function applyTags(context: PushContext, incoming: readonly TagPush
     const existing = known.get(row.id);
     const decision = resolveSyncConflict(existing ? revisionOf(existing) : null, revision);
 
-    const reject = (reason: string): void => {
-      context.record('tag', row.id, 'rejected', reason);
+    const reject = (reason: SyncRejection, detail?: string): void => {
+      context.record('tag', row.id, 'rejected', reason, detail);
       if (existing) context.changes.tags.push(toSyncedTagDto(existing));
     };
 
@@ -61,7 +61,7 @@ export async function applyTags(context: PushContext, incoming: readonly TagPush
     // samo tutaj, jak przy `DELETE /tags/:id`. Bez tego push byłby wejściem,
     // przez które reguła nie obowiązuje.
     if (decision === 'delete' && (await isTagInUse(tx, row.id))) {
-      reject(TAG_IN_USE_MESSAGE);
+      reject(TAG_IN_USE);
       continue;
     }
 
@@ -71,12 +71,7 @@ export async function applyTags(context: PushContext, incoming: readonly TagPush
       // samym id, więc nie idzie przez `reject`.
       const collision = await findTagBySlug(tx, newSlug, row.id);
       if (collision) {
-        context.record(
-          'tag',
-          row.id,
-          'rejected',
-          `Tag „${name}" istnieje pod innym identyfikatorem`,
-        );
+        context.record('tag', row.id, 'rejected', TAG_RULES.slugTaken, name);
         context.changes.tags.push(toSyncedTagDto(collision));
         continue;
       }
@@ -115,7 +110,7 @@ export async function applyTags(context: PushContext, incoming: readonly TagPush
     // porządkowe tombstone'ów. Odrzucenie jest tu wynikiem, a nie awarią: wcześniej
     // stało tu `row!` i taki wyścig kończył się 500 na całą paczkę.
     if (written === undefined) {
-      context.record('tag', row.id, 'rejected', 'Tag zniknął w trakcie zapisu — spróbuj ponownie');
+      context.record('tag', row.id, 'rejected', 'vanished');
       continue;
     }
 

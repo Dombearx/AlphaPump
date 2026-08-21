@@ -27,6 +27,7 @@
  * przyjeżdżający w paczce pushu — i oba pytają o ten sam predykat.
  */
 
+import type { SyncRejection } from '@alphapump/core';
 import { and, count, eq, isNull, ne } from 'drizzle-orm';
 import type { Principal } from '../context.js';
 import type { Database } from '../db.js';
@@ -67,19 +68,22 @@ export async function isExerciseInUse(db: Database, exerciseId: string): Promise
   return (await countExerciseSets(db, exerciseId)) > 0 || (await isExerciseOnGoal(db, exerciseId));
 }
 
-/** Komunikat wspólny dla obu wejść — jedna reguła, jedno zdanie. */
-export const EXERCISE_IN_USE_MESSAGE =
-  'Ćwiczenie ma zapisane serie albo cele cyklu i nie może zostać usunięte. Scal je z innym ' +
-  'ćwiczeniem (panel administracyjny) albo usuń najpierw to, co na nim wisi';
+/** Kod wspólny dla obu wejść — jedna reguła, jeden kod, jedno zdanie. */
+export const EXERCISE_IN_USE: SyncRejection = 'exercise_in_use';
 
-/** Zdania, którymi obie drogi zapisu tłumaczą odmowę. */
+/**
+ * Kody, którymi obie drogi zapisu tłumaczą odmowę.
+ *
+ * Kody, nie zdania — zdanie stoi raz, w `describeRejection` w rdzeniu, i to samo
+ * wychodzi z REST jako `message` błędu i z pushu jako `reason` wiersza.
+ */
 export const EXERCISE_RULES = {
-  notAuthor: 'Ćwiczenie może zmieniać wyłącznie jego autor albo administrator',
-  loggingTypeFrozen: 'Typ logowania ćwiczenia jest nieedytowalny',
-  duplicateTag: 'Tag główny nie może powtarzać się wśród tagów dodatkowych',
-  nameTaken: 'Autor ma już ćwiczenie o takiej nazwie',
-  idNotFromName: 'Identyfikator ćwiczenia nie wynika z pary autor + nazwa (+ siłownia)',
-} as const;
+  notAuthor: 'not_author',
+  loggingTypeFrozen: 'logging_type_frozen',
+  duplicateTag: 'duplicate_tag',
+  nameTaken: 'name_taken',
+  idNotFromName: 'id_not_from_name',
+} as const satisfies Record<string, SyncRejection>;
 
 /**
  * Kto może ruszyć ćwiczenie: jego autor albo administrator.

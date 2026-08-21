@@ -47,21 +47,22 @@ export function DataPage() {
   return (
     <div className="flex flex-col gap-6">
       <Card className="flex flex-col gap-3">
-        <CardTitle>Eksport</CardTitle>
+        <CardTitle>Export</CardTitle>
         <p className="text-sm text-muted">
-          Archiwum systemowe: serie, ćwiczenia, tagi, cykle i minimalne dane kont (identyfikator,
-          e-mail, nick, rola). <strong className="text-text">Bez</strong> haseł, sesji, kluczy API,
-          embeddingów, rekordów i rankingów — pierwsze są wrażliwe, drugie przeliczalne z serii.
+          The system archive: sets, exercises, tags, cycles and the minimum account data
+          (identifier, e-mail, nickname, role, password hash).{' '}
+          <strong className="text-text">No</strong> sessions, API keys, vectors, records or rankings
+          — the first two are sensitive, the rest are recomputed from the sets.
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <Button disabled={exportAll.isPending} onClick={() => exportAll.mutate()}>
-            {exportAll.isPending ? 'Składanie archiwum…' : 'Pobierz archiwum systemowe'}
+            {exportAll.isPending ? 'Building the archive…' : 'Download the system archive'}
           </Button>
           {exportAll.data !== undefined && (
             <span className="text-sm text-success">
               {(() => {
                 const summary = archiveSummary(exportAll.data);
-                return `Pobrano: ${String(summary.sets)} serii, ${String(summary.exercises)} ćwiczeń, ${String(summary.cycles)} cykli.`;
+                return `Downloaded: ${String(summary.sets)} sets, ${String(summary.exercises)} exercises, ${String(summary.cycles)} cycles.`;
               })()}
             </span>
           )}
@@ -69,8 +70,8 @@ export function DataPage() {
         {exportAll.error !== null && <Problem error={exportAll.error} />}
         <p className="text-xs text-muted">
           Kopia zapasowa na Dysku Google powstaje tym samym eksportem, tylko z crona:{' '}
-          <code className="text-text">export → gzip → age → rclone</code>. Ten przycisk jest tą samą
-          ścieżką uruchomioną ręcznie.
+          <code className="text-text">export → gzip → age → rclone</code>. This button is the same
+          path, run by hand.
         </p>
       </Card>
 
@@ -78,9 +79,9 @@ export function DataPage() {
         <CardTitle>Import</CardTitle>
         <p className="text-sm text-muted">
           Konflikty rozstrzyga LWW po <code className="text-text">updated_at</code>, tak jak przy
-          synchronizacji — import nie cofa danych nowszych niż plik. Konta z archiwum są
-          dopasowywane po adresie e-mail, a gdy identyfikator autora się zmienił, identyfikatory
-          jego ćwiczeń są przeliczane, bo wynikają z pary autor + nazwa.
+          resolution — an import never rolls back data newer than the file. Accounts from the
+          archive are matched by e-mail address, and when an author's identifier changed, the
+          identifiers of their exercises are recomputed, because they follow from author + name.
         </p>
 
         <input
@@ -94,7 +95,7 @@ export function DataPage() {
           }}
         />
 
-        {restore.isPending && <p className="text-sm text-muted">Wgrywanie archiwum…</p>}
+        {restore.isPending && <p className="text-sm text-muted">Uploading the archive…</p>}
         {restore.error !== null && <Problem error={restore.error} />}
 
         {report !== null && (
@@ -102,11 +103,11 @@ export function DataPage() {
             <div className="font-medium text-text">Raport importu ({report.scope})</div>
             <ul className="text-muted">
               <li>Zapisane: {summaryLine(report.imported)}</li>
-              <li>Pominięte: {summaryLine(report.skipped)}</li>
+              <li>Skipped: {summaryLine(report.skipped)}</li>
               {report.remappedExercises > 0 && (
                 <li>
-                  Przeliczono identyfikatory {report.remappedExercises} ćwiczeń — ich autorzy mają w
-                  tej bazie inne identyfikatory niż w archiwum.
+                  Recomputed the identifiers of {report.remappedExercises} exercises — their authors
+                  have different identifiers in this database than in the archive.
                 </li>
               )}
             </ul>
@@ -124,8 +125,8 @@ export function DataPage() {
 
 function summaryLine(counts: ImportReport['imported']): string {
   return (
-    `${String(counts.users)} kont, ${String(counts.tags)} tagów, ` +
-    `${String(counts.exercises)} ćwiczeń, ${String(counts.sets)} serii, ` +
+    `${String(counts.users)} accounts, ${String(counts.tags)} tags, ` +
+    `${String(counts.exercises)} exercises, ${String(counts.sets)} sets, ` +
     `${String(counts.cycles)} cykli`
   );
 }

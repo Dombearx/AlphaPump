@@ -22,7 +22,7 @@
  * modeli, łamałaby regułę „utworzenie ćwiczenia nigdy nie jest blokowane".
  */
 
-import { exerciseId, exerciseSchema, slug } from '@alphapump/core';
+import { describeRejection, exerciseId, exerciseSchema, slug } from '@alphapump/core';
 import { and, asc, eq, exists, ilike, isNull, ne, or } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
@@ -31,7 +31,7 @@ import type { AppDependencies, AppEnvironment, Principal } from '../context.js';
 import { toExerciseDto } from '../dto.js';
 import { NO_LAYERS, refreshEmbedding } from '../duplicates/index.js';
 import {
-  EXERCISE_IN_USE_MESSAGE,
+  EXERCISE_IN_USE,
   EXERCISE_RULES,
   exerciseNameTaken,
   isExerciseInUse,
@@ -89,7 +89,7 @@ export const exerciseRoutes: RouteSpec[] = [
     responses: [
       { status: 200, description: 'Ćwiczenie zmienione', schema: exerciseSchema },
       { status: 403, description: 'Edytować może wyłącznie autor albo administrator' },
-      { status: 404, description: 'Ćwiczenie nie istnieje' },
+      { status: 404, description: 'No such exercise' },
       { status: 409, description: 'Autor ma już ćwiczenie o takiej nazwie' },
     ],
   },
@@ -107,14 +107,15 @@ export const exerciseRoutes: RouteSpec[] = [
     responses: [
       { status: 204, description: 'Ćwiczenie usunięte' },
       { status: 403, description: 'Usunąć może wyłącznie autor albo administrator' },
-      { status: 404, description: 'Ćwiczenie nie istnieje' },
+      { status: 404, description: 'No such exercise' },
       { status: 409, description: 'Ćwiczenie ma zapisane serie' },
     ],
   },
 ];
 
 function assertMayModify(exercise: { authorId: string }, principal: Principal): void {
-  if (!mayModifyExercise(exercise.authorId, principal)) throw forbidden(EXERCISE_RULES.notAuthor);
+  if (!mayModifyExercise(exercise.authorId, principal))
+    throw forbidden(describeRejection(EXERCISE_RULES.notAuthor));
 }
 
 /** Reguły wspólne dla tworzenia i edycji — jedno miejsce, dwa handlery. */
@@ -124,10 +125,10 @@ async function assertTagsUsable(
   additionalTagIds: readonly string[],
 ): Promise<void> {
   if (repeatsPrimaryTag(primaryTagId, additionalTagIds)) {
-    throw conflict(EXERCISE_RULES.duplicateTag);
+    throw conflict(describeRejection(EXERCISE_RULES.duplicateTag));
   }
   const missing = await missingTagIds(db, [primaryTagId, ...additionalTagIds], { aliveOnly: true });
-  if (missing.length > 0) throw notFound(TAG_RULES.missing(missing));
+  if (missing.length > 0) throw notFound(describeRejection(TAG_RULES.missing, missing.join(', ')));
 }
 
 export function createExerciseRouter(dependencies: AppDependencies) {
@@ -256,7 +257,7 @@ export function createExerciseRouter(dependencies: AppDependencies) {
       const input = context.req.valid('json');
 
       const existing = await loadOne(id);
-      if (!existing || existing.row.deletedAt !== null) throw notFound('Ćwiczenie nie istnieje');
+      if (!existing || existing.row.deletedAt !== null) throw notFound('No such exercise');
       assertMayModify(existing.row, principal);
 
       const primaryTagId = input.primaryTagId ?? existing.row.primaryTagId;
@@ -270,7 +271,8 @@ export function createExerciseRouter(dependencies: AppDependencies) {
       // dalej być jedyny w obrębie „nazwa + siłownia" tego autora — tę samą
       // unikalność sprawdza push, więc zapytanie mieszka w warstwie reguł.
       const identity = { authorId: existing.row.authorId, slug: newSlug, gym, exceptId: id };
-      if (await exerciseNameTaken(db, identity)) throw conflict(EXERCISE_RULES.nameTaken);
+      if (await exerciseNameTaken(db, identity))
+        throw conflict(describeRejection(EXERCISE_RULES.nameTaken));
 
       // Identyfikator zostaje niezmieniony, choć nazwa się zmieniła. Wylicza się
       // z nazwy wyłącznie **przy tworzeniu** — inaczej poprawienie literówki
@@ -302,12 +304,12 @@ export function createExerciseRouter(dependencies: AppDependencies) {
     const { id } = context.req.valid('param');
 
     const existing = await loadOne(id);
-    if (!existing || existing.row.deletedAt !== null) throw notFound('Ćwiczenie nie istnieje');
+    if (!existing || existing.row.deletedAt !== null) throw notFound('No such exercise');
     assertMayModify(existing.row, principal);
 
     // Ta sama reguła obowiązuje tombstone przyjeżdżający pushem — dlatego
     // predykat mieszka osobno, a nie w ciele tego handlera.
-    if (await isExerciseInUse(db, id)) throw conflict(EXERCISE_IN_USE_MESSAGE);
+    if (await isExerciseInUse(db, id)) throw conflict(describeRejection(EXERCISE_IN_USE));
 
     await db.update(exercises).set(stampDelete()).where(eq(exercises.id, id));
     return context.body(null, 204);

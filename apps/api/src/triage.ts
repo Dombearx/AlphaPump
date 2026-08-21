@@ -40,7 +40,7 @@ export function createTriageClient(
       }
 
       if (response.status === 409) {
-        throw conflict('Przegląd zgłoszeń już trwa — spróbuj ponownie za chwilę');
+        throw conflict('A triage pass is already running — try again in a moment');
       }
       if (!response.ok) {
         throw internal(`Usługa segregacji zgłoszeń odpowiedziała kodem ${String(response.status)}`);
@@ -49,7 +49,7 @@ export function createTriageClient(
       const payload: unknown = await response.json();
       const parsed = feedbackTriageReportSchema.safeParse(payload);
       if (!parsed.success) {
-        throw internal('Usługa segregacji zgłoszeń zwróciła odpowiedź o nieznanym kształcie');
+        throw internal('The triage service returned a response of an unknown shape');
       }
       return parsed.data;
     },

@@ -39,7 +39,14 @@
  */
 
 import { GOAL_METRICS, LOGGING_TYPES, SYNC_ENTITIES, USER_ROLES } from '@alphapump/core';
-import type { GoalMetric, IsoDate, LoggingType, SyncEntity, UserRole } from '@alphapump/core';
+import type {
+  GoalMetric,
+  IsoDate,
+  LoggingType,
+  SyncEntity,
+  SyncRejection,
+  UserRole,
+} from '@alphapump/core';
 import { sql } from 'drizzle-orm';
 import {
   check,
@@ -338,8 +345,13 @@ export const syncRejections = sqliteTable(
   {
     entity: text('entity').$type<SyncEntity>().notNull(),
     rowId: text('row_id').notNull(),
-    /** Powód podany przez serwer; pokazywany użytkownikowi wprost. */
-    reason: text('reason'),
+    /**
+     * Kod powodu podany przez serwer. Zdanie buduje z niego aplikacja
+     * (`describeRejection`) — serwer nie zna języka, w którym mówi ten ekran.
+     */
+    reason: text('reason').$type<SyncRejection>(),
+    /** Zmienna część komunikatu: lista identyfikatorów, nazwa, typ logowania. */
+    reasonDetail: text('reason_detail'),
     attempts: integer('attempts').notNull().default(1),
     rejectedAt: integer('rejected_at', { mode: 'timestamp_ms' }).notNull(),
     /** Do tego czasu `reconcile` nie kolejkuje wiersza ponownie. */

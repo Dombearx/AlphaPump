@@ -110,7 +110,7 @@ export function createLibraryExerciseRouter(dependencies: AppDependencies) {
       const { limit } = context.req.valid('query');
 
       const exercise = await loadExercise(id);
-      if (!exercise) throw notFound('Ćwiczenie nie istnieje');
+      if (!exercise) throw notFound('No such exercise');
 
       return context.json(
         await findDuplicates(db, layers, { name: exercise.name, excludeId: id, limit }),
@@ -126,13 +126,13 @@ export function createLibraryExerciseRouter(dependencies: AppDependencies) {
       const { id } = context.req.valid('param');
       const { targetId } = context.req.valid('json');
 
-      if (id === targetId) throw conflict('Ćwiczenia źródłowe i docelowe są tym samym wierszem');
+      if (id === targetId) throw conflict('Source and target are the same exercise');
 
       const source = await loadExercise(id);
-      if (!source) throw notFound('Ćwiczenie źródłowe nie istnieje');
+      if (!source) throw notFound('No such source exercise');
       const target = await loadExercise(targetId);
       if (!target || target.deletedAt !== null) {
-        throw notFound('Ćwiczenie docelowe nie istnieje');
+        throw notFound('No such target exercise');
       }
 
       // Serie są walidowane względem typu logowania **ćwiczenia**. Przeniesienie
@@ -141,8 +141,8 @@ export function createLibraryExerciseRouter(dependencies: AppDependencies) {
       // jest nieedytowalny.
       if (source.loggingType !== target.loggingType) {
         throw conflict(
-          `Ćwiczenia mają różne typy logowania (${source.loggingType} i ${target.loggingType}) — ` +
-            'przeniesione serie nie pasowałyby do ćwiczenia docelowego',
+          `The exercises log different measurements (${source.loggingType} and ${target.loggingType}) — ` +
+            'the moved sets would not match the target exercise',
         );
       }
 
@@ -232,8 +232,8 @@ export function createLibraryExerciseRouter(dependencies: AppDependencies) {
       const { id } = context.req.valid('param');
 
       const existing = await loadExercise(id);
-      if (!existing) throw notFound('Ćwiczenie nie istnieje');
-      if (existing.deletedAt === null) throw conflict('Ćwiczenie nie jest usunięte');
+      if (!existing) throw notFound('No such exercise');
+      if (existing.deletedAt === null) throw conflict('This exercise is not deleted');
 
       // Unikalność „autor + nazwa + siłownia" obowiązuje wyłącznie wiersze żywe,
       // więc w czasie, gdy ten leżał z tombstonem, ktoś mógł utworzyć drugi
@@ -253,7 +253,7 @@ export function createLibraryExerciseRouter(dependencies: AppDependencies) {
         .limit(1);
       if (collision) {
         throw conflict(
-          'Autor ma już żywe ćwiczenie o tej nazwie — scal je zamiast przywracać drugie',
+          'This author already has a live exercise with that name — merge them instead of restoring a second one',
         );
       }
 
@@ -265,7 +265,7 @@ export function createLibraryExerciseRouter(dependencies: AppDependencies) {
         .where(eq(tags.id, existing.primaryTagId))
         .limit(1);
       if (!primaryTag || primaryTag.deletedAt !== null) {
-        throw conflict('Tag główny tego ćwiczenia jest usunięty — przywróć najpierw tag');
+        throw conflict('The primary tag of this exercise is deleted — restore the tag first');
       }
 
       const [row] = await db

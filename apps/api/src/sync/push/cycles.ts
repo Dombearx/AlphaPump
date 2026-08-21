@@ -40,7 +40,7 @@ export async function applyCycles(
     const currentGoals = (): (typeof cycleGoals.$inferSelect)[] => goalsByCycle.get(row.id) ?? [];
 
     if (existing && existing.userId !== context.principal.id) {
-      context.record('cycle', row.id, 'rejected', 'Cykl należy do innego użytkownika');
+      context.record('cycle', row.id, 'rejected', 'not_owner');
       continue;
     }
 
@@ -60,7 +60,7 @@ export async function applyCycles(
         .where(eq(cycles.id, row.id))
         .returning();
       if (written === undefined) {
-        context.record('cycle', row.id, 'rejected', 'Cykl zniknął w trakcie zapisu');
+        context.record('cycle', row.id, 'rejected', 'vanished');
         continue;
       }
 
@@ -72,12 +72,7 @@ export async function applyCycles(
 
     const missing = await findMissingTargets(context, row);
     if (missing.length > 0) {
-      context.record(
-        'cycle',
-        row.id,
-        'rejected',
-        `Cel wskazuje na nieznane byty: ${missing.join(', ')}`,
-      );
+      context.record('cycle', row.id, 'rejected', 'missing_goal_targets', missing.join(', '));
       if (existing) context.changes.cycles.push(toSyncedCycleDto(existing, currentGoals()));
       continue;
     }
@@ -106,7 +101,7 @@ export async function applyCycles(
             .returning();
 
     if (written === undefined) {
-      context.record('cycle', row.id, 'rejected', 'Cykl zniknął w trakcie zapisu');
+      context.record('cycle', row.id, 'rejected', 'vanished');
       continue;
     }
 

@@ -18,10 +18,10 @@ import { Button, Field, Input, Select, Textarea, ToggleChip } from './ui';
 import { exercisePatch, exerciseProblem, type ExerciseDraft } from '../lib/exercise-draft';
 
 export const LOGGING_TYPE_LABELS: Record<Exercise['loggingType'], string> = {
-  weight_reps: 'ciężar + powtórzenia',
-  weight_time: 'ciężar + czas',
-  bodyweight_reps: 'masa ciała + powtórzenia',
-  bodyweight_time: 'masa ciała + czas',
+  weight_reps: 'weight + reps',
+  weight_time: 'weight + time',
+  bodyweight_reps: 'bodyweight + reps',
+  bodyweight_time: 'bodyweight + time',
   distance_time: 'dystans + czas',
 };
 
@@ -81,12 +81,12 @@ export function ExerciseForm({ tags, editing, busy, onCancel, onSubmit }: Exerci
       }}
     >
       <div className="grid gap-4 md:grid-cols-2">
-        <Field label="Nazwa">
+        <Field label="Name">
           <Input
             value={draft.name}
             autoFocus
             maxLength={80}
-            placeholder="Wyciskanie sztangi leżąc"
+            placeholder="Barbell bench press"
             onChange={(event) => {
               patch({ name: event.target.value });
             }}
@@ -94,11 +94,11 @@ export function ExerciseForm({ tags, editing, busy, onCancel, onSubmit }: Exerci
         </Field>
 
         <Field
-          label="Typ logowania"
+          label="Logging type"
           hint={
             editing === null
-              ? 'Ustalany raz — po utworzeniu nie da się go zmienić.'
-              : 'Nieedytowalny: zmiana unieważniłaby zapisane serie.'
+              ? 'Set once — it cannot be changed after the exercise exists.'
+              : 'Not editable: changing it would invalidate the logged sets.'
           }
         >
           <Select
@@ -116,7 +116,7 @@ export function ExerciseForm({ tags, editing, busy, onCancel, onSubmit }: Exerci
           </Select>
         </Field>
 
-        <Field label="Tag główny" hint="Decyduje o zaliczaniu serii do celów cyklu.">
+        <Field label="Primary tag" hint="Decides which cycle goals a set counts towards.">
           <Select
             value={draft.primaryTagId}
             onChange={(event) => {
@@ -129,7 +129,7 @@ export function ExerciseForm({ tags, editing, busy, onCancel, onSubmit }: Exerci
               });
             }}
           >
-            {tags.length === 0 && <option value="">— brak tagów —</option>}
+            {tags.length === 0 && <option value="">— no tags —</option>}
             {tags.map((tag) => (
               <option key={tag.id} value={tag.id}>
                 {tag.name}
@@ -138,11 +138,11 @@ export function ExerciseForm({ tags, editing, busy, onCancel, onSubmit }: Exerci
           </Select>
         </Field>
 
-        <Field label="Siłownia" hint="Puste znaczy „gdziekolwiek”.">
+        <Field label="Gym" hint="Empty means „anywhere”.">
           <Input
             value={draft.gym}
             maxLength={80}
-            placeholder="np. Zdrofit Puławska"
+            placeholder="e.g. Zdrofit Puławska"
             onChange={(event) => {
               patch({ gym: event.target.value });
             }}
@@ -150,7 +150,7 @@ export function ExerciseForm({ tags, editing, busy, onCancel, onSubmit }: Exerci
         </Field>
       </div>
 
-      <Field label="Tagi dodatkowe" hint="Rozszerzają filtrowanie; do celów cyklu się nie liczą.">
+      <Field label="Additional tags" hint="They widen filtering; cycle goals ignore them.">
         <div className="flex flex-wrap gap-2 pt-1">
           {tags
             .filter((tag) => tag.id !== draft.primaryTagId)
@@ -172,12 +172,12 @@ export function ExerciseForm({ tags, editing, busy, onCancel, onSubmit }: Exerci
         </div>
       </Field>
 
-      <Field label="Notatka">
+      <Field label="Note">
         <Textarea
           value={draft.note}
           rows={2}
           maxLength={500}
-          placeholder="Ustawienia ławki, chwyt, cokolwiek warto pamiętać"
+          placeholder="Bench setup, grip, anything worth remembering"
           onChange={(event) => {
             patch({ note: event.target.value });
           }}
@@ -188,12 +188,12 @@ export function ExerciseForm({ tags, editing, busy, onCancel, onSubmit }: Exerci
 
       <div className="flex items-center gap-2">
         <Button type="submit" disabled={busy || problem !== null || unchanged}>
-          {editing === null ? 'Dodaj ćwiczenie' : 'Zapisz zmiany'}
+          {editing === null ? 'Add exercise' : 'Save changes'}
         </Button>
         <Button type="button" variant="ghost" onClick={onCancel}>
-          Anuluj
+          Cancel
         </Button>
-        {unchanged && <span className="text-xs text-muted">Nic nie zmieniono.</span>}
+        {unchanged && <span className="text-xs text-muted">Nothing changed.</span>}
       </div>
     </form>
   );

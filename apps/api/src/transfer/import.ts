@@ -148,11 +148,11 @@ export async function importArchive(
 
   const problems = findArchiveProblems(archive);
   if (problems.length > 0) {
-    throw badRequest('Archiwum jest niespójne — nie da się go odtworzyć', problems);
+    throw badRequest('The archive is inconsistent and cannot be restored', problems);
   }
 
   if (archive.scope === 'system' && !isAdmin) {
-    throw forbidden('Archiwum systemowe może wgrać wyłącznie administrator');
+    throw forbidden('Only an administrator can import a system archive');
   }
 
   const imported = emptySummary();

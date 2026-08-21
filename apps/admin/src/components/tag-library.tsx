@@ -38,10 +38,10 @@ export function TagLibrary({
   /** Tag, przy którym otwarto wybór celu scalenia; `null` — żaden. */
   const [merging, setMerging] = useState<{ id: string; targetId: string } | null>(null);
 
-  if (rows.length === 0) return <Empty>Nie ma jeszcze żadnego tagu.</Empty>;
+  if (rows.length === 0) return <Empty>No tags yet.</Empty>;
 
   return (
-    <Table head={['Nazwa', 'Kolor', 'Użycie', '']}>
+    <Table head={['Name', 'Color', 'Usage', '']}>
       {rows.map((entry) => {
         const { tag } = entry;
         const deleted = tag.deletedAt !== null;
@@ -68,7 +68,7 @@ export function TagLibrary({
                       setEditing(null);
                     }}
                   >
-                    Zapisz
+                    Save
                   </Button>
                   <Button
                     size="sm"
@@ -77,7 +77,7 @@ export function TagLibrary({
                       setEditing(null);
                     }}
                   >
-                    Anuluj
+                    Cancel
                   </Button>
                 </div>
               ) : (
@@ -92,7 +92,7 @@ export function TagLibrary({
                   )}
                   {deleted && (
                     <Badge tone="danger" className="ml-2">
-                      usunięty
+                      deleted
                     </Badge>
                   )}
                 </>
@@ -115,16 +115,16 @@ export function TagLibrary({
               ) : (
                 <>
                   <span className="block">
-                    {entry.usage.primaryExercises} jako główny · {entry.usage.additionalExercises}{' '}
-                    jako dodatkowy
+                    {entry.usage.primaryExercises} primary · {entry.usage.additionalExercises} jako
+                    dodatkowy
                   </span>
                   {entry.usage.sets > 0 && (
-                    <span className="block">{entry.usage.sets} serii na tych ćwiczeniach</span>
+                    <span className="block">{entry.usage.sets} sets on those exercises</span>
                   )}
                 </>
               )}
               {entry.usage.goals > 0 && (
-                <span className="block">{entry.usage.goals} celów cyklu</span>
+                <span className="block">{entry.usage.goals} cycle goals</span>
               )}
             </Cell>
 
@@ -137,7 +137,7 @@ export function TagLibrary({
                     setEditing({ id: tag.id, name: tag.name });
                   }}
                 >
-                  Zmień nazwę
+                  Rename
                 </Button>
 
                 <Button
@@ -147,7 +147,7 @@ export function TagLibrary({
                     setMerging(merging?.id === tag.id ? null : { id: tag.id, targetId: '' });
                   }}
                 >
-                  {merging?.id === tag.id ? 'Zwiń' : 'Scal'}
+                  {merging?.id === tag.id ? 'Collapse' : 'Merge'}
                 </Button>
 
                 {deleted ? (
@@ -159,7 +159,7 @@ export function TagLibrary({
                       onRestore(entry);
                     }}
                   >
-                    Przywróć
+                    Restore
                   </Button>
                 ) : (
                   <Button
@@ -171,7 +171,7 @@ export function TagLibrary({
                       onDelete(entry);
                     }}
                   >
-                    Usuń
+                    Delete
                   </Button>
                 )}
               </div>
@@ -192,7 +192,7 @@ export function TagLibrary({
                     <option value="">— wybierz tag docelowy —</option>
                     {tagMergeTargets(rows, entry).map((target) => (
                       <option key={target.tag.id} value={target.tag.id}>
-                        {target.tag.name} ({target.usage.exercises} ćwiczeń)
+                        {target.tag.name} ({target.usage.exercises} exercises)
                       </option>
                     ))}
                   </Select>
@@ -204,7 +204,7 @@ export function TagLibrary({
                       setMerging(null);
                     }}
                   >
-                    Scal i usuń „{tag.name}"
+                    Merge and remove „{tag.name}"
                   </Button>
                 </div>
               )}

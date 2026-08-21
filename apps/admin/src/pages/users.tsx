@@ -36,18 +36,18 @@ export function UsersPage() {
     },
   });
 
-  if (users.isPending || me.isPending) return <Loading label="Wczytywanie kont…" />;
+  if (users.isPending || me.isPending) return <Loading label="Loading accounts…" />;
   if (users.error) return <Problem error={users.error} />;
   if (me.error) return <Problem error={me.error} />;
 
   const rows = users.data;
-  if (rows.length === 0) return <Empty>Nie ma jeszcze żadnego konta.</Empty>;
+  if (rows.length === 0) return <Empty>No accounts yet.</Empty>;
 
   return (
     <div className="flex flex-col gap-3">
       {change.error !== null && <Problem error={change.error} />}
 
-      <Table head={['Konto', 'Rola', 'Stan', 'Serie', 'Ćwiczenia', '']}>
+      <Table head={['Account', 'Role', 'State', 'Sets', 'Exercises', '']}>
         {rows.map((user) => {
           const self = user.id === me.data.id;
           const system = isSystemAccount(user);
@@ -72,10 +72,10 @@ export function UsersPage() {
                         change.mutate({ id: user.id, input: { nickname: editing.nickname.trim() } })
                       }
                     >
-                      Zapisz
+                      Save
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => setEditing(null)}>
-                      Anuluj
+                      Cancel
                     </Button>
                   </div>
                 ) : (
@@ -88,7 +88,7 @@ export function UsersPage() {
 
               <Cell>
                 <Badge tone={user.role === 'admin' ? 'accent' : 'neutral'}>
-                  {user.role === 'admin' ? 'administrator' : 'użytkownik'}
+                  {user.role === 'admin' ? 'administrator' : 'user'}
                 </Badge>
               </Cell>
 
@@ -119,7 +119,7 @@ export function UsersPage() {
                         variant="ghost"
                         onClick={() => setEditing({ id: user.id, nickname: user.nickname })}
                       >
-                        Nick
+                        Nickname
                       </Button>
                       <Button
                         size="sm"
@@ -135,13 +135,13 @@ export function UsersPage() {
                           })
                         }
                       >
-                        {user.role === 'admin' ? 'Odbierz rolę' : 'Nadaj rolę'}
+                        {user.role === 'admin' ? 'Revoke role' : 'Grant role'}
                       </Button>
                       <Button
                         size="sm"
                         variant={user.banned ? 'secondary' : 'danger'}
                         disabled={change.isPending || (self && !user.banned)}
-                        title={self && !user.banned ? 'Nie zablokujesz własnego konta' : ''}
+                        title={self && !user.banned ? 'You cannot ban your own account' : ''}
                         onClick={() =>
                           change.mutate({
                             id: user.id,

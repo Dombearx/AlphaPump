@@ -28,7 +28,8 @@
  * jawne `request()`.
  */
 
-import type { SqliteDatabase } from '@alphapump/db/sqlite';
+import { describeRejection } from '@alphapump/core';
+import type { SqliteDatabase, SyncRejectionRow } from '@alphapump/db/sqlite';
 import { pendingCount } from './outbox';
 import { stuckRows } from './reconcile';
 import { runSync, type SyncRunResult } from './run';
@@ -61,8 +62,25 @@ export interface SyncSnapshot {
    * odrzuceń i nie da się przeoczyć zapisu, który utknął.
    */
   rejected: number;
-  /** Powód pierwszego z nich — do pokazania wprost. */
+  /**
+   * Powód pierwszego z nich, zdaniem po angielsku.
+   *
+   * Serwer przysyła kod, nie zdanie — zdanie powstaje tutaj, bo serwer nie zna
+   * języka, w którym mówi ten ekran (patrz `describeRejection` w rdzeniu).
+   */
   rejectedReason: string | null;
+}
+
+/**
+ * Zdanie o pierwszym wierszu, który utknął.
+ *
+ * Bierze pierwszy z powodem, a nie pierwszy z brzegu: wiersz z pustym `reason`
+ * to odrzucenie ze starego serwera, który jeszcze nie przysyłał kodu.
+ */
+function describeStuck(rows: readonly SyncRejectionRow[]): string | null {
+  const withReason = rows.find((row) => row.reason !== null);
+  if (!withReason?.reason) return null;
+  return describeRejection(withReason.reason, withReason.reasonDetail);
 }
 
 export interface SyncEngine {
@@ -151,7 +169,7 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
     const rows = await stuckRows(options.db);
     return {
       rejected: rows.length,
-      rejectedReason: rows.find((row) => row.reason !== null)?.reason ?? null,
+      rejectedReason: describeStuck(rows),
     };
   };
 

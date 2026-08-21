@@ -49,10 +49,10 @@ export function ExerciseLibrary({
   /** Identyfikator wiersza z rozwiniętym panelem duplikatów; `null` — żaden. */
   const [opened, setOpened] = useState<string | null>(null);
 
-  if (rows.length === 0) return <Empty>Nic nie pasuje do filtrów.</Empty>;
+  if (rows.length === 0) return <Empty>Nothing matches the filters.</Empty>;
 
   return (
-    <Table head={['Nazwa', 'Autor', 'Typ logowania', 'Tagi', 'Użycie', '']}>
+    <Table head={['Name', 'Author', 'Logging type', 'Tags', 'Usage', '']}>
       {rows.map((entry) => {
         const { exercise } = entry;
         const deleted = exercise.deletedAt !== null;
@@ -71,7 +71,7 @@ export function ExerciseLibrary({
                 )}
                 {deleted && (
                   <Badge tone="danger" className="mt-1">
-                    usunięte
+                    deleted
                   </Badge>
                 )}
               </Cell>
@@ -117,7 +117,7 @@ export function ExerciseLibrary({
                       setOpened(opened === exercise.id ? null : exercise.id);
                     }}
                   >
-                    {opened === exercise.id ? 'Zwiń' : 'Podobne'}
+                    {opened === exercise.id ? 'Collapse' : 'Similar'}
                   </Button>
                   <Button
                     size="sm"
@@ -126,7 +126,7 @@ export function ExerciseLibrary({
                       onEdit(entry);
                     }}
                   >
-                    Zmień
+                    Edit
                   </Button>
                   {deleted ? (
                     <Button
@@ -137,7 +137,7 @@ export function ExerciseLibrary({
                         onRestore(entry);
                       }}
                     >
-                      Przywróć
+                      Restore
                     </Button>
                   ) : (
                     <Button
@@ -151,7 +151,7 @@ export function ExerciseLibrary({
                         onDelete(entry);
                       }}
                     >
-                      Usuń
+                      Delete
                     </Button>
                   )}
                 </div>
@@ -213,13 +213,13 @@ function MergePanel({
         <div className="flex flex-col gap-3">
           <p className="text-xs text-muted">
             Scalenie przenosi <strong>wszystkie</strong> serie i cele cyklu z „{entry.exercise.name}
-            " na wybrane ćwiczenie, a to znika z biblioteki. Serie zostają przy swoich
-            właścicielach.
+            " onto the exercise you pick, and this one leaves the library. The sets stay with their
+            owners.
           </p>
 
-          {similar.isPending && <Loading label="Szukanie podobnych…" />}
+          {similar.isPending && <Loading label="Looking for similar…" />}
           {similar.error !== null && (
-            <p className="text-xs text-danger">Nie udało się policzyć podobnych ćwiczeń.</p>
+            <p className="text-xs text-danger">Could not look for similar exercises.</p>
           )}
 
           {similar.data !== undefined && (
@@ -227,11 +227,11 @@ function MergePanel({
               <p className="text-xs text-muted">
                 Warstwa wyszukiwania: {LAYER_LABELS[similar.data.layer]}
                 {similar.data.layer === 'lexical' &&
-                  ' — warstwa semantyczna jest wyłączona albo ćwiczenia nie mają policzonych wektorów.'}
+                  ' — the semantic layer is off, or the exercises have no vectors yet.'}
               </p>
 
               {candidates.length === 0 ? (
-                <Empty>Nic podobnego w bibliotece.</Empty>
+                <Empty>Nothing similar in the library.</Empty>
               ) : (
                 <ul className="flex flex-col gap-2">
                   {candidates.map((candidate) => (
@@ -258,7 +258,7 @@ function MergePanel({
                 setManualTarget(event.target.value);
               }}
             >
-              <option value="">— wybierz ćwiczenie docelowe —</option>
+              <option value="">— pick a target exercise —</option>
               {targets.map((target) => (
                 <option key={target.exercise.id} value={target.exercise.id}>
                   {target.exercise.name} ({target.authorNickname}, {target.usage.sets} serii)
@@ -272,12 +272,12 @@ function MergePanel({
                 onMerge(entry, manualTarget);
               }}
             >
-              Scal i usuń „{entry.exercise.name}"
+              Merge and remove „{entry.exercise.name}"
             </Button>
           </div>
           <p className="text-xs text-muted">
-            Lista zawiera wyłącznie ćwiczenia o tym samym typie logowania — serie są walidowane
-            względem typu ćwiczenia, więc przeniesione pod inny nie pasowałyby do niego.
+            The list only holds exercises with the same logging type — sets are validated against
+            the exercise type, so moved under another one they would no longer fit.
           </p>
         </div>
       </td>
@@ -286,9 +286,9 @@ function MergePanel({
 }
 
 const LAYER_LABELS: Record<string, string> = {
-  lexical: 'leksykalna (pisownia)',
-  hybrid: 'hybrydowa (pisownia + embeddingi)',
-  llm: 'hybrydowa z oceną modelu',
+  lexical: 'lexical (spelling)',
+  hybrid: 'hybrid (spelling + vectors)',
+  llm: 'hybrid, model-judged',
 };
 
 function Candidate({
@@ -317,7 +317,7 @@ function Candidate({
       )}
       {mergeable ? (
         <Button size="sm" variant="secondary" className="ml-auto" disabled={busy} onClick={onMerge}>
-          Scal w to
+          Merge into this
         </Button>
       ) : (
         <span className="ml-auto text-xs text-muted">inny typ logowania</span>

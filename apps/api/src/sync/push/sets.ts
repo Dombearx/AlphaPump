@@ -49,7 +49,7 @@ export async function applySets(
     const existing = known.get(row.id);
 
     if (existing && existing.userId !== context.principal.id) {
-      context.record('set', row.id, 'rejected', 'Seria należy do innego użytkownika');
+      context.record('set', row.id, 'rejected', 'not_owner');
       continue;
     }
 
@@ -69,7 +69,7 @@ export async function applySets(
         .where(eq(workoutSets.id, row.id))
         .returning();
       if (written === undefined) {
-        context.record('set', row.id, 'rejected', 'Seria zniknęła w trakcie zapisu');
+        context.record('set', row.id, 'rejected', 'vanished');
         continue;
       }
 
@@ -82,7 +82,7 @@ export async function applySets(
 
     const exercise = library.get(row.exerciseId);
     if (exercise === undefined) {
-      context.record('set', row.id, 'rejected', 'Ćwiczenie serii nie istnieje');
+      context.record('set', row.id, 'rejected', 'missing_exercise');
       if (existing) context.changes.sets.push(toSyncedSetDto(existing));
       continue;
     }
@@ -100,12 +100,7 @@ export async function applySets(
       note: row.note,
     });
     if (!measurements.success) {
-      context.record(
-        'set',
-        row.id,
-        'rejected',
-        `Pomiary nie pasują do typu logowania ${exercise.loggingType}`,
-      );
+      context.record('set', row.id, 'rejected', 'measurements_mismatch', exercise.loggingType);
       if (existing) context.changes.sets.push(toSyncedSetDto(existing));
       continue;
     }
@@ -139,7 +134,7 @@ export async function applySets(
             .returning();
 
     if (written === undefined) {
-      context.record('set', row.id, 'rejected', 'Seria zniknęła w trakcie zapisu');
+      context.record('set', row.id, 'rejected', 'vanished');
       continue;
     }
 

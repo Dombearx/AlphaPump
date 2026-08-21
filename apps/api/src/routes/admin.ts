@@ -101,7 +101,7 @@ export const adminRoutes: RouteSpec[] = [
     responses: [
       { status: 200, description: 'Konto zmienione', schema: adminUserSchema },
       { status: 403, description: 'Konto systemowe albo brak roli administratora' },
-      { status: 404, description: 'Konto nie istnieje' },
+      { status: 404, description: 'No such account' },
       { status: 409, description: 'Próba zablokowania albo degradacji własnego konta' },
     ],
   },
@@ -255,18 +255,18 @@ export function createAdminRouter(dependencies: AppDependencies, backupDir: stri
       const input = context.req.valid('json');
 
       if (id === SYSTEM_USER.id) {
-        throw forbidden('Konto systemowe jest autorem ćwiczeń wbudowanych i nie podlega zmianom');
+        throw forbidden('The system account authors the built-in library and cannot be changed');
       }
 
       const [existing] = await db.select().from(users).where(eq(users.id, id)).limit(1);
-      if (!existing) throw notFound('Konto nie istnieje');
+      if (!existing) throw notFound('No such account');
 
       // Administrator nie może odciąć sobie drogi powrotu: panel jest jedynym
       // narzędziem do nadawania roli.
       if (id === principal.id) {
-        if (input.banned === true) throw conflict('Nie można zablokować własnego konta');
+        if (input.banned === true) throw conflict('You cannot ban your own account');
         if (input.role === 'user') {
-          throw conflict('Nie można odebrać roli administratora własnemu kontu');
+          throw conflict('You cannot take the administrator role away from your own account');
         }
       }
 
@@ -383,7 +383,7 @@ export function createAdminRouter(dependencies: AppDependencies, backupDir: stri
   router.post('/admin/feedback/run', async (context) => {
     if (!dependencies.triage) {
       throw unavailable(
-        'Usługa segregacji zgłoszeń nie jest skonfigurowana (brak TRIAGE_URL/TRIAGE_HTTP_TOKEN)',
+        'The triage service is not configured (missing TRIAGE_URL/TRIAGE_HTTP_TOKEN)',
       );
     }
     return context.json(await dependencies.triage.runDaily());

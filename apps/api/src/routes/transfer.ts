@@ -79,7 +79,7 @@ export function createTransferRouter(dependencies: AppDependencies) {
     const { scope } = context.req.valid('query');
 
     if (scope === 'system' && principal.role !== 'admin') {
-      throw forbidden('Archiwum systemowe może pobrać wyłącznie administrator');
+      throw forbidden('Only an administrator can export the system archive');
     }
 
     const now = new Date();
@@ -104,7 +104,7 @@ export function createTransferRouter(dependencies: AppDependencies) {
     try {
       archive = parseArchive(context.req.valid('json'));
     } catch (error) {
-      throw badRequest('Plik nie jest archiwum AlphaPump w znanej wersji', String(error));
+      throw badRequest('This file is not an AlphaPump archive in a known version', String(error));
     }
 
     const report = await importArchive(db, archive, {

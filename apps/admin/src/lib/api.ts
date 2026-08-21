@@ -103,7 +103,7 @@ export async function request<T>(
       parsed.success ? parsed.data.error.code : 'unknown',
       parsed.success
         ? parsed.data.error.message
-        : `Serwer odpowiedział ${String(response.status)} bez czytelnego błędu`,
+        : `The server answered ${String(response.status)} with no readable error`,
     );
   }
 
@@ -112,7 +112,7 @@ export async function request<T>(
     throw new ApiError(
       response.status,
       'schema_mismatch',
-      `Odpowiedź ${path} ma nieznany kształt: ${parsed.error.issues[0]?.message ?? 'brak szczegółów'}`,
+      `The ${path} response has an unknown shape: ${parsed.error.issues[0]?.message ?? 'no details'}`,
     );
   }
 

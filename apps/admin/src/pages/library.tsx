@@ -104,7 +104,7 @@ export function LibraryPage() {
     [exercises.data, filter],
   );
 
-  if (exercises.isPending || tags.isPending) return <Loading label="Wczytywanie biblioteki…" />;
+  if (exercises.isPending || tags.isPending) return <Loading label="Loading the library…" />;
   if (exercises.error) return <Problem error={exercises.error} />;
   if (tags.error) return <Problem error={tags.error} />;
 
@@ -138,15 +138,15 @@ export function LibraryPage() {
       <Card className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <CardTitle>
-            Ćwiczenia ({visible.length} z {(exercises.data ?? []).length}, w tym {deletedExercises}{' '}
-            usuniętych)
+            Exercises ({visible.length} of {(exercises.data ?? []).length}, {deletedExercises}{' '}
+            deleted)
           </CardTitle>
           <div className="flex gap-2">
             <Button
               size="sm"
               variant="secondary"
               disabled={mutate.isPending}
-              title="Zleca policzenie brakujących wektorów, żeby lista podobnych ćwiczeń widziała całą bibliotekę"
+              title="Queues the missing vectors, so the similar-exercise list sees the whole library"
               onClick={() => {
                 mutate.mutate(async () => {
                   const report = await refreshEmbeddings();
@@ -155,27 +155,27 @@ export function LibraryPage() {
                   // zmieściłoby się w limicie czasu warstwy wejściowej. Postęp widać
                   // na ekranie „Przegląd", w liczbie embeddingów.
                   if (!report.enabled) {
-                    return 'Warstwa semantyczna jest wyłączona — podobne ćwiczenia liczy sama pisownia.';
+                    return 'The semantic layer is off — similar exercises come from spelling alone.';
                   }
                   return report.status === 'busy'
-                    ? `Przeliczanie już trwa — w kolejce ${String(report.pending)} ćwiczeń.`
-                    : `Zlecono przeliczenie ${String(report.queued)} ćwiczeń. Postęp widać w „Przeglądzie”.`;
+                    ? `A pass is already running — ${String(report.pending)} exercises queued.`
+                    : `Queued ${String(report.queued)} exercises. Progress shows up in „Overview”.`;
                 });
               }}
             >
-              Przelicz wektory
+              Recompute vectors
             </Button>
             <Button
               size="sm"
               variant={form?.mode === 'create' ? 'secondary' : 'primary'}
               // Bez tagów nie da się utworzyć ćwiczenia: tag główny jest wymagany.
               disabled={liveTags.length === 0}
-              title={liveTags.length === 0 ? 'Najpierw dodaj choć jeden tag' : ''}
+              title={liveTags.length === 0 ? 'Add at least one tag first' : ''}
               onClick={() => {
                 setForm(form?.mode === 'create' ? null : { mode: 'create' });
               }}
             >
-              Dodaj ćwiczenie
+              Add exercise
             </Button>
           </div>
         </div>
@@ -198,7 +198,7 @@ export function LibraryPage() {
 
         <div className="grid gap-2 md:grid-cols-4">
           <Input
-            placeholder="Filtruj po nazwie, autorze albo siłowni"
+            placeholder="Filter by name, author or gym"
             value={filter.query}
             onChange={(event) => {
               setFilter({ ...filter, query: event.target.value });
@@ -210,9 +210,9 @@ export function LibraryPage() {
               setFilter({ ...filter, author: event.target.value as AuthorFilter });
             }}
           >
-            <option value="all">Wszyscy autorzy</option>
-            <option value="builtIn">Tylko wbudowane</option>
-            <option value="user">Tylko dodane przez ludzi</option>
+            <option value="all">All authors</option>
+            <option value="builtIn">Built-in only</option>
+            <option value="user">Added by people only</option>
           </Select>
           <Select
             value={filter.status}
@@ -220,9 +220,9 @@ export function LibraryPage() {
               setFilter({ ...filter, status: event.target.value as StatusFilter });
             }}
           >
-            <option value="live">Tylko żywe</option>
-            <option value="deleted">Tylko usunięte</option>
-            <option value="all">Żywe i usunięte</option>
+            <option value="live">Live only</option>
+            <option value="deleted">Deleted only</option>
+            <option value="all">Live and deleted</option>
           </Select>
           <Select
             value={filter.tagId ?? ''}
@@ -233,7 +233,7 @@ export function LibraryPage() {
               });
             }}
           >
-            <option value="">Wszystkie tagi</option>
+            <option value="">All tags</option>
             {liveTags.map((tag) => (
               <option key={tag.id} value={tag.id}>
                 {tag.name}
@@ -258,7 +258,7 @@ export function LibraryPage() {
           onRestore={(entry) => {
             mutate.mutate(async () => {
               await restoreExercise(entry.exercise.id);
-              return `Przywrócono „${entry.exercise.name}".`;
+              return `Restored „${entry.exercise.name}".`;
             });
           }}
           onMerge={(source, targetId) => {
@@ -267,22 +267,22 @@ export function LibraryPage() {
               return (
                 `Scalono „${source.exercise.name}": przeniesiono ${String(report.movedSets)} serii` +
                 `${report.movedDeletedSets > 0 ? ` (i ${String(report.movedDeletedSets)} skasowanych)` : ''}` +
-                `${report.movedGoals > 0 ? ` oraz ${String(report.movedGoals)} celów cyklu` : ''}.`
+                `${report.movedGoals > 0 ? ` and ${String(report.movedGoals)} cycle goals` : ''}.`
               );
             });
           }}
         />
 
         <p className="text-xs text-muted">
-          Ćwiczenia z zapisanymi seriami nie da się usunąć — jego serie musiałyby zostać w dniach
-          jako wpisy bez nazwy. Duplikat scala się z ćwiczeniem docelowym: serie i cele cyklu
-          przechodzą razem z nim, a dopiero puste źródło znika. Typ logowania jest nieedytowalny, bo
-          jego zmiana unieważniłaby zapisane serie.
+          An exercise with logged sets cannot be deleted — its sets would stay in the days as
+          entries with no name. A duplicate is merged into a target exercise: sets and cycle goals
+          move with it, and only then does the empty source disappear. The logging type is not
+          editable, because changing it would invalidate the logged sets.
         </p>
       </Card>
 
       <Card className="flex flex-col gap-3">
-        <CardTitle>Tagi ({(tags.data ?? []).length})</CardTitle>
+        <CardTitle>Tags ({(tags.data ?? []).length})</CardTitle>
 
         <form
           className="flex items-center gap-2"
@@ -297,7 +297,7 @@ export function LibraryPage() {
           }}
         >
           <Input
-            placeholder="Nazwa nowego tagu"
+            placeholder="Name of the new tag"
             value={newTag}
             maxLength={80}
             onChange={(event) => {
@@ -305,12 +305,12 @@ export function LibraryPage() {
             }}
           />
           <Button type="submit" size="sm" disabled={mutate.isPending || newTag.trim().length === 0}>
-            Dodaj tag
+            Add tag
           </Button>
         </form>
 
         {(tags.data ?? []).length === 0 ? (
-          <Empty>Nie ma jeszcze żadnego tagu.</Empty>
+          <Empty>No tags yet.</Empty>
         ) : (
           <TagLibrary
             rows={tags.data ?? []}
@@ -328,16 +328,16 @@ export function LibraryPage() {
             onRestore={(entry) => {
               mutate.mutate(async () => {
                 await restoreTag(entry.tag.id);
-                return `Przywrócono tag „${entry.tag.name}".`;
+                return `Restored tag „${entry.tag.name}".`;
               });
             }}
             onMerge={(source, targetId) => {
               mutate.mutate(async () => {
                 const report = await mergeTags(source.tag.id, targetId);
                 return (
-                  `Scalono tag „${source.tag.name}": przepięto ${String(report.movedPrimary)} ćwiczeń ` +
-                  `jako tag główny i ${String(report.movedAdditional)} jako dodatkowy` +
-                  `${report.mergedAdditional > 0 ? `, ${String(report.mergedAdditional)} miało już oba` : ''}.`
+                  `Merged tag „${source.tag.name}": moved ${String(report.movedPrimary)} exercises ` +
+                  `as the primary tag and ${String(report.movedAdditional)} as an additional one` +
+                  `${report.mergedAdditional > 0 ? `, ${String(report.mergedAdditional)} already had both` : ''}.`
                 );
               });
             }}
@@ -345,10 +345,9 @@ export function LibraryPage() {
         )}
 
         <p className="text-xs text-muted">
-          Kolor wynika z nazwy i nie da się go ustawić ręcznie — dzięki temu tag utworzony offline
-          ma od razu finalny kolor, identyczny na każdym urządzeniu. Zmiana nazwy przelicza kolor.
-          Tagu używanego przez ćwiczenia albo cele cyklu nie da się usunąć; scalenie przepina je na
-          tag docelowy.
+          The color follows from the name and cannot be set by hand — a tag created offline has its
+          final color right away, identical on every device. Renaming recomputes the color. A tag
+          used by exercises or cycle goals cannot be deleted; merging moves them onto tag docelowy.
         </p>
       </Card>
     </div>

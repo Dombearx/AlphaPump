@@ -39,6 +39,7 @@ import type {
   SyncDecision,
   SyncEntity,
   SyncPushRequest,
+  SyncRejection,
   SyncResult,
 } from '@alphapump/core';
 import type { Principal } from '../../context.js';
@@ -86,8 +87,20 @@ export async function applyPush(
       advance(serverSeq) {
         if (serverSeq > cursor) cursor = serverSeq;
       },
-      record(entity: SyncEntity, id: string, decision: SyncDecision, reason?: string) {
-        results.push({ entity, id, decision, reason: reason ?? null });
+      record(
+        entity: SyncEntity,
+        id: string,
+        decision: SyncDecision,
+        reason?: SyncRejection,
+        detail?: string,
+      ) {
+        results.push({
+          entity,
+          id,
+          decision,
+          reason: reason ?? null,
+          reasonDetail: detail ?? null,
+        });
       },
     };
 

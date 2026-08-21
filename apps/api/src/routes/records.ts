@@ -37,7 +37,7 @@ export const recordRoutes: RouteSpec[] = [
     params: idParamSchema,
     responses: [
       { status: 200, description: 'Rekordy ćwiczenia', schema: globalRecordsResponseSchema },
-      { status: 404, description: 'Ćwiczenie nie istnieje' },
+      { status: 404, description: 'No such exercise' },
     ],
   },
 ];
@@ -54,7 +54,7 @@ export function createRecordRouter(dependencies: AppDependencies) {
       .from(exercises)
       .where(and(eq(exercises.id, id), isNull(exercises.deletedAt)))
       .limit(1);
-    if (!exercise) throw notFound('Ćwiczenie nie istnieje');
+    if (!exercise) throw notFound('No such exercise');
 
     const rows = await db
       .select({

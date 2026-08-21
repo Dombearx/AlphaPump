@@ -19,7 +19,7 @@ import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createCycle } from '../src/db/cycles';
 import { createSet, type SetValues } from '../src/db/sets';
-import { stuckRows } from '../src/sync/reconcile';
+import { recordRejections, stuckRows } from '../src/sync/reconcile';
 import { runSync } from '../src/sync/run';
 import { FakeSyncServer } from './fake-server';
 import { EXERCISES, TEST_USER, createLocalDatabase, insertTestUser } from './local-database';
@@ -184,12 +184,48 @@ describe('odzyskiwanie zapisów', () => {
 
     const quarantined = await stuckRows(local.db);
     expect(quarantined).toHaveLength(1);
-    expect(quarantined[0]?.reason).toBe('Serwer odmawia');
+    expect(quarantined[0]?.reason).toBe('not_owner');
 
     // Druga wymiana nie kręci kolejką: odstęp jeszcze nie minął.
     const second = await phone.sync();
     expect(second.requeued).toBe(0);
     expect(second.rejected).toEqual([]);
+  });
+
+  it('wyścig o zniknięty wiersz ponawia się od razu, a nie po minucie', async () => {
+    // `vanished` jest jedynym kodem, który nie jest rozstrzygnięciem reguły:
+    // wiersz zniknął serwerowi między odczytem a zapisem, więc przy następnej
+    // wymianie zastanie już inny stan. Czekanie minuty byłoby tu czystą stratą,
+    // a przy zdaniu zamiast kodu telefon nie miałby po czym tego poznać.
+    const phone = withServer(new FakeSyncServer({ userId: TEST_USER.id }));
+    const row = await phone.add(reps(100, 5));
+    const now = new Date('2026-08-11T10:00:00.000Z');
+
+    await recordRejections(
+      local.db,
+      [{ entity: 'set', id: row.id, decision: 'rejected', reason: 'vanished', reasonDetail: null }],
+      now,
+    );
+    expect((await stuckRows(local.db))[0]?.retryAfter).toEqual(now);
+
+    // Ten sam wiersz odrzucony po raz trzeci przestaje być wyścigiem i wchodzi
+    // w normalny odstęp — inaczej kręciłby kolejką przy każdej wymianie.
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await recordRejections(
+        local.db,
+        [
+          {
+            entity: 'set',
+            id: row.id,
+            decision: 'rejected',
+            reason: 'vanished',
+            reasonDetail: null,
+          },
+        ],
+        now,
+      );
+    }
+    expect((await stuckRows(local.db))[0]?.retryAfter.getTime()).toBeGreaterThan(now.getTime());
   });
 
   it('po upływie odstępu ponawia i przyjmuje wiersz, gdy serwer zmienia zdanie', async () => {

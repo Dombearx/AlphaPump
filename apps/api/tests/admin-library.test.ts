@@ -154,7 +154,7 @@ describe('panel: porządkowanie biblioteki', () => {
         { headers: admin.headers },
       );
       expect(byAdmin.status).toBe(409);
-      expect(byAdmin.body.error.message).toContain('zapisane serie');
+      expect(byAdmin.body.error.message).toContain('logged sets');
 
       // Wejście drugie: tombstone w paczce synchronizacji. Bez tej blokady push
       // byłby drogą, przez którą reguła nie obowiązuje.
@@ -225,7 +225,7 @@ describe('panel: porządkowanie biblioteki', () => {
         { headers: admin.headers },
       );
       expect(denied.status).toBe(409);
-      expect(denied.body.error.message).toContain('cele cyklu');
+      expect(denied.body.error.message).toContain('cycle goals');
     });
 
     it('odmawia usunięcia tagu wskazanego przez cel cyklu', async () => {
@@ -330,7 +330,7 @@ describe('panel: porządkowanie biblioteki', () => {
         { headers: admin.headers, body: { targetId: plank.id } },
       );
       expect(response.status).toBe(409);
-      expect(response.body.error.message).toContain('typy logowania');
+      expect(response.body.error.message).toContain('log different measurements');
     });
 
     it('odmawia scalenia ćwiczenia z samym sobą', async () => {
