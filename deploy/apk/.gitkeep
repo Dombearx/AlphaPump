@@ -6,4 +6,4 @@ Caddy serwuje jego zawartość pod /pobierz/, więc położony tu
     http://<adres-minipc-w-vpn>/pobierz/alphapump.apk
 
 Sam plik nie wchodzi do repozytorium — jest wynikiem budowania,
-a nie źródłem. Skąd go wziąć, opisuje README w sekcji „Wdrożenie".
+a nie źródłem. Skąd go wziąć, opisuje `docs/wdrozenie.md`.

@@ -251,7 +251,7 @@ i właścicieli serii.
 - Docker Compose na minipc: Postgres, API, panel, Caddy jako reverse proxy,
 - dostęp przez NetBird, cron kopii zapasowych,
 - dystrybucja aplikacji na Androida,
-- procedura aktualizacji i odtwarzania spisana w README.
+- procedura aktualizacji i odtwarzania spisana w `docs/wdrozenie.md`.
 
 **Gotowe, gdy:** grupa korzysta z aplikacji na własnych telefonach, a odtworzenie
 z kopii zostało wykonane co najmniej raz na sucho.

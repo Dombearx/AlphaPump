@@ -67,7 +67,7 @@ export default function RootLayout() {
               }}
             >
               <Stack.Screen name="index" options={{ title: 'Today' }} />
-              <Stack.Screen name="sign-in" options={{ title: 'Logowanie', headerShown: false }} />
+              <Stack.Screen name="sign-in" options={{ title: 'Sign in', headerShown: false }} />
             </Stack>
           </SyncProvider>
         </DatabaseProvider>

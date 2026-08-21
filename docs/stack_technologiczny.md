@@ -387,7 +387,7 @@ API nie jest wystawione na publiczny internet.
 
 Docker Compose: PostgreSQL 17 (z `pgvector` i `pg_trgm`), API oraz panel admina
 za Caddy pełniącym rolę zwykłego reverse proxy, bez TLS. Pliki są w `deploy/`,
-a procedury uruchomienia, aktualizacji i odtworzenia w README. CI na GitHub
+a procedury uruchomienia, aktualizacji i odtworzenia w `docs/wdrozenie.md`. CI na GitHub
 Actions.
 
 Panel jest **wpieczony w obraz Caddy'ego**, a nie osobnym kontenerem (ustalone

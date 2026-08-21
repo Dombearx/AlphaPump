@@ -1,7 +1,7 @@
 # Stos AlphaPump na minipc.
 #
 # Trzy kontenery: baza, API i warstwa wejściowa (Caddy z wpieczonym panelem).
-# Uruchomienie i aktualizacja są opisane w README, w sekcji „Wdrożenie".
+# Uruchomienie i aktualizacja są opisane w `docs/wdrozenie.md`.
 #
 # Zmienne wchodzą z pliku `deploy/.env` (wzór: `.env.example`). Compose czyta go
 # sam, bo leży obok tego pliku. Zapis `${X:?…}` znaczy „bez tej zmiennej nie
