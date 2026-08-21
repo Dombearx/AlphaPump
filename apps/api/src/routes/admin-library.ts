@@ -58,11 +58,11 @@ import type { AppDependencies, AppEnvironment } from '../context.js';
 import type { Database } from '../db.js';
 import { toExerciseDto, toTagDto } from '../dto.js';
 import {
+  NO_BACKLOG,
   NO_LAYERS,
   dropEmbeddings,
   findDuplicates,
   refreshEmbedding,
-  refreshEmbeddings,
 } from '../duplicates/index.js';
 import { conflict, notFound } from '../errors.js';
 import { requireAdmin } from '../middleware/authenticate.js';
@@ -222,13 +222,19 @@ export const adminLibraryRoutes: RouteSpec[] = [
     path: '/admin/library/embeddings/refresh',
     summary: 'Przeliczenie wektorów biblioteki',
     description:
-      'Liczy brakujące i nieaktualne wektory wszystkich żywych ćwiczeń. Bez tego lista ' +
-      'podobnych ćwiczeń widzi wyłącznie wiersze zapisane po włączeniu warstwy semantycznej. ' +
+      'Zgłasza wszystkie żywe ćwiczenia do przeliczenia wektorów i odpowiada od razu — ' +
+      'praca dzieje się poza żądaniem, bo przy większej bibliotece nie zmieściłaby się ' +
+      'w limicie czasu warstwy wejściowej. Postęp widać w `/admin/stats`. ' +
       '`enabled: false` znaczy, że warstwa jest wyłączona — i nie jest to błąd.',
     tag: 'administracja',
     security: 'admin',
     responses: [
-      { status: 200, description: 'Raport przeliczenia', schema: embeddingRefreshReportSchema },
+      { status: 202, description: 'Zlecenie przyjęte', schema: embeddingRefreshReportSchema },
+      {
+        status: 200,
+        description: 'Warstwa semantyczna wyłączona — nie ma czym liczyć',
+        schema: embeddingRefreshReportSchema,
+      },
     ],
   },
 ];
@@ -311,6 +317,7 @@ export function createAdminLibraryRouter(dependencies: AppDependencies) {
   const router = new Hono<AppEnvironment>();
   const { db } = dependencies;
   const layers = dependencies.duplicates ?? NO_LAYERS;
+  const embeddings = dependencies.embeddings ?? NO_BACKLOG;
   const recomputations = dependencies.derived ?? [];
 
   router.use('/admin/library/*', requireAdmin);
@@ -776,8 +783,9 @@ export function createAdminLibraryRouter(dependencies: AppDependencies) {
       });
 
       // Wektor liczy się z nazwy ćwiczenia **i jego tagu głównego**, więc zmiana
-      // tagu głównego czyni go nieaktualnym.
-      await refreshEmbeddings(db, layers, primaryIds);
+      // tagu głównego czyni go nieaktualnym. Do kolejki, nie w miejscu: scalenie
+      // tagu potrafi dotknąć całej biblioteki, a panel nie ma na co czekać.
+      embeddings.enqueue(primaryIds);
 
       return context.json(report);
     },
@@ -814,41 +822,42 @@ export function createAdminLibraryRouter(dependencies: AppDependencies) {
 
   /* ------------------------------------------------------------ embeddingi */
 
+  /**
+   * Przeliczenie wektorów całej biblioteki — zlecenie, nie robota w miejscu.
+   *
+   * Wcześniej ten handler iterował po wszystkich ćwiczeniach sekwencyjnie, do
+   * ośmiu sekund na każde, i odpowiadał dopiero na końcu. Caddy przerywa po
+   * dwóch minutach, więc przy większej bibliotece panel dostawał błąd bramy,
+   * a zadanie po cichu leciało dalej — i ponowne kliknięcie startowało drugi
+   * przebieg obok pierwszego.
+   *
+   * Teraz zgłasza bibliotekę do kolejki (`EmbeddingBacklog`) i odpowiada od
+   * razu. Kolejka ma jednego wykonawcę, więc drugie kliknięcie nie mnoży
+   * wywołań u dostawcy modeli, a postęp widać w `/admin/stats`.
+   */
   router.post('/admin/library/embeddings/refresh', async (context) => {
-    const embedder = layers.embedder;
-    if (embedder === null) {
-      const empty: EmbeddingRefreshReport = {
+    const queued = await embeddings.enqueueLibrary();
+
+    if (queued === null) {
+      const disabled: EmbeddingRefreshReport = {
         enabled: false,
-        written: 0,
-        unchanged: 0,
-        failed: 0,
+        status: 'disabled',
+        queued: 0,
+        pending: 0,
       };
-      return context.json(empty);
+      return context.json(disabled);
     }
 
-    const rows = await db
-      .select({ id: exercises.id })
-      .from(exercises)
-      .where(isNull(exercises.deletedAt))
-      .orderBy(asc(exercises.name));
-
+    const status = embeddings.status();
     const report: EmbeddingRefreshReport = {
       enabled: true,
-      written: 0,
-      unchanged: 0,
-      failed: 0,
+      status: 'started',
+      queued,
+      pending: status.pending,
     };
-
-    // Sekwencyjnie, nie równolegle: równoległe wywołania u dostawcy modeli to
-    // najkrótsza droga do limitu żądań, a to zadanie i tak jest ręczne.
-    for (const row of rows) {
-      const outcome = await refreshEmbedding(db, embedder, row.id);
-      if (outcome === 'written') report.written += 1;
-      else if (outcome === 'unchanged') report.unchanged += 1;
-      else if (outcome === 'failed') report.failed += 1;
-    }
-
-    return context.json(report);
+    // 202: zlecenie przyjęte, praca trwa gdzie indziej. 200 znaczyłoby
+    // „policzone", a policzone jeszcze nie jest.
+    return context.json(report, 202);
   });
 
   return router;

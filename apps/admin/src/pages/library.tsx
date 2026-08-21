@@ -146,13 +146,20 @@ export function LibraryPage() {
               size="sm"
               variant="secondary"
               disabled={mutate.isPending}
-              title="Liczy brakujące wektory, żeby lista podobnych ćwiczeń widziała całą bibliotekę"
+              title="Zleca policzenie brakujących wektorów, żeby lista podobnych ćwiczeń widziała całą bibliotekę"
               onClick={() => {
                 mutate.mutate(async () => {
                   const report = await refreshEmbeddings();
-                  return report.enabled
-                    ? `Wektory: ${String(report.written)} policzonych, ${String(report.unchanged)} bez zmian, ${String(report.failed)} nieudanych.`
-                    : 'Warstwa semantyczna jest wyłączona — podobne ćwiczenia liczy sama pisownia.';
+                  // Odpowiedź jest potwierdzeniem przyjęcia zlecenia, nie wynikiem:
+                  // liczenie idzie poza żądaniem, bo przy większej bibliotece nie
+                  // zmieściłoby się w limicie czasu warstwy wejściowej. Postęp widać
+                  // na ekranie „Przegląd", w liczbie embeddingów.
+                  if (!report.enabled) {
+                    return 'Warstwa semantyczna jest wyłączona — podobne ćwiczenia liczy sama pisownia.';
+                  }
+                  return report.status === 'busy'
+                    ? `Przeliczanie już trwa — w kolejce ${String(report.pending)} ćwiczeń.`
+                    : `Zlecono przeliczenie ${String(report.queued)} ćwiczeń. Postęp widać w „Przeglądzie”.`;
                 });
               }}
             >

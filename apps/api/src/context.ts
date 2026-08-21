@@ -5,6 +5,7 @@
 import type { UserRole } from '@alphapump/core';
 import type { Auth } from './auth.js';
 import type { Database } from './db.js';
+import type { EmbeddingBacklog } from './duplicates/backlog.js';
 import type { DuplicateLayers } from './duplicates/layers.js';
 import type { DerivedRecomputation } from './sync/derived.js';
 import type { TriageClient } from './triage.js';
@@ -46,6 +47,13 @@ export interface AppDependencies {
    * i rachunek u dostawcy modeli. Produkcja składa je z konfiguracji w `index.ts`.
    */
   duplicates?: DuplicateLayers;
+  /**
+   * Kolejka przeliczania wektorów, wołana **poza** ścieżką żądania. Pominięcie
+   * pola znaczy „nie ma czego liczyć" — tak samo jak wyłączona warstwa
+   * semantyczna, bo jedno bez drugiego nie ma sensu. Produkcja składa ją
+   * w `index.ts` z tych samych warstw co `duplicates`.
+   */
+  embeddings?: EmbeddingBacklog;
   /**
    * Klient usługi `services/triage` do ręcznego wyzwolenia przeglądu zgłoszeń
    * z panelu administracyjnego. Pominięcie pola znaczy **panel nie może

@@ -19,13 +19,13 @@ import {
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { AppDependencies, AppEnvironment } from '../context.js';
-import { NO_LAYERS, refreshEmbeddings } from '../duplicates/index.js';
+import { NO_BACKLOG } from '../duplicates/index.js';
 import { requireAdmin } from '../middleware/authenticate.js';
 import { validateJson, validateQuery } from '../middleware/validate.js';
 import type { RouteSpec } from '../openapi.js';
 import { recomputeDerived } from '../sync/derived.js';
 import { pullChanges } from '../sync/pull.js';
-import { applyPush } from '../sync/push.js';
+import { applyPush } from '../sync/push/index.js';
 import {
   DEFAULT_TOMBSTONE_RETENTION_DAYS,
   pruneTombstones,
@@ -109,7 +109,7 @@ export function createSyncRouter(dependencies: AppDependencies) {
   const router = new Hono<AppEnvironment>();
   const { db } = dependencies;
   const recomputations = dependencies.derived ?? [];
-  const layers = dependencies.duplicates ?? NO_LAYERS;
+  const embeddings = dependencies.embeddings ?? NO_BACKLOG;
 
   router.post('/sync/push', validateJson(syncPushRequestSchema), async (context) => {
     const principal = context.get('principal');
@@ -118,13 +118,13 @@ export function createSyncRouter(dependencies: AppDependencies) {
     const outcome = await applyPush(db, principal, context.req.valid('json'), now);
     await recomputeDerived(db, outcome.scope, recomputations);
 
-    // Ćwiczenie utworzone offline dostaje wektor dopiero tutaj — telefon nie ma
-    // czym go policzyć i mieć nie będzie. Wyłączona warstwa semantyczna nie
-    // wchodzi tu w ogóle, a jej awaria nie może wywrócić pushu: outbox
-    // urządzenia stanąłby wtedy na wpisie, którego serwer już przyjął.
-    await refreshEmbeddings(
-      db,
-      layers,
+    // Ćwiczenie utworzone offline dostaje wektor dopiero na serwerze — telefon
+    // nie ma czym go policzyć i mieć nie będzie. Zgłaszamy je jednak do kolejki
+    // i **nie czekamy**: wywołanie u dostawcy modeli ma limit ośmiu sekund,
+    // a telefon przerywa żądanie po piętnastu, więc dwa nowe ćwiczenia
+    // wystarczały, żeby push wyglądał na utratę łączności. Brak wektora jest
+    // stanem obsłużonym — ćwiczenie znajdzie się warstwą leksykalną.
+    embeddings.enqueue(
       outcome.changes.exercises
         .filter((exercise) => exercise.deletedAt === null)
         .map((exercise) => exercise.id),

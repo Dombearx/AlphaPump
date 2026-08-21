@@ -176,8 +176,16 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
       });
 
       // Kolejka nie musi być pusta: paczka ma limit, a serwer mógł w tym czasie
-      // przyjąć tylko część. Dopóki coś czeka, wracamy od razu.
-      if (snapshot.pending > 0) requestedAgain = true;
+      // przyjąć tylko część. Dopóki coś czeka **i coś się ruszyło**, wracamy od
+      // razu.
+      //
+      // Drugi warunek jest bezpiecznikiem, nie optymalizacją. Paczka bywa
+      // przycięta przed wysłaniem (`payload.ts`), a odsiane wiersze wracają do
+      // kolejki — więc „coś czeka" potrafi być prawdą w kółko. Bez sprawdzenia,
+      // czy poprzedni przebieg cokolwiek wysłał, wymiana kręciłaby się bez
+      // przerwy, zjadając baterię na paczce, z której i tak nic nie wychodzi.
+      // Gdy nic nie pojechało, następna próba idzie zwykłym odstępem.
+      if (snapshot.pending > 0 && result.pushed > 0) requestedAgain = true;
       return result;
     } catch (error) {
       attempt += 1;

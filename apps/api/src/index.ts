@@ -27,7 +27,7 @@ import { createApp } from './app.js';
 import { createAuth } from './auth.js';
 import { loadConfig } from './config.js';
 import { createDatabase, runMigrations } from './db.js';
-import { createOpenRouterLayers } from './duplicates/index.js';
+import { createEmbeddingBacklog, createOpenRouterLayers } from './duplicates/index.js';
 import { createTriageClient } from './triage.js';
 
 export { createApp, type App } from './app.js';
@@ -60,7 +60,11 @@ export async function main(): Promise<void> {
   // `createAdminRouter` traktuje pominięcie pola jako „panel nie wyzwoli
   // przeglądu ręcznie".
   const triage = config.triage ? createTriageClient(config.triage) : undefined;
-  const app = createApp({ db: connection.db, auth, duplicates, triage }, config);
+  // Jedna kolejka na proces, złożona z tych samych warstw co wykrywanie
+  // duplikatów: liczenie wektorów zeszło ze ścieżki żądania, bo wywołanie
+  // u dostawcy modeli trwa dłużej, niż telefon czeka na odpowiedź pushu.
+  const embeddings = createEmbeddingBacklog(connection.db, duplicates);
+  const app = createApp({ db: connection.db, auth, duplicates, embeddings, triage }, config);
 
   if (config.llm === null) {
     console.warn(

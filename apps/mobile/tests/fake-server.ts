@@ -308,6 +308,10 @@ export class FakeSyncServer implements SyncTransport {
     return [...this.exercises.values()].map(strip);
   }
 
+  storedCycles(): SyncedCycle[] {
+    return [...this.cycles.values()].map(strip);
+  }
+
   storedTags(): SyncedTag[] {
     return [...this.tags.values()].map(strip);
   }

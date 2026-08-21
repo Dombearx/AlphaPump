@@ -1,13 +1,20 @@
 /**
  * Wykrywanie duplikatów ćwiczeń — warstwy serwerowe (etap 12).
  *
- * Wejście zbiorcze modułu. Reszta aplikacji woła stąd trzy rzeczy:
+ * Wejście zbiorcze modułu. Reszta aplikacji woła stąd cztery rzeczy:
  * `findDuplicates` (odpowiedź dla ekranu tworzenia ćwiczenia), `refreshEmbedding`
- * i `refreshEmbeddings` (ścieżka zapisu ćwiczenia i push) oraz
+ * (ścieżka zapisu jednego ćwiczenia z panelu), `createEmbeddingBacklog` (wektory
+ * poza ścieżką żądania — push i przeliczenie całej biblioteki) oraz
  * `createOpenRouterLayers` (złożenie warstw z konfiguracji, wołane raz przy
  * starcie serwera).
  */
 
+export {
+  createEmbeddingBacklog,
+  NO_BACKLOG,
+  type EmbeddingBacklog,
+  type EmbeddingBacklogStatus,
+} from './backlog.js';
 export {
   candidatesFingerprint,
   countCache,

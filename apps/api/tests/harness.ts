@@ -24,6 +24,7 @@ import { createApp } from '../src/app.js';
 import { createAuth } from '../src/auth.js';
 import type { AppConfig } from '../src/config.js';
 import type { Database } from '../src/db.js';
+import { createEmbeddingBacklog, type EmbeddingBacklog } from '../src/duplicates/backlog.js';
 import type { DuplicateLayers } from '../src/duplicates/layers.js';
 import type { DerivedRecomputation } from '../src/sync/derived.js';
 import type { TriageClient } from '../src/triage.js';
@@ -99,6 +100,15 @@ export interface Harness {
   signUp: (email: string, password?: string, name?: string) => Promise<TestUser>;
   signIn: (email: string, password: string) => Promise<Record<string, string>>;
   createApiKey: (user: TestUser, name?: string) => Promise<string>;
+  /**
+   * Czeka, aż kolejka wektorów opróżni się do końca.
+   *
+   * Liczenie wektorów zeszło ze ścieżki żądania (patrz `duplicates/backlog.ts`),
+   * więc test, który sprawdza wektor **zaraz po** zapisie, sprawdza wyścig.
+   * To jest jedyne miejsce, w którym o kolejce trzeba wiedzieć — produkcja
+   * nigdy na nią nie czeka.
+   */
+  drainEmbeddings: () => Promise<void>;
   promoteToAdmin: (user: TestUser) => Promise<void>;
   close: () => Promise<void>;
 }
@@ -118,8 +128,19 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
   const config = { ...TEST_CONFIG, feedbackDir, otaDir, backupDir: options.backupDir ?? null };
 
   const auth = createAuth(db, config);
+  const embeddings: EmbeddingBacklog = createEmbeddingBacklog(
+    db,
+    options.duplicates ?? { embedder: null, reranker: null },
+  );
   const app = createApp(
-    { db, auth, derived: options.derived, duplicates: options.duplicates, triage: options.triage },
+    {
+      db,
+      auth,
+      derived: options.derived,
+      duplicates: options.duplicates,
+      embeddings,
+      triage: options.triage,
+    },
     config,
   );
 
@@ -205,7 +226,11 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
     signIn,
     createApiKey,
     promoteToAdmin,
+    drainEmbeddings: () => embeddings.drain(),
     close: async () => {
+      // Najpierw kolejka, potem baza: wykonawca w połowie przebiegu pisałby do
+      // połączenia, którego już nie ma.
+      await embeddings.drain();
       await rm(feedbackDir, { recursive: true, force: true });
       await rm(otaDir, { recursive: true, force: true });
       await client.close();

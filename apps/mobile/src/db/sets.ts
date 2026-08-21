@@ -34,7 +34,7 @@ import {
 } from '@alphapump/db/sqlite';
 import { eq } from 'drizzle-orm';
 import { enqueue } from '../sync/outbox';
-import { exerciseHistory } from './queries';
+import { exerciseHistory, type HistorySetRow } from './queries';
 import { withTransaction } from './transaction';
 
 /**
@@ -74,7 +74,7 @@ export interface UpdateSetCommand extends SetAuthor {
 export interface SavedSet {
   id: string;
   /** Werdykt rekordu policzony offline, na miejscu, dla zapisanego stanu. */
-  record: RecordEvaluation<WorkoutSetRow>;
+  record: RecordEvaluation<HistorySetRow>;
 }
 
 /** Seria zniknęła między otwarciem ekranu a zapisem — na przykład przez pull. */
@@ -116,7 +116,7 @@ async function loadExerciseHistory(
   db: SqliteDatabase,
   userId: string,
   exerciseId: string,
-): Promise<WorkoutSetRow[]> {
+): Promise<HistorySetRow[]> {
   return exerciseHistory(db, userId, exerciseId);
 }
 

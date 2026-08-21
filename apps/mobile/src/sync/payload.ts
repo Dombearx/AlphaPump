@@ -37,7 +37,7 @@ import {
   workoutSets,
   type SqliteDatabase,
 } from '@alphapump/db/sqlite';
-import { asc, inArray, isNull, and } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import type { PendingRow } from './outbox';
 
 const instant = (value: Date): string => value.toISOString();
@@ -276,4 +276,27 @@ export function isEmptyPush(request: SyncPushRequest): boolean {
  */
 export function withoutIncompleteRows(request: SyncPushRequest): SyncPushRequest {
   return { ...request, cycles: request.cycles.filter((cycle) => cycle.goals.length > 0) };
+}
+
+/**
+ * Czy wiersz kolejki wciąż istnieje w bazie lokalnej.
+ *
+ * Potrzebne przy wstawianiu z powrotem wierszy, które z paczki wypadły
+ * (`sync/run.ts`): wpis wskazujący na wiersz usunięty trwale nigdy by z kolejki
+ * nie zszedł, bo `buildPushRequest` takich wierszy nie czyta.
+ */
+export async function rowExists(db: SqliteDatabase, row: PendingRow): Promise<boolean> {
+  const table = {
+    tag: tags,
+    exercise: exercises,
+    cycle: cycles,
+    set: workoutSets,
+  }[row.entity];
+
+  const [found] = await db
+    .select({ id: table.id })
+    .from(table)
+    .where(eq(table.id, row.rowId))
+    .limit(1);
+  return found !== undefined;
 }

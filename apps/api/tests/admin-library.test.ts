@@ -11,8 +11,10 @@
  * jeden wiersz bez utraty ani jednej serii.
  */
 
+import { EMBEDDING_DIMENSIONS } from '@alphapump/db';
 import { builtInExerciseId, tagId } from '@alphapump/core';
 import type {
+  EmbeddingRefreshReport,
   Exercise,
   ExerciseMergeReport,
   LibraryExercise,
@@ -23,8 +25,26 @@ import type {
 } from '@alphapump/core';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { exerciseRecords, workoutSets } from '../src/schema.js';
+import type { Embedder } from '../src/duplicates/layers.js';
+import { exerciseEmbeddings, exerciseRecords, workoutSets } from '../src/schema.js';
 import { createHarness, type Harness, type TestUser } from './harness.js';
+
+/**
+ * Wektor bez znaczenia, byle stabilny i różny dla różnych tekstów. Ten test
+ * sprawdza **kiedy** wektory powstają, a nie co znaczą.
+ */
+function countingEmbedder(): Embedder {
+  return {
+    model: 'atrapa-liczaca',
+    embed(text) {
+      const vector = Array.from({ length: EMBEDDING_DIMENSIONS }, () => 0);
+      let hash = 7;
+      for (const character of text) hash = (hash * 31 + character.charCodeAt(0)) % 900;
+      vector[hash] = 1;
+      return Promise.resolve(vector);
+    },
+  };
+}
 
 const BICEPS = tagId('biceps');
 const CHEST = tagId('chest');
@@ -465,13 +485,47 @@ describe('panel: porządkowanie biblioteki', () => {
 
   describe('przeliczenie wektorów', () => {
     it('mówi wprost, że warstwa semantyczna jest wyłączona, zamiast udawać sukces', async () => {
-      const response = await harness.json<{ enabled: boolean; written: number }>(
+      const response = await harness.json<EmbeddingRefreshReport>(
         'POST',
         '/admin/library/embeddings/refresh',
         { headers: admin.headers },
       );
       expect(response.status).toBe(200);
-      expect(response.body).toMatchObject({ enabled: false, written: 0 });
+      expect(response.body).toMatchObject({ enabled: false, status: 'disabled', queued: 0 });
+    });
+
+    /**
+     * Odpowiedź jest potwierdzeniem przyjęcia zlecenia, nie wynikiem pracy.
+     * Wcześniej handler liczył wektory w środku żądania — do ośmiu sekund na
+     * ćwiczenie — i przy większej bibliotece nie mieścił się w limicie czasu
+     * warstwy wejściowej, więc panel dostawał błąd bramy, a zadanie leciało
+     * dalej. Ponowne kliknięcie startowało wtedy drugi przebieg obok pierwszego.
+     */
+    it('przyjmuje zlecenie od razu i liczy wektory poza żądaniem', async () => {
+      const local = await createHarness({
+        duplicates: { embedder: countingEmbedder(), reranker: null },
+      });
+      const owner = await local.signUp('wektory@example.com');
+      await local.promoteToAdmin(owner);
+
+      const response = await local.json<EmbeddingRefreshReport>(
+        'POST',
+        '/admin/library/embeddings/refresh',
+        { headers: owner.headers },
+      );
+
+      expect(response.status).toBe(202);
+      expect(response.body.enabled).toBe(true);
+      expect(response.body.status).toBe('started');
+      // Biblioteka wbudowana wchodzi do kolejki w całości.
+      expect(response.body.queued).toBeGreaterThan(10);
+
+      // Dopiero teraz wektory są policzone — o to w tej zmianie chodzi.
+      await local.drainEmbeddings();
+      const rows = await local.db.select().from(exerciseEmbeddings);
+      expect(rows.length).toBe(response.body.queued);
+
+      await local.close();
     });
   });
 });

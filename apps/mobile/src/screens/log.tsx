@@ -22,7 +22,6 @@ import {
   type LoggingType,
   type RecordOutcome,
 } from '@alphapump/core';
-import type { WorkoutSetRow } from '@alphapump/db/sqlite';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { Redirect, Stack, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
@@ -38,7 +37,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSession } from '../auth/client';
 import { db } from '../db/client';
-import { additionalTagsOf, exerciseDetails, exerciseHistory, exerciseTagList } from '../db/queries';
+import {
+  additionalTagsOf,
+  exerciseDetails,
+  exerciseHistory,
+  exerciseTagList,
+  type HistorySetRow,
+} from '../db/queries';
 import { createSet, deleteSet, updateSet, type SetAuthor } from '../db/sets';
 import { useDeviceId } from '../hooks';
 import {
@@ -214,7 +219,7 @@ export function LogScreen({ day, exerciseId }: { day: IsoDate; exerciseId: strin
     ]);
   };
 
-  const select = (set: WorkoutSetRow) => {
+  const select = (set: HistorySetRow) => {
     setEditing(set.id);
     setOutcome(null);
     setProblem(null);

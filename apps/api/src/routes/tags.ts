@@ -108,7 +108,10 @@ export function createTagRouter(dependencies: AppDependencies) {
       .values({ id, name, slug: slug(name), color: tagColor(name), ...stamp })
       .onConflictDoUpdate({
         target: tags.id,
-        set: { name, deletedAt: null, ...stamp },
+        // Slug i kolor razem z nazwą, tak samo jak w gałęzi wstawiania obok.
+        // Jedno i drugie jest **funkcją nazwy**, więc odświeżenie samej nazwy
+        // zostawiało wskrzeszony tag z kolorem policzonym ze starej pisowni.
+        set: { name, slug: slug(name), color: tagColor(name), deletedAt: null, ...stamp },
       })
       .returning();
 
