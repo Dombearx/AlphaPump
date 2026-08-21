@@ -51,6 +51,13 @@ export interface StoredAsset {
   hash: string;
   /** Ścieżka względem katalogu wydań, np. `assets/3f2a…`. */
   path: string;
+  /**
+   * Rozszerzenie pliku, np. `.png`. Paczka JavaScriptu go nie niesie — telefon
+   * trzyma ją pod samym kluczem — ale każdy inny zasób musi: Android czyta je
+   * przez `getString`, więc brak kończy się **cichym** wyrzuceniem zasobu
+   * z wydania, a iOS odrzuca wtedy cały manifest.
+   */
+  fileExtension?: string;
 }
 
 /**
@@ -75,6 +82,7 @@ interface ManifestAsset {
   contentType: string;
   hash: string;
   url: string;
+  fileExtension?: string;
 }
 
 export interface ExpoManifest {
@@ -151,6 +159,7 @@ export function toManifest(update: StoredUpdate, baseUrl: string): ExpoManifest 
     key: asset.key,
     contentType: asset.contentType,
     hash: asset.hash,
+    ...(asset.fileExtension === undefined ? {} : { fileExtension: asset.fileExtension }),
     // Ścieżka jest już bezpieczna (powstała przy wgrywaniu), ale segmenty
     // kodujemy, bo nazwa pliku bywa hashem base64url — a ten zawiera `-` i `_`,
     // nieszkodliwe, oraz nic, co wymagałoby ucieczki. Kodowanie jest tu więc

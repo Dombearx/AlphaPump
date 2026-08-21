@@ -418,6 +418,29 @@ z wydaniem natywnym, do którego nikt jeszcze nie wypuścił poprawki. Aplikacja
 uruchamia wtedy paczkę wbudowaną w `.apk`. Tak samo kończy się uszkodzony opis
 wydania — i to jest celowe, bo alternatywą byłaby aplikacja, która nie wstaje.
 
+#### Dwa sposoby, na które paczka nie dojeżdża po cichu
+
+Oba wyglądają dla użytkownika tak samo — „Update ready, restart to apply",
+restart, brak zmian, to samo okno przy następnym otwarciu — i oba biorą się
+z opisu wydania, a nie z sieci.
+
+**Data wydania, nie identyfikator.** Klient nie porównuje identyfikatorów,
+żeby zdecydować, czy proponować paczkę: porównuje `createdAt` z datą zapamiętaną
+przy pobraniu. Wydanie wgrane ponownie z **tą samą treścią** ma ten sam
+identyfikator (liczy się z zawartości), więc telefon ma je już na dysku — ale
+z nową datą jest dla niego na zawsze „nowsze" od kopii, którą ma. Stąd
+`POST /ota` zachowuje `createdAt` wydania bieżącego, gdy identyfikator się nie
+zmienił, a telefon dodatkowo nie proponuje restartu do paczki, która już chodzi
+(`apps/mobile/src/update/pending.ts`).
+
+**`fileExtension` przy każdym zasobie.** Android czyta je z manifestu przez
+`getString`, więc brak kończy się **cichym** wyrzuceniem tego zasobu z wydania
+— paczka dojeżdża bez swoich obrazków i czcionek; iOS czyta je przez
+`requiredValue` i odrzuca wtedy cały manifest. Wyjątkiem jest sama paczka
+JavaScriptu: ta nie ma rozszerzenia i mieć nie powinna, bo telefon trzyma ją pod
+samym kluczem. `POST /ota` odmawia przyjęcia eksportu, w którym zasób nie ma
+rozszerzenia — nieudane wydanie jest lepsze niż wydanie, które dojeżdża niepełne.
+
 #### Co właściwie chodzi na telefonie
 
 Sekcja **Version** na ekranie konta. Numer pakietu (`versionName` i
@@ -440,9 +463,19 @@ aktualizacji wypisuje, co jest w tej chwili podawane dla każdego odcisku
 (identyfikator, `createdAt`, liczba plików), a `GET /apk` — jaki pakiet stoi
 w katalogu wydań.
 
+Z telefonu podpiętego kablem to samo widać w logu systemu — ale **nie** pod
+filtrem `ReactNativeJS:E`: `expo-updates` pisze pod własną etykietą i na
+poziomie informacyjnym, a nieudany start paczki nie jest wywaleniem procesu.
+
+```bash
+adb logcat -c && adb logcat -s expo-updates:V ExpoUpdates:V ReactNative:V \
+  ReactNativeJS:V AndroidRuntime:E
+```
+
 Kod: `apps/mobile/src/update/` (`manifest.ts` — kształt i porównanie wersji
-wydania natywnego, `ota.ts` i `expo.ts` — jedyne warstwy dotykające systemu,
-`use-update.ts` — wpięcie w cykl życia) i `src/ui/update-prompt.tsx`; po stronie
+wydania natywnego, `pending.ts` — czy restart w ogóle coś zmieni, `ota.ts`
+i `expo.ts` — jedyne warstwy dotykające systemu, `use-update.ts` — wpięcie
+w cykl życia) i `src/ui/update-prompt.tsx`; po stronie
 serwera `apps/api/src/updates/` i `apps/api/src/routes/updates.ts`. Trasa
 `/alphapump/download/*` nie wymaga zmian w `Caddyfile`: wpada do `file_server`,
 tak jak wszystko spoza listy `@api`. `/updates/*` wymaga — jest obsługiwana

@@ -28,15 +28,24 @@ import type { RunningBundle } from './running';
 export interface OtaState {
   /** Paczka pobrana i gotowa — zostaje uruchomić ponownie. */
   ready: boolean;
+  /**
+   * Identyfikator pobranej paczki; `null`, gdy klient go nie podał.
+   *
+   * Wychodzi stąd, bo bez niego nie da się odróżnić „jest coś nowego" od
+   * „serwer podaje to, co już chodzi" — a to drugie zdarza się naprawdę i daje
+   * okno, które wraca po każdym restarcie. Rozstrzyga o tym `pending.ts`.
+   */
+  downloadedId: string | null;
   /** Uruchamia pobraną paczkę. Proces startuje od nowa, więc nie wraca. */
   apply: () => void;
 }
 
 export function useOtaUpdate(): OtaState {
-  const { isUpdatePending } = Updates.useUpdates();
+  const { isUpdatePending, downloadedUpdate } = Updates.useUpdates();
 
   return {
     ready: isUpdatePending,
+    downloadedId: downloadedUpdate?.updateId ?? null,
     apply: () => {
       void Updates.reloadAsync().catch(() => {
         // Nieudany restart zostawia aplikację działającą na starej paczce —

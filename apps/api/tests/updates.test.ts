@@ -39,6 +39,7 @@ function storedUpdate(overrides: Partial<StoredUpdate> = {}): StoredUpdate {
         contentType: 'image/png',
         hash: 'Qw2Er4Ty6Ui8Op0As1Df3Gh5Jk7Lz9Xc0Vb2Nm4Qw6',
         path: 'assets/ab56b4d92b40713acc5af89985d4b786',
+        fileExtension: '.png',
       },
     ],
     ...overrides,
@@ -140,6 +141,13 @@ describe('manifest aktualizacji OTA', () => {
       url: `http://localhost:3000/alphapump/ota/${update.launchAsset.path}`,
     });
     expect(manifest.assets).toHaveLength(1);
+
+    // `fileExtension` przy zasobie nie jest ozdobą: Android czyta je przez
+    // `getString`, więc brak znaczy zasób **po cichu** wyrzucony z wydania,
+    // a iOS odrzuca wtedy cały manifest. Paczka JavaScriptu go nie ma i mieć
+    // nie powinna — telefon trzyma ją pod samym kluczem.
+    expect(manifest.assets[0]).toMatchObject({ fileExtension: '.png' });
+    expect(manifest.launchAsset).not.toHaveProperty('fileExtension');
 
     // Część `extensions` jest wymagana przez klienta nawet pusta — jej brak
     // kończy się odrzuceniem całej odpowiedzi.
