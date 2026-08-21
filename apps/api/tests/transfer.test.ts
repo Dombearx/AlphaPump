@@ -1,7 +1,7 @@
 /**
- * Eksport i import danych (etap 14).
+ * Eksport i import danych.
  *
- * Kryterium ukończenia etapu brzmi: kopia zostaje odtworzona do **czystej bazy**,
+ * Wymaganie brzmi: kopia zostaje odtworzona do **czystej bazy**,
  * a dane po odtworzeniu zgadzają się z oryginałem — łącznie z powiązaniami
  * autorów ćwiczeń i właścicieli serii. Ten plik sprawdza to wprost: stawia drugą,
  * pustą bazę, wgrywa do niej archiwum z pierwszej i porównuje postacie kanoniczne
@@ -169,7 +169,7 @@ describe('eksport', () => {
   });
 });
 
-describe('odtworzenie do czystej bazy — kryterium etapu 14', () => {
+describe('odtworzenie do czystej bazy', () => {
   it('dane po odtworzeniu zgadzają się z oryginałem', async () => {
     const source = await seedData();
     await source.harness.promoteToAdmin(source.owner);
@@ -195,7 +195,7 @@ describe('odtworzenie do czystej bazy — kryterium etapu 14', () => {
     const restored = await exportArchive(target.db, { kind: 'system' });
     expect(canonicalArchive(restored)).toEqual(canonicalArchive(archive));
 
-    // Powiązania sprawdzone jeszcze raz wprost, bo to one są w kryterium etapu.
+    // Powiązania sprawdzone jeszcze raz wprost, bo to one są sednem wymagania.
     const [restoredSet] = await target.db
       .select()
       .from(workoutSets)

@@ -1,5 +1,5 @@
 /**
- * Autoryzacja — kryterium ukończenia etapu 3 wprost:
+ * Autoryzacja. Zakres wprost:
  *
  * > można założyć konto, zalogować się oboma metodami, wygenerować token API
  * > i wykonać nim CRUD serii.

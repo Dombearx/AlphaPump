@@ -10,8 +10,8 @@
  * dlatego ponowne utworzenie zwraca istniejący wiersz i status 200, a nie 409.
  */
 
-import { slug, tagColor, tagId } from '@alphapump/core';
-import { and, asc, eq, isNull, or } from 'drizzle-orm';
+import { slug, tagColor, tagId, tagSchema } from '@alphapump/core';
+import { asc, eq, isNull } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { AppDependencies, AppEnvironment } from '../context.js';
@@ -23,8 +23,7 @@ import type { RouteSpec } from '../openapi.js';
 import { createTagBodySchema, idParamSchema, updateTagBodySchema } from '../schemas.js';
 import { tags } from '../schema.js';
 import { stampDelete, stampWrite } from '../sync-columns.js';
-import { TAG_IN_USE_MESSAGE, isTagInUse } from '../tag-usage.js';
-import { tagSchema } from '@alphapump/core';
+import { TAG_IN_USE_MESSAGE, TAG_RULES, findTagBySlug, isTagInUse } from '../domain/tags.js';
 
 const tagListSchema = z.array(tagSchema);
 
@@ -131,10 +130,7 @@ export function createTagRouter(dependencies: AppDependencies) {
       if (!existing || existing.deletedAt !== null) throw notFound('Tag nie istnieje');
 
       const newSlug = slug(name);
-      const [collision] = await db.select().from(tags).where(eq(tags.slug, newSlug)).limit(1);
-      if (collision && collision.id !== id) {
-        throw conflict('Tag o takiej nazwie już istnieje');
-      }
+      if (await findTagBySlug(db, newSlug, id)) throw conflict(TAG_RULES.nameTaken);
 
       // Identyfikator zostaje. Wylicza się z nazwy tylko **przy tworzeniu** —
       // po zmianie nazwy przestaje jej odpowiadać i tak ma być, bo inaczej
@@ -164,24 +160,4 @@ export function createTagRouter(dependencies: AppDependencies) {
   });
 
   return router;
-}
-
-/** Sprawdza, że wskazane tagi istnieją — wołane przy tworzeniu i edycji ćwiczeń. */
-export async function assertTagsExist(
-  dependencies: AppDependencies,
-  tagIds: readonly string[],
-): Promise<void> {
-  const unique = [...new Set(tagIds)];
-  if (unique.length === 0) return;
-
-  const rows = await dependencies.db
-    .select({ id: tags.id })
-    .from(tags)
-    .where(and(isNull(tags.deletedAt), or(...unique.map((id) => eq(tags.id, id)))));
-
-  const known = new Set(rows.map((row) => row.id));
-  const missing = unique.filter((id) => !known.has(id));
-  if (missing.length > 0) {
-    throw notFound(`Nie ma takich tagów: ${missing.join(', ')}`);
-  }
 }

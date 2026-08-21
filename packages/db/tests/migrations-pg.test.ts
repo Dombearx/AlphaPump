@@ -1,6 +1,6 @@
 /**
  * Migracje PostgreSQL na czystej bazie — pierwsza połowa kryterium ukończenia
- * etapu 2.
+ * czystej bazy.
  */
 
 import { sql } from 'drizzle-orm';

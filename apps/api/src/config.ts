@@ -93,13 +93,13 @@ const environmentSchema = z.object({
   TRIAGE_URL: z.string().optional(),
   TRIAGE_HTTP_TOKEN: z.string().optional(),
 
-  /* ------------------------------------------- warstwa semantyczna (etap 12) */
+  /* ------------------------------------------------------ warstwa semantyczna */
 
   /**
    * Wyłącznik **całej** warstwy semantycznej i LLM-owej. `false` cofa wykrywanie
-   * duplikatów do zachowania z etapu 8: ostrzeżenie liczone z samej pisowni.
+   * duplikatów do samej warstwy leksykalnej: ostrzeżenie liczone z pisowni.
    * Tworzenie ćwiczeń działa dalej bez zmian — to jest kryterium ukończenia
-   * etapu 12 i dlatego wyłącznik jest jedną zmienną, a nie ćwiczeniem
+   * produktu i dlatego wyłącznik jest jedną zmienną, a nie ćwiczeniem
    * z komentowania kodu.
    */
   LLM_ENABLED: z.stringbool().default(true),

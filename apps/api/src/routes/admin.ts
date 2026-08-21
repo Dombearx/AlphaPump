@@ -1,5 +1,5 @@
 /**
- * Endpointy panelu administracyjnego (etap 13).
+ * Endpointy panelu administracyjnego.
  *
  * Zakres jest dokładnie taki, jaki opisuje specyfikacja: zarządzanie
  * użytkownikami, podstawowe zarządzanie bazą ćwiczeń i tagów oraz podstawowy
@@ -10,7 +10,7 @@
  *
  * Ćwiczeniami i tagami panel zarządza **istniejącymi** endpointami: `PATCH` oraz
  * `DELETE /exercises/:id` dopuszczają administratora obok autora, a `PATCH`
- * i `DELETE /tags/:id` są zastrzeżone dla administratora od etapu 3. Dublowanie
+ * i `DELETE /tags/:id` są zastrzeżone dla administratora od początku. Dublowanie
  * ich pod `/admin` dałoby dwie ścieżki zapisu do tych samych wierszy — a więc
  * dwa miejsca, w których trzeba pamiętać o `server_seq`, tombstonie i regule
  * „tag używany przez ćwiczenia nie znika".

@@ -7,9 +7,9 @@
 
 import { clampRevision, resolveSyncConflict, slug, tagColor, tagId } from '@alphapump/core';
 import type { TagPush } from '@alphapump/core';
-import { and, eq, inArray, ne } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
+import { TAG_IN_USE_MESSAGE, TAG_RULES, findTagBySlug, isTagInUse } from '../../domain/tags.js';
 import { tags } from '../../schema.js';
-import { TAG_IN_USE_MESSAGE, isTagInUse } from '../../tag-usage.js';
 import { revisionOf, toSyncedTagDto } from '../rows.js';
 import { incomingRevision, isWrite, stampFrom, writeStamp, type PushContext } from './shared.js';
 
@@ -44,7 +44,7 @@ export async function applyTags(context: PushContext, incoming: readonly TagPush
     };
 
     if (!isAdmin && (decision === 'update' || decision === 'delete')) {
-      reject('Tag może zmieniać wyłącznie administrator');
+      reject(TAG_RULES.adminOnly);
       continue;
     }
 
@@ -66,14 +66,10 @@ export async function applyTags(context: PushContext, incoming: readonly TagPush
     }
 
     if (decision !== 'delete') {
-      // Tag jest bytem globalnym i jego identyfikator wynika ze sluga nazwy.
-      // Wiersz z tym samym slugiem, ale innym id, oznacza klienta, który zbudował
-      // identyfikator inaczej — przyjęcie go rozbiłoby globalną deduplikację.
-      const [collision] = await tx
-        .select()
-        .from(tags)
-        .where(and(eq(tags.slug, newSlug), ne(tags.id, row.id)))
-        .limit(1);
+      // Odrzucenie oddaje telefonowi **wiersz kolizyjny**, a nie ten z paczki —
+      // to jedyne miejsce, w którym push odsyła coś innego niż stan wiersza o tym
+      // samym id, więc nie idzie przez `reject`.
+      const collision = await findTagBySlug(tx, newSlug, row.id);
       if (collision) {
         context.record(
           'tag',
@@ -88,7 +84,7 @@ export async function applyTags(context: PushContext, incoming: readonly TagPush
       // sprawdzany — dokładnie jak przy ćwiczeniach. Zmiana nazwy tagu zostawia
       // id nietknięte (inaczej poprawienie literówki osierociłoby ćwiczenia).
       if (decision === 'insert' && row.id !== tagId(name)) {
-        context.record('tag', row.id, 'rejected', 'Identyfikator tagu nie wynika z jego nazwy');
+        reject(TAG_RULES.idNotFromName);
         continue;
       }
     }

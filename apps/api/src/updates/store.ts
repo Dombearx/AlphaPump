@@ -23,6 +23,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
+import { logger } from '../logger.js';
 import type { StoredUpdate, UpdatePlatform } from './protocol.js';
 
 /**
@@ -97,16 +98,16 @@ export async function readCurrentUpdate(
   try {
     parsed = JSON.parse(raw);
   } catch {
-    console.error(`Opis wydania OTA nie jest JSON-em: ${file}`);
+    logger.error('opis wydania OTA nie jest JSON-em', { file });
     return null;
   }
 
   const checked = storedUpdateSchema.safeParse(parsed);
   if (!checked.success) {
-    console.error(
-      `Opis wydania OTA jest niepoprawny (${file}): ` +
-        checked.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; '),
-    );
+    logger.error('opis wydania OTA jest niepoprawny', {
+      file,
+      problems: checked.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`),
+    });
     return null;
   }
 
@@ -115,10 +116,10 @@ export async function readCurrentUpdate(
   // kończy się wywaleniem aplikacji przy starcie — czyli awarią, po której nie
   // da się już nic zdalnie naprawić.
   if (checked.data.platform !== platform || checked.data.runtimeVersion !== runtimeVersion) {
-    console.error(
-      `Opis wydania OTA nie zgadza się ze swoim położeniem (${file}): ` +
-        `plik opisuje ${checked.data.platform}/${checked.data.runtimeVersion}`,
-    );
+    logger.error('opis wydania OTA nie zgadza się ze swoim położeniem', {
+      file,
+      describes: `${checked.data.platform}/${checked.data.runtimeVersion}`,
+    });
     return null;
   }
 

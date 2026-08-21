@@ -31,7 +31,7 @@
  * zostałby odrzucony — a to znaczy albo wywróconą transakcję pullu i kursor,
  * który nigdy nie rusza do przodu, albo cicho zgubiony wiersz.
  *
- * Rozwiązaniem jest **odroczenie**, nie usunięcie: transakcja pullu (etap 7)
+ * Rozwiązaniem jest **odroczenie**, nie usunięcie: transakcja pullu
  * ustawia `PRAGMA defer_foreign_keys = ON`, przez co SQLite przenosi
  * sprawdzenie na `COMMIT`. Kolejność wewnątrz paczki przestaje mieć znaczenie,
  * a niespójność faktyczna — taka, której nie domyka żaden wiersz z tej samej
@@ -87,6 +87,10 @@ export const users = sqliteTable(
   },
   (table) => [
     uniqueIndex('users_email_unique').on(table.email),
+    // Odpowiednik indeksu z Postgresa. Tabela jest na telefonie mała, ale
+    // parzystość schematów jest tu celem samym w sobie: rozjazd, którego nie
+    // widać, jest gorszy niż indeks, który nic nie kosztuje.
+    index('users_server_seq_idx').on(table.serverSeq),
     check('users_role_check', oneOf('role', USER_ROLES)),
   ],
 );

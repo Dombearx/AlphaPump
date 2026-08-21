@@ -1,5 +1,5 @@
 /**
- * Wykrywanie duplikatów ćwiczeń — warstwy serwerowe (etap 12).
+ * Wykrywanie duplikatów ćwiczeń — warstwy serwerowe.
  *
  * Wejście zbiorcze modułu. Reszta aplikacji woła stąd cztery rzeczy:
  * `findDuplicates` (odpowiedź dla ekranu tworzenia ćwiczenia), `refreshEmbedding`

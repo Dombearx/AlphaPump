@@ -1,5 +1,5 @@
 /**
- * Synchronizacja — kryterium ukończenia etapu 4.
+ * Synchronizacja: push, pull i rozstrzyganie konfliktów.
  *
  * „Testy integracyjne symulujące dwa urządzenia pracujące offline potwierdzają
  * wszystkie trzy reguły konfliktów, w tym scenariusz «jedno usuwa, drugie

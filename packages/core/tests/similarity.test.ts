@@ -1,5 +1,5 @@
 /**
- * Ostrzeganie o podobnych ćwiczeniach — kryterium etapu 8 w jego czystej części.
+ * Ostrzeganie o podobnych ćwiczeniach — warstwa leksykalna w jej czystej części.
  *
  * Testy pilnują dwóch rzeczy naraz: że duplikat zostaje znaleziony i że nazwy
  * dzielące wyłącznie ogon znaków **nie** są uznawane za podobne. Druga część

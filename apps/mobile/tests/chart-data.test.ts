@@ -1,5 +1,5 @@
 /**
- * Wykresy — kryterium ukończenia etapu 10: „wykres ćwiczenia odpowiada jego
+ * Wykresy. Wymaganie: „wykres ćwiczenia odpowiada jego
  * typowi logowania".
  *
  * Sprawdzane jest jedno i drugie: że zestaw metryk wynika z typu logowania

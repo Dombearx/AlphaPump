@@ -11,17 +11,18 @@
  * nie ma.
  */
 
+import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
-import { logger } from 'hono/logger';
 import type { AppConfig } from './config.js';
 import type { AppDependencies, AppEnvironment } from './context.js';
 import { ApiError, toErrorResponse } from './errors.js';
+import { logger } from './logger.js';
 import { DERIVED_RECOMPUTATIONS } from './derived/index.js';
 import { authenticate } from './middleware/authenticate.js';
 import { buildOpenApiDocument, type RouteSpec } from './openapi.js';
-import { createAdminLibraryRouter, adminLibraryRoutes } from './routes/admin-library.js';
+import { createAdminLibraryRouter, adminLibraryRoutes } from './routes/library/index.js';
 import { createAdminRouter, adminRoutes } from './routes/admin.js';
 import { createCycleRouter, cycleRoutes } from './routes/cycles.js';
 import { createDuplicateRouter, duplicateRoutes } from './routes/duplicates.js';
@@ -96,7 +97,31 @@ export function createApp(dependencies: AppDependencies, config: AppConfig) {
     derived: dependencies.derived ?? DERIVED_RECOMPUTATIONS,
   };
 
-  if (config.nodeEnv !== 'test') app.use('*', logger());
+  /**
+   * Identyfikator żądania i jeden wpis logu na żądanie.
+   *
+   * Identyfikator wraca do klienta nagłówkiem `x-request-id`, więc zgłoszenie
+   * „nie zapisała mi się seria o 19:40" da się przełożyć na konkretny wpis
+   * w `docker logs` — wcześniej nie było czego szukać. Testy tego nie logują:
+   * dwieście linii JSON-a na przebieg nie mówi nic, czego nie mówi wynik testu.
+   */
+  app.use('*', async (context, next) => {
+    const requestId = context.req.header('x-request-id') ?? randomUUID();
+    context.set('requestId', requestId);
+    context.header('x-request-id', requestId);
+
+    if (config.nodeEnv === 'test') return next();
+
+    const startedAt = Date.now();
+    await next();
+    logger.info('żądanie', {
+      requestId,
+      method: context.req.method,
+      path: context.req.path,
+      status: context.res.status,
+      durationMs: Date.now() - startedAt,
+    });
+  });
 
   // Jedno przejście, dwie wartości. Dwa osobne `app.use` nie zadziałałyby:
   // Hono uruchamia **wszystkie** pasujące warstwy pośrednie, więc ta ogólna
@@ -123,11 +148,28 @@ export function createApp(dependencies: AppDependencies, config: AppConfig) {
   );
 
   app.onError((error, context) => {
+    const requestId = context.get('requestId');
+
     if (error instanceof ApiError) {
       return context.json(toErrorResponse(error), error.status as 400);
     }
-    console.error('Nieobsłużony błąd żądania', error);
-    return context.json(toErrorResponse(new ApiError('internal', 'Wewnętrzny błąd serwera')), 500);
+
+    logger.error('nieobsłużony błąd żądania', {
+      requestId,
+      method: context.req.method,
+      path: context.req.path,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+
+    // Identyfikator w komunikacie, żeby użytkownik mógł go przepisać do
+    // zgłoszenia zamiast opisywać, co robił o 19:40.
+    return context.json(
+      toErrorResponse(
+        new ApiError('internal', `Wewnętrzny błąd serwera (identyfikator żądania: ${requestId})`),
+      ),
+      500,
+    );
   });
 
   app.notFound((context) =>

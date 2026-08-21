@@ -233,3 +233,41 @@ class _CompletedFake:
         self.returncode = returncode
         self.stdout = stdout
         self.stderr = stderr
+
+
+def test_all_three_integrity_fields_are_checked(releases: Path):
+    """The manifest requires md5 and size, so leaving them unread made them decoration.
+
+    A number nobody verifies is a number nobody keeps correct, and the next
+    reader cannot tell which of the three to trust.
+    """
+    content = b"pakiet, ktory nie zgadza sie z opisem"
+    base = {
+        "versionCode": 71,
+        "versionName": "0.1.0",
+        "file": "alphapump-71.apk",
+        "size": len(content),
+        "md5": hashlib.md5(content).hexdigest(),
+        "sha256": hashlib.sha256(content).hexdigest(),
+    }
+    files = {"apk": ("alphapump-71.apk", content, "application/vnd.android.package-archive")}
+
+    with TestClient(update_server.app) as client:
+        wrong_md5 = client.post(
+            "/apk",
+            headers=AUTHORIZED,
+            data={"manifest": json.dumps({**base, "md5": "0" * 32})},
+            files=files,
+        )
+        wrong_size = client.post(
+            "/apk",
+            headers=AUTHORIZED,
+            data={"manifest": json.dumps({**base, "size": len(content) + 1})},
+            files=files,
+        )
+
+    assert wrong_md5.status_code == 400
+    assert "md5" in wrong_md5.text
+    assert wrong_size.status_code == 400
+    assert "size" in wrong_size.text
+    assert list(releases.glob("*.apk")) == [], "nothing may land when the description is wrong"

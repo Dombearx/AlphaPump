@@ -5,7 +5,7 @@
  * CRUD serii" i to z niego korzysta bot Discord.
  *
  * Serie są **prywatne**: każde zapytanie jest zawężone do właściciela, także
- * dla administratora. Rekordy globalne i rankingi (etap 11) pokazują na
+ * dla administratora. Rekordy globalne i rankingi pokazują na
  * zewnątrz wyłącznie wartość, nick, datę i notatkę — nigdy historii serii.
  *
  * Pomiary są walidowane względem typu logowania **ćwiczenia**, a nie samego

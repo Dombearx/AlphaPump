@@ -24,6 +24,8 @@ export interface Principal {
 export interface AppEnvironment {
   Variables: {
     principal: Principal;
+    /** Identyfikator żądania — wraca nagłówkiem `x-request-id` i wchodzi do logu. */
+    requestId: string;
   };
   Bindings: Record<string, never>;
 }
@@ -40,7 +42,7 @@ export interface AppDependencies {
    */
   derived?: readonly DerivedRecomputation[];
   /**
-   * Warstwy semantyczna i LLM-owa wykrywania duplikatów (etap 12). Pominięcie
+   * Warstwy semantyczna i LLM-owa wykrywania duplikatów. Pominięcie
    * pola znaczy **warstwy wyłączone** — odwrotnie niż przy `derived`, i jest to
    * asymetria zamierzona: brak przeliczenia rekordów jest cichym błędem
    * poprawności, a warstwa LLM włączona przez przeoczenie to wychodzące żądania

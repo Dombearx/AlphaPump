@@ -1,0 +1,1 @@
+CREATE INDEX `users_server_seq_idx` ON `users` (`server_seq`);

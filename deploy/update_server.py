@@ -379,7 +379,14 @@ async def publish_release(
 
     # Written under a temporary name and moved into place, so a download that
     # dies halfway cannot leave a truncated `.apk` at the address phones fetch.
+    #
+    # All three of the manifest's integrity fields are checked, not just the
+    # SHA-256. They are required of the manifest, so leaving two of them unread
+    # made them decoration -- a number nobody verifies is a number nobody keeps
+    # correct, and the next reader cannot tell which of the three to trust.
     digest = hashlib.sha256()
+    legacy = hashlib.md5()
+    written = 0
     with tempfile.NamedTemporaryFile(
         dir=directory, delete=False, suffix=".part"
     ) as staged:
@@ -387,6 +394,8 @@ async def publish_release(
         try:
             while chunk := await apk.read(CHUNK_BYTES):
                 digest.update(chunk)
+                legacy.update(chunk)
+                written += len(chunk)
                 staged.write(chunk)
         except BaseException:
             # A client that disappears mid-upload, or a shutdown signal, must
@@ -395,14 +404,19 @@ async def publish_release(
             staging.unlink(missing_ok=True)
             raise
 
+    mismatches = []
     received = digest.hexdigest()
-    if received != described["sha256"].lower():
+    if received != str(described["sha256"]).lower():
+        mismatches.append(f"sha256: manifest says {described['sha256']}, file is {received}")
+    received_md5 = legacy.hexdigest()
+    if received_md5 != str(described["md5"]).lower():
+        mismatches.append(f"md5: manifest says {described['md5']}, file is {received_md5}")
+    if written != described["size"]:
+        mismatches.append(f"size: manifest says {described['size']}, file is {written}")
+
+    if mismatches:
         staging.unlink(missing_ok=True)
-        expected = described["sha256"]
-        raise HTTPException(
-            status_code=400,
-            detail=f"Checksum mismatch: manifest says {expected}, file is {received}",
-        )
+        raise HTTPException(status_code=400, detail="; ".join(mismatches))
 
     staging.chmod(0o644)
     staging.replace(directory / name)
@@ -444,6 +458,9 @@ def _validated_manifest(raw: str) -> dict[str, Any]:
         raise HTTPException(
             status_code=400, detail="versionCode must be a positive integer"
         )
+
+    if not isinstance(described["size"], int) or described["size"] < 0:
+        raise HTTPException(status_code=400, detail="size must be a non-negative integer")
 
     # The filename becomes a path under the release directory, so it is matched
     # against the shape the workflow produces rather than merely stripped of

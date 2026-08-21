@@ -50,7 +50,7 @@ export interface RemoteReader {
   globalRecords(exerciseId: string): Promise<GlobalRecord[]>;
   ranking(metric: RankingMetric): Promise<RankingEntry[]>;
   /**
-   * Dokładniejsze wykrywanie duplikatów ćwiczeń (etap 12).
+   * Dokładniejsze wykrywanie duplikatów ćwiczeń — warstwa serwerowa.
    *
    * Trzeci odczyt sieciowy w aplikacji i jedyny, którego brak **nic nie psuje**:
    * ostrzeżenie o podobnych ćwiczeniach liczy się lokalnie z pisowni i działa

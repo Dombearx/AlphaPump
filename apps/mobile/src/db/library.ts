@@ -1,7 +1,7 @@
 /**
  * Słownik: tagi i ćwiczenia. Zapis lokalny, kolejka wysyłki, zero sieci.
  *
- * Wszystko tutaj musi działać offline — to jest kryterium ukończenia etapu 8.
+ * Wszystko tutaj musi działać offline — to jest wymaganie produktu.
  * Ćwiczenie utworzone w trybie samolotowym ma od razu istnieć w bibliotece,
  * dać się wybrać do serii i pojechać na serwer, gdy łączność wróci.
  *

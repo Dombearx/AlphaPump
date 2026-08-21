@@ -4,7 +4,7 @@
  * Różnice względem dialektu SQLite są celowe i sprowadzają się do trzech rzeczy:
  *
  * 1. **Użytkownicy.** Tu mieszka pełna tabela kont, zgodna z układem pól
- *    better-auth (etap 3 dokłada do niej sesje, konta OAuth i klucze API).
+ *    better-auth (sesje, konta OAuth i klucze API są w `auth-schema.ts`).
  *    Telefon trzyma jedynie okrojony cache użytkowników, bo potrzebuje nicków
  *    do rekordów globalnych, a nie danych logowania.
  * 2. **`server_seq`.** Na serwerze jest `NOT NULL` i nadawany z sekwencji — to
@@ -15,6 +15,9 @@
  *
  * Reszta — tabele, kolumny, typy i sens pól — jest identyczna po obu stronach
  * i pilnuje tego test parzystości.
+ *
+ * Dodajesz kolumnę? Lista kontrolna jest w `packages/db/DODAWANIE-KOLUMNY.md` —
+ * jedno pole domenowe dotyka dziewięciu miejsc i to nie jest liczba do zapamiętania.
  */
 
 import { GOAL_METRICS, LOGGING_TYPES, USER_ROLES } from '@alphapump/core';
@@ -168,7 +171,7 @@ export const exercises = pgTable(
     index('exercises_primary_tag_idx').on(table.primaryTagId),
     index('exercises_server_seq_idx').on(table.serverSeq),
     /**
-     * Warstwa leksykalna wykrywania duplikatów (etap 12). Indeks trigramowy po
+     * Warstwa leksykalna wykrywania duplikatów. Indeks trigramowy po
      * slugu, a nie po nazwie: slug jest już znormalizowany — bez ogonków, bez
      * wielkich liter — więc „lawka" i „Ławka" trafiają w te same trigramy bez
      * dokładania `unaccent` do zapytania.
@@ -323,7 +326,7 @@ export const cycleGoals = pgTable(
   ],
 );
 
-/* --------------------------------------------------- rekordy globalne (etap 11) */
+/* ------------------------------------------------------- rekordy globalne */
 
 /**
  * Rekord globalny ćwiczenia — front Pareto po seriach **wszystkich** użytkowników.
@@ -379,7 +382,7 @@ export const exerciseRecords = pgTable(
   ],
 );
 
-/* ------------------------------------- warstwa semantyczna (etap 12) --------- */
+/* --------------------------------------------------- warstwa semantyczna --- */
 
 /**
  * Embedding nazwy ćwiczenia — warstwa 2 wykrywania duplikatów.

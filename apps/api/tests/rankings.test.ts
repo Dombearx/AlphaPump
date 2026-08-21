@@ -1,5 +1,5 @@
 /**
- * Rekordy globalne i rankingi — kryterium ukończenia etapu 11.
+ * Rekordy globalne i rankingi.
  *
  * Sprawdzane są trzy rzeczy, wszystkie wprost z planu:
  *

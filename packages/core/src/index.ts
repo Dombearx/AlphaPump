@@ -27,3 +27,4 @@ export * from './transfer.js';
 export * from './fitnotes.js';
 export * from './admin.js';
 export * from './library-admin.js';
+export * from './feedback.js';

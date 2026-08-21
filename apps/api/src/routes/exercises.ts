@@ -15,7 +15,7 @@
  * nowe ćwiczenie.
  *
  * Zapis dokłada jeszcze jedną rzecz, niewidoczną w odpowiedzi: **przeliczenie
- * embeddingu** nazwy (etap 12). Dzieje się to po zapisie i nie ma prawa go
+ * embeddingu** nazwy. Dzieje się to po zapisie i nie ma prawa go
  * wywrócić — ćwiczenie bez wektora jest normalnym stanem, znajdzie się warstwą
  * leksykalną i wektor dostanie przy następnej edycji albo przy zadaniu
  * porządkowym. Odwrotna kolejność, czyli zapis dopiero po odpowiedzi dostawcy
@@ -30,8 +30,16 @@ import { SYSTEM_USER } from '@alphapump/db';
 import type { AppDependencies, AppEnvironment, Principal } from '../context.js';
 import { toExerciseDto } from '../dto.js';
 import { NO_LAYERS, refreshEmbedding } from '../duplicates/index.js';
+import {
+  EXERCISE_IN_USE_MESSAGE,
+  EXERCISE_RULES,
+  exerciseNameTaken,
+  isExerciseInUse,
+  mayModifyExercise,
+  repeatsPrimaryTag,
+} from '../domain/exercises.js';
+import { TAG_RULES, missingTagIds } from '../domain/tags.js';
 import { conflict, forbidden, notFound } from '../errors.js';
-import { EXERCISE_IN_USE_MESSAGE, isExerciseInUse } from '../exercise-usage.js';
 import { validateJson, validateParam, validateQuery } from '../middleware/validate.js';
 import type { RouteSpec } from '../openapi.js';
 import {
@@ -42,7 +50,6 @@ import {
 } from '../schemas.js';
 import { exerciseTags, exercises } from '../schema.js';
 import { stampDelete, stampWrite } from '../sync-columns.js';
-import { assertTagsExist } from './tags.js';
 
 const exerciseListSchema = z.array(exerciseSchema);
 
@@ -107,9 +114,20 @@ export const exerciseRoutes: RouteSpec[] = [
 ];
 
 function assertMayModify(exercise: { authorId: string }, principal: Principal): void {
-  if (principal.role === 'admin') return;
-  if (exercise.authorId === principal.id) return;
-  throw forbidden('Ćwiczenie może zmieniać wyłącznie jego autor albo administrator');
+  if (!mayModifyExercise(exercise.authorId, principal)) throw forbidden(EXERCISE_RULES.notAuthor);
+}
+
+/** Reguły wspólne dla tworzenia i edycji — jedno miejsce, dwa handlery. */
+async function assertTagsUsable(
+  db: AppDependencies['db'],
+  primaryTagId: string,
+  additionalTagIds: readonly string[],
+): Promise<void> {
+  if (repeatsPrimaryTag(primaryTagId, additionalTagIds)) {
+    throw conflict(EXERCISE_RULES.duplicateTag);
+  }
+  const missing = await missingTagIds(db, [primaryTagId, ...additionalTagIds], { aliveOnly: true });
+  if (missing.length > 0) throw notFound(TAG_RULES.missing(missing));
 }
 
 export function createExerciseRouter(dependencies: AppDependencies) {
@@ -193,10 +211,7 @@ export function createExerciseRouter(dependencies: AppDependencies) {
     const principal = context.get('principal');
     const input = context.req.valid('json');
 
-    if (input.additionalTagIds.includes(input.primaryTagId)) {
-      throw conflict('Tag główny nie może powtarzać się wśród tagów dodatkowych');
-    }
-    await assertTagsExist(dependencies, [input.primaryTagId, ...input.additionalTagIds]);
+    await assertTagsUsable(db, input.primaryTagId, input.additionalTagIds);
 
     const id = exerciseId(principal.id, input.name, input.gym);
     const existing = await loadOne(id);
@@ -246,32 +261,16 @@ export function createExerciseRouter(dependencies: AppDependencies) {
 
       const primaryTagId = input.primaryTagId ?? existing.row.primaryTagId;
       const additionalTagIds = input.additionalTagIds ?? existing.additionalTagIds;
-      if (additionalTagIds.includes(primaryTagId)) {
-        throw conflict('Tag główny nie może powtarzać się wśród tagów dodatkowych');
-      }
-      await assertTagsExist(dependencies, [primaryTagId, ...additionalTagIds]);
+      await assertTagsUsable(db, primaryTagId, additionalTagIds);
 
       const name = input.name ?? existing.row.name;
       const newSlug = slug(name);
       const gym = input.gym === undefined ? existing.row.gym : input.gym;
       // Id nie zmienia się przy edycji (patrz komentarz niżej), ale wiersz musi
-      // dalej być jedyny w obrębie „nazwa + siłownia" tego autora.
-      if (newSlug !== existing.row.slug || gym !== existing.row.gym) {
-        const [collision] = await db
-          .select({ id: exercises.id })
-          .from(exercises)
-          .where(
-            and(
-              eq(exercises.authorId, existing.row.authorId),
-              eq(exercises.slug, newSlug),
-              gym === null ? isNull(exercises.gym) : eq(exercises.gym, gym),
-            ),
-          )
-          .limit(1);
-        if (collision && collision.id !== id) {
-          throw conflict('Autor ma już ćwiczenie o takiej nazwie');
-        }
-      }
+      // dalej być jedyny w obrębie „nazwa + siłownia" tego autora — tę samą
+      // unikalność sprawdza push, więc zapytanie mieszka w warstwie reguł.
+      const identity = { authorId: existing.row.authorId, slug: newSlug, gym, exceptId: id };
+      if (await exerciseNameTaken(db, identity)) throw conflict(EXERCISE_RULES.nameTaken);
 
       // Identyfikator zostaje niezmieniony, choć nazwa się zmieniła. Wylicza się
       // z nazwy wyłącznie **przy tworzeniu** — inaczej poprawienie literówki

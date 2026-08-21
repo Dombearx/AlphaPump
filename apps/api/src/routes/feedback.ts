@@ -21,9 +21,10 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import type { AppEnvironment } from '../context.js';
 import { rateLimited } from '../errors.js';
+import { logger } from '../logger.js';
 import { validateJson } from '../middleware/validate.js';
 import type { RouteSpec } from '../openapi.js';
-import { submitFeedbackBodySchema } from '../schemas.js';
+import { submitFeedbackBodySchema } from '@alphapump/core';
 
 const feedbackResponseSchema = z.object({ ok: z.literal(true) });
 
@@ -134,7 +135,9 @@ export function createFeedbackRouter(
           }),
       );
     } catch (error) {
-      console.warn('Nie udało się posprzątać zgłoszeń zwrotnych:', error);
+      logger.warn('nie udało się posprzątać zgłoszeń zwrotnych', {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   };
 

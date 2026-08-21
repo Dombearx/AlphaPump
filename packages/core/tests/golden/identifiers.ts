@@ -9,6 +9,13 @@
  *
  * Jeżeli test korzystający z tego pliku zaczyna padać, to nie jest test do
  * poprawienia. To sygnał, że zmiana wymaga świadomej decyzji i migracji danych.
+ *
+ * **Kolorów tu nie ma i być nie powinno.** Były, i kosztowało to tablicę ośmiu
+ * wyjątków wpisanych w `tag-color.ts` tylko po to, żeby ten plik dalej
+ * przechodził. Kolor jest zapisany w kolumnie `tags.color`, więc istniejące tagi
+ * mają swój niezależnie od wzoru — zmiana wzoru dotyczy wyłącznie tagów
+ * tworzonych od tej chwili i niczego nie osierocą. Kontraktem są slug
+ * i identyfikator: to one wchodzą w klucze obce.
  */
 
 /** Autor spoza konta systemowego — stały, żeby wartości poniżej były powtarzalne. */
@@ -18,49 +25,42 @@ export interface GoldenTag {
   name: string;
   slug: string;
   id: string;
-  color: string;
 }
 
 export const GOLDEN_TAGS: readonly GoldenTag[] = [
-  { name: 'Biceps', slug: 'biceps', id: 'd939750b-cb23-5e32-b7c7-d87be1418613', color: '#06b6d4' },
-  { name: 'biceps', slug: 'biceps', id: 'd939750b-cb23-5e32-b7c7-d87be1418613', color: '#06b6d4' },
-  { name: 'BICEPS', slug: 'biceps', id: 'd939750b-cb23-5e32-b7c7-d87be1418613', color: '#06b6d4' },
+  { name: 'Biceps', slug: 'biceps', id: 'd939750b-cb23-5e32-b7c7-d87be1418613' },
+  { name: 'biceps', slug: 'biceps', id: 'd939750b-cb23-5e32-b7c7-d87be1418613' },
+  { name: 'BICEPS', slug: 'biceps', id: 'd939750b-cb23-5e32-b7c7-d87be1418613' },
   {
     name: 'Klatka piersiowa',
     slug: 'klatka-piersiowa',
     id: '31b7576b-1091-52f1-b991-e66d3b141fd5',
-    color: '#10b981',
   },
   {
     name: 'Nogi – przód',
     slug: 'nogi-przod',
     id: 'f165baf1-8a0d-564a-93e7-c24547a70c27',
-    color: '#a3e635',
   },
   {
     name: 'Grzbiet',
     slug: 'grzbiet',
     id: 'f5aebe6b-7bf2-5c41-b865-7ca39117e52e',
-    color: '#fb7185',
   },
-  { name: 'Łydki', slug: 'lydki', id: '3691d807-6e16-5395-b98e-33dd525cbcd9', color: '#22c55e' },
+  { name: 'Łydki', slug: 'lydki', id: '3691d807-6e16-5395-b98e-33dd525cbcd9' },
   {
     name: 'Ćwiczenia złożone',
     slug: 'cwiczenia-zlozone',
     id: '008279e7-2a06-59be-bec6-eee223a5cffa',
-    color: '#f59e0b',
   },
   {
     name: 'Triceps / ramię',
     slug: 'triceps-ramie',
     id: 'e3d2ebd4-57ba-5c5c-b95d-333e44132d22',
-    color: '#14b8a6',
   },
   {
     name: '  Barki  ',
     slug: 'barki',
     id: '4793ede6-ee6f-5160-bd55-22c14d4d068b',
-    color: '#fb7185',
   },
 ];
 

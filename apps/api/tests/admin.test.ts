@@ -1,7 +1,7 @@
 /**
- * Endpointy panelu administracyjnego (etap 13).
+ * Endpointy panelu administracyjnego.
  *
- * Kryterium ukończenia etapu brzmi: administrator wykonuje wszystkie operacje
+ * Wymaganie brzmi: administrator wykonuje wszystkie operacje
  * z zakresu specyfikacji **bez sięgania do bazy**. Testy przechodzą więc kolejno
  * przez ten zakres — konta, ćwiczenia, tagi, wgląd w dane — i pilnują dwóch
  * blokad, które chronią administratora od siebie samego: nie da się zablokować

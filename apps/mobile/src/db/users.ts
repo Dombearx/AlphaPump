@@ -3,7 +3,7 @@
  *
  * Telefon trzyma konta z dwóch powodów: ćwiczenie ma autora, a rekord globalny
  * ma nick — i jedno, i drugie ma się wyświetlić bez sieci. Właściciel urządzenia
- * trafia tu przy logowaniu, reszta przyjeżdża pullem (etap 7).
+ * trafia tu przy logowaniu, reszta przyjeżdża pullem.
  *
  * Zapis własnego konta przy logowaniu nie jest kosmetyką: to on sprawia, że
  * ćwiczenia tworzone lokalnie mają na co wskazywać kluczem obcym `author_id`,

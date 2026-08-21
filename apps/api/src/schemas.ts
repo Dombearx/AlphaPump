@@ -107,24 +107,10 @@ export const listCyclesQuerySchema = z.object({
 /* --------------------------------------------------------------- zgłoszenia */
 
 /**
- * Jeden wpis z bufora logów telefonu — patrz `apps/mobile/src/app-log.ts`.
- * `at` jest napisem, nie datą: idzie do pliku bez przeliczeń, dokładnie tak,
- * jak zapisał go telefon.
+ * Kształt zgłoszenia opisuje `@alphapump/core` — tym samym schematem waliduje je
+ * serwer i przycina telefon. Wcześniej limity były zapisane po obu stronach
+ * osobno, a ich zgodność utrzymywały komentarze.
  */
-const feedbackLogEntrySchema = z.object({
-  level: z.enum(['log', 'warn', 'error']),
-  message: z.string().max(2000),
-  at: z.string(),
-});
-
-export const FEEDBACK_MESSAGE_MAX_LENGTH = 2000;
-/** Zgodne z buforem telefonu (`RECENT_LOG_LIMIT` w `app-log.ts`) — nadmiar jest cudzym błędem, nie naszym. */
-export const FEEDBACK_LOG_LIMIT = 30;
-
-export const submitFeedbackBodySchema = z.object({
-  message: z.string().trim().min(1).max(FEEDBACK_MESSAGE_MAX_LENGTH),
-  logs: z.array(feedbackLogEntrySchema).max(FEEDBACK_LOG_LIMIT).default([]),
-});
 
 /* ------------------------------------------------------------------ wspólne */
 

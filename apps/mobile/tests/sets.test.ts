@@ -1,5 +1,5 @@
 /**
- * Zapisywanie serii — kryterium ukończenia etapu 6.
+ * Zapisywanie serii w bazie lokalnej.
  *
  * Testy jadą po prawdziwym schemacie lokalnym i **nigdy nie dotykają sieci**.
  * To jest sedno: cały przepływ ma działać w trybie samolotowym, łącznie

@@ -391,7 +391,7 @@ export function planArchiveIdentity(
 /**
  * Postać kanoniczna archiwum — do porównania „przed" z „po odtworzeniu".
  *
- * Kryterium ukończenia etapu 14 brzmi: dane po odtworzeniu zgadzają się
+ * Wymaganie brzmi: dane po odtworzeniu zgadzają się
  * z oryginałem, **łącznie z powiązaniami autorów ćwiczeń i właścicieli serii**.
  * Porównanie surowych obiektów tego nie sprawdza, bo różnią się rzeczami bez
  * znaczenia: kolejnością wierszy z bazy i znacznikiem `exportedAt`, który przy

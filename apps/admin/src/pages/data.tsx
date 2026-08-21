@@ -1,5 +1,5 @@
 /**
- * Eksport i import danych systemowych (etap 14 od strony panelu).
+ * Eksport i import danych systemowych od strony panelu.
  *
  * To ten sam plik, którym operuje cron kopii zapasowych, i ta sama ścieżka kodu.
  * Panel jest tu wygodą, nie osobnym mechanizmem — dlatego ekran mówi wprost, co

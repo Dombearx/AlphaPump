@@ -1,7 +1,7 @@
 /**
- * Wykrywanie duplikatów — etap 12 w całości, na prawdziwym Postgresie.
+ * Wykrywanie duplikatów — trzy warstwy w całości, na prawdziwym Postgresie.
  *
- * Kryterium ukończenia etapu ma dwie połowy i obie są tu sprawdzane:
+ * Wymaganie ma dwie połowy i obie są tu sprawdzane:
  *
  * 1. **„martwy ciąg" znajduje „deadlift".** Tego warstwa leksykalna nie potrafi
  *    i nie ma potrafić — te nazwy nie dzielą ani jednego trigramu. Test podstawia
@@ -156,7 +156,7 @@ describe('warstwa leksykalna (warstwa wyłączona)', () => {
     expect(names).toContain('Martwy ciąg');
     // …a „Deadlift", czyli ten sam ruch pod inną nazwą, nie — te dwa napisy nie
     // dzielą ani jednego trigramu. To jest granica warstwy 1 i dokładnie ta
-    // granica, po którą wchodzi etap 12.
+    // granica, po którą wchodzi warstwa semantyczna.
     expect(names).not.toContain('Deadlift');
   });
 
@@ -215,7 +215,7 @@ describe('warstwa hybrydowa i re-ranker', () => {
     ]);
   });
 
-  it('„martwy ciąg" znajduje „deadlift" — kryterium etapu 12', async () => {
+  it('„martwy ciąg" znajduje „deadlift" — sedno warstwy semantycznej', async () => {
     const response = await similar(context, 'Martwy ciąg');
 
     expect(response.status).toBe(200);

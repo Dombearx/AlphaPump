@@ -29,9 +29,17 @@ import {
   SYSTEM_USER_ID,
 } from '@alphapump/core';
 import type { ExercisePush } from '@alphapump/core';
-import { and, asc, eq, inArray, isNull, ne } from 'drizzle-orm';
-import { EXERCISE_IN_USE_MESSAGE, isExerciseInUse } from '../../exercise-usage.js';
-import { exerciseTags, exercises, tags } from '../../schema.js';
+import { asc, eq, inArray } from 'drizzle-orm';
+import {
+  EXERCISE_IN_USE_MESSAGE,
+  EXERCISE_RULES,
+  exerciseNameTaken,
+  isExerciseInUse,
+  mayModifyExercise,
+  repeatsPrimaryTag,
+} from '../../domain/exercises.js';
+import { TAG_RULES, missingTagIds } from '../../domain/tags.js';
+import { exerciseTags, exercises } from '../../schema.js';
 import { revisionOf, toSyncedExerciseDto } from '../rows.js';
 import { incomingRevision, isWrite, stampFrom, writeStamp, type PushContext } from './shared.js';
 
@@ -78,8 +86,8 @@ export async function applyExercises(
 
     const authorId = existing?.authorId ?? row.authorId;
     const missingBuiltIn = !existing && row.authorId === SYSTEM_USER_ID && row.deletedAt === null;
-    if (!context.isAdmin && !missingBuiltIn && authorId !== context.principal.id) {
-      reject('Ćwiczenie może zmieniać wyłącznie jego autor albo administrator');
+    if (!missingBuiltIn && !mayModifyExercise(authorId, context.principal)) {
+      reject(EXERCISE_RULES.notAuthor);
       continue;
     }
 
@@ -119,41 +127,31 @@ export async function applyExercises(
     // Typ logowania jest ustalany raz przy tworzeniu. Zmiana osierociłaby
     // historyczne serie, które przestałyby pasować do własnego ćwiczenia.
     if (existing && row.loggingType !== existing.loggingType) {
-      reject('Typ logowania ćwiczenia jest nieedytowalny');
+      reject(EXERCISE_RULES.loggingTypeFrozen);
       continue;
     }
 
-    const wantedTagIds = [row.primaryTagId, ...row.additionalTagIds];
-    if (new Set(wantedTagIds).size !== wantedTagIds.length) {
-      reject('Tag główny nie może powtarzać się wśród tagów dodatkowych');
+    if (repeatsPrimaryTag(row.primaryTagId, row.additionalTagIds)) {
+      reject(EXERCISE_RULES.duplicateTag);
       continue;
     }
-    const missingTags = await findMissingTags(tx, wantedTagIds);
-    if (missingTags.length > 0) {
-      reject(`Nie ma takich tagów: ${missingTags.join(', ')}`);
+    const missing = await missingTagIds(tx, [row.primaryTagId, ...row.additionalTagIds], {
+      aliveOnly: false,
+    });
+    if (missing.length > 0) {
+      reject(TAG_RULES.missing(missing));
       continue;
     }
 
     const newSlug = slug(row.name);
     if (decision === 'insert' && row.id !== deterministicExerciseId(authorId, row.name, row.gym)) {
-      reject('Identyfikator ćwiczenia nie wynika z pary autor + nazwa (+ siłownia)');
+      reject(EXERCISE_RULES.idNotFromName);
       continue;
     }
 
-    const [collision] = await tx
-      .select({ id: exercises.id })
-      .from(exercises)
-      .where(
-        and(
-          eq(exercises.authorId, authorId),
-          eq(exercises.slug, newSlug),
-          row.gym === null ? isNull(exercises.gym) : eq(exercises.gym, row.gym),
-          ne(exercises.id, row.id),
-        ),
-      )
-      .limit(1);
-    if (collision) {
-      reject('Autor ma już ćwiczenie o takiej nazwie');
+    const identity = { authorId, slug: newSlug, gym: row.gym, exceptId: row.id };
+    if (await exerciseNameTaken(tx, identity)) {
+      reject(EXERCISE_RULES.nameTaken);
       continue;
     }
 
@@ -205,14 +203,4 @@ export async function applyExercises(
     context.advance(written.serverSeq);
     context.record('exercise', row.id, decision);
   }
-}
-
-/** Identyfikatory tagów, których nie ma w bazie. Pusta lista nie pyta bazy. */
-async function findMissingTags(tx: PushContext['tx'], ids: readonly string[]): Promise<string[]> {
-  const unique = [...new Set(ids)];
-  if (unique.length === 0) return [];
-
-  const rows = await tx.select({ id: tags.id }).from(tags).where(inArray(tags.id, unique));
-  const found = new Set(rows.map((row) => row.id));
-  return unique.filter((id) => !found.has(id));
 }

@@ -1,5 +1,5 @@
 /**
- * Cykle — kryterium ukończenia etapu 9.
+ * Cykle: cele, postęp i archiwizacja.
  *
  * „Cykl poprawnie zlicza serie, czas i dystans, a usunięcie serii odpowiednio
  * zmniejsza postęp." Ostatnia część jest tu najważniejsza i wychodzi za darmo:

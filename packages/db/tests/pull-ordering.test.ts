@@ -5,7 +5,7 @@
  * zapisu na serwerze, a nie topologicznie względem zależności. Ćwiczenie
  * potrafi więc przyjechać przed swoim autorem albo przed swoim tagiem.
  *
- * Ten plik dowodzi mechanizmu, na którym stanie etap 7: `defer_foreign_keys`
+ * Ten plik dowodzi mechanizmu, na którym stoi pull: `defer_foreign_keys`
  * przenosi sprawdzenie więzów na `COMMIT`, więc kolejność **wewnątrz paczki**
  * przestaje mieć znaczenie, a niespójność faktyczna dalej nie przechodzi.
  * Alternatywa — zdjęcie kluczy obcych z telefonu — kupowałaby to samo za cenę
