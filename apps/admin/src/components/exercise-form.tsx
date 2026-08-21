@@ -22,7 +22,7 @@ export const LOGGING_TYPE_LABELS: Record<Exercise['loggingType'], string> = {
   weight_time: 'weight + time',
   bodyweight_reps: 'bodyweight + reps',
   bodyweight_time: 'bodyweight + time',
-  distance_time: 'dystans + czas',
+  distance_time: 'distance + time',
 };
 
 /** Pusty formularz. Tag główny celuje w pierwszy z listy — jakiś musi być wybrany. */

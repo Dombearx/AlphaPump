@@ -20,6 +20,38 @@ dostępu albo cudzy kod na telefonach grupy".
 | Niski | 17 |
 | Blokady PWA | 9 |
 
+## Stan wdrożenia
+
+Rejestr jest zamknięty: **wszystkie 40 znalezisk (BEZ, WDR, DAN, POP, KOD, UX)
+zostały wdrożone.** Dziewięć blokad PWA zostaje otwartych — opisują pracę do
+wykonania przy dokładaniu wersji przeglądarkowej, a nie usterki w tym, co stoi.
+
+Trzy rzeczy poszły inaczej, niż zapisano wyżej, i warto o nich wiedzieć czytając
+opisy znalezisk:
+
+- **KOD-2** — `moveSet` został **usunięty**, a nie zachowany. Po zdjęciu interfejsu
+  przeciągania nie miał już żadnego wywołania, a kolejność serii w dniu wynika
+  z czasu zapisu.
+- **WDR-5** — przeniesienie API pod `/api/*` jest **odłożone do wydania z HTTPS**.
+  Adres manifestu OTA jest wkompilowany w warstwę natywną zainstalowanych paczek,
+  więc zmiana ścieżek dziś oznacza ręczną reinstalację `.apk` na każdym telefonie.
+- **UX-2** — zamiast dwóch przepływów E2E na emulatorze powstały **testy ekranów
+  w jsdom**: aplikacja renderuje ekran na prawdziwej bazie lokalnej (SQLite
+  w pamięci, ten sam bundle migracji i seed, co na telefonie), panel renderuje
+  formularze i tabele. Chodzą w sekundach w zwykłym `pnpm test`. Czego nie
+  zastępują — nawigacji, gestów, klawiatury i zachowania SQLite na urządzeniu —
+  jest napisane w `stack_technologiczny.md`.
+
+Jedna zmiana wymaga **ręcznego kroku na minipc** przed pierwszym wdrożeniem
+z tej gałęzi: `/update` przyjmuje teraz wyłącznie `POST` z tokenem, a na maszynie
+chodzi jeszcze stara wersja serwera aktualizacji.
+
+```
+cd ~/AlphaPump && git pull
+sudo systemctl edit alphapump-update-server   # Environment=UPDATE_SERVER_PUBLISH_TOKEN=…
+sudo systemctl restart alphapump-update-server
+```
+
 Dwa wątki przewijają się przez większość znalezisk. Pierwszy: **kanał wydawniczy
 jest słabszy niż kod, który nim jedzie** — wdrożenie i wydanie OTA nie czekają na CI,
 nie mają wersji ani drogi powrotu, a jedno wejście do niego stoi bez uwierzytelnienia.
