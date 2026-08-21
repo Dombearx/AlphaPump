@@ -76,6 +76,8 @@ export interface LocalImportReport {
 
 const emptySummary = (): ArchiveSummary => ({
   users: 0,
+  // Telefon poświadczeń nie zapisuje — baza lokalna nie ma gdzie.
+  credentials: 0,
   tags: 0,
   exercises: 0,
   sets: 0,

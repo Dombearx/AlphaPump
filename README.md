@@ -972,10 +972,22 @@ odtwarzania nie zardzewiała: drogę „eksport → plik → import" przechodzą
 użytkownicy przy normalnym korzystaniu z aplikacji.
 
 **W archiwum:** serie, ćwiczenia, tagi, cykle i minimalne dane kont (`id`, e-mail,
-nick, rola). **Poza archiwum:** hashe haseł i sesje (wrażliwe, a do odtworzenia
-zbędne), klucze API (użytkownik wygeneruje nowe), embeddingi (przeliczalne z nazw)
-oraz rekordy i rankingi (pochodne z serii). Tombstone'ów też nie ma — archiwum
-odtwarza **stan**, nie historię usunięć.
+nick, rola). W archiwum **systemowym** dodatkowo sposoby logowania: hash hasła
+i powiązanie z Google. **Poza archiwum:** sesje, klucze API (użytkownik wygeneruje
+nowe), tokeny OAuth (wygasają), embeddingi (przeliczalne z nazw) oraz rekordy
+i rankingi (pochodne z serii). Tombstone'ów też nie ma — archiwum odtwarza
+**stan**, nie historię usunięć.
+
+> **Poświadczenia są wyłącznie w archiwum systemowym**, zastrzeżonym dla
+> administratora, a przy wysyłce poza maszynę `backup.sh` wymusza szyfrowanie
+> `age`. Bez nich odtworzenie dawało bazę, na którą nikt nie umiał wejść: konta
+> wchodziły razem z adresami, więc rejestracja odbijała się o zajęty adres,
+> a hasła nie było — resetu przez e-mail ten serwer nie ma. Archiwum jednego
+> konta, które użytkownik pobiera sobie sam, poświadczeń nie niesie.
+>
+> Comiesięczna próba odtworzenia kończy się teraz **logowaniem** na odtworzoną
+> bazę (`drill signin`). Porównanie danych tej dziury nie widziało: poświadczeń
+> nie było po obu stronach, więc zera się zgadzały.
 
 Dwie reguły decydują o tym, że odtworzenie nie osieroca danych, i obie są w rdzeniu
 (`planArchiveIdentity`), bo wykonuje je i serwer, i telefon:

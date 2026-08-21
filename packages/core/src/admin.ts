@@ -139,6 +139,8 @@ export type FeedbackTriageReport = z.infer<typeof feedbackTriageReportSchema>;
 
 const transferCountsSchema = z.object({
   users: z.int().min(0),
+  /** Sposoby logowania — wyłącznie w archiwum systemowym. */
+  credentials: z.int().min(0),
   tags: z.int().min(0),
   exercises: z.int().min(0),
   sets: z.int().min(0),

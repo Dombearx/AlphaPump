@@ -6,12 +6,18 @@
 # **dokładnie tę samą** drogę, którą chodzi cron i człowiek w sytuacji awaryjnej:
 #
 #   eksport → gzip → age → (age -d) → gunzip → import → eksport → porównanie
+#   → logowanie na odtworzoną bazę
 #
-# Ostatni krok jest tu najważniejszy: nie sprawdzamy, czy import „się wykonał",
-# ale czy dane po odtworzeniu **zgadzają się z oryginałem** — łącznie
-# z powiązaniami autorów ćwiczeń i właścicieli serii. Porównanie idzie po postaci
+# Dwa ostatnie kroki są tu najważniejsze. Porównanie sprawdza nie to, czy import
+# „się wykonał", ale czy dane po odtworzeniu **zgadzają się z oryginałem** —
+# łącznie z powiązaniami autorów ćwiczeń i właścicieli serii; idzie po postaci
 # kanonicznej z `@alphapump/core`, więc pomija to, co po odtworzeniu musi się
 # różnić: moment eksportu i kolejność wierszy.
+#
+# Logowanie odpowiada na pytanie, którego porównanie nie zadaje: czy z odtworzonego
+# systemu da się **korzystać**. Bez tego kroku próba przechodziła na bazie, na
+# którą nikt nie umiał wejść — konta wchodziły razem z adresami, ale bez
+# poświadczeń, więc rejestracja odbijała się o zajęty adres, a hasła nie było.
 #
 # Wymagane w środowisku:
 #   DATABASE_URL          baza źródłowa (zostanie wypełniona danymi próby)
@@ -56,14 +62,14 @@ else
   echo "Wygenerowałem parę kluczy jednorazową na czas próby" >&2
 fi
 
-echo "1/5 Wypełniam bazę źródłową danymi próby…" >&2
+echo "1/6 Wypełniam bazę źródłową danymi próby…" >&2
 $api drill sample
 
-echo "2/5 Kopia: eksport → gzip → age…" >&2
+echo "2/6 Kopia: eksport → gzip → age…" >&2
 $api export | gzip | age -r "$recipient" > "${workdir}/kopia.json.gz.age"
 $api export > "${workdir}/przed.json"
 
-echo "3/5 Odtworzenie: age -d → gunzip → import do czystej bazy…" >&2
+echo "3/6 Odtworzenie: age -d → gunzip → import do czystej bazy…" >&2
 # Schemat na bazie docelowej stawia sam import: CLI importu uruchamia migracje
 # i seed przed wczytaniem archiwum, dokładnie po to, żeby odtwarzanie po awarii
 # celowało w bazę pustą.
@@ -71,10 +77,13 @@ age -d -i "$identity" "${workdir}/kopia.json.gz.age" \
   | gunzip \
   | env DATABASE_URL="$RESTORE_DATABASE_URL" $api import
 
-echo "4/5 Eksport z bazy odtworzonej…" >&2
+echo "4/6 Eksport z bazy odtworzonej…" >&2
 env DATABASE_URL="$RESTORE_DATABASE_URL" $api export > "${workdir}/po.json"
 
-echo "5/5 Porównanie postaci kanonicznych…" >&2
+echo "5/6 Porównanie postaci kanonicznych…" >&2
 $api drill compare "${workdir}/przed.json" "${workdir}/po.json"
+
+echo "6/6 Logowanie na odtworzoną bazę…" >&2
+env DATABASE_URL="$RESTORE_DATABASE_URL" $api drill signin
 
 echo "Próba odtworzenia zakończona powodzeniem." >&2

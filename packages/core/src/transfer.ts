@@ -11,15 +11,15 @@
  * ## Co jest w archiwum, a czego nie ma
  *
  * W archiwum: serie, ćwiczenia, tagi, cykle oraz **minimalne** dane użytkowników
- * (`id`, e-mail, nick, rola). Poza archiwum: hashe haseł i sesje (wrażliwe,
- * a do odtworzenia zbędne), klucze API (użytkownik wygeneruje nowe), embeddingi
- * (przeliczalne z nazw) oraz rekordy i rankingi (pochodne z serii).
+ * (`id`, e-mail, nick, rola). W archiwum **systemowym** dodatkowo sposoby
+ * logowania — hash hasła i powiązanie z Google (patrz `archiveCredentialSchema`).
+ * Poza archiwum: sesje (wygasają), klucze API (użytkownik wygeneruje nowe),
+ * embeddingi (przeliczalne z nazw) oraz rekordy i rankingi (pochodne z serii).
  *
- * Minimalny zapis użytkowników jest konieczny właśnie dlatego, że dane logowania
- * pomijamy: bez niego po odtworzeniu `authorId` przy ćwiczeniach i właściciel
- * przy seriach wskazywałyby w próżnię — użytkownicy zalogowaliby się ponownie
- * i dostali nowe identyfikatory, a odtworzone dane zostałyby osierocone.
- * Dopasowanie po restore idzie po adresie e-mail.
+ * Minimalny zapis użytkowników jest konieczny dlatego, że bez niego po
+ * odtworzeniu `authorId` przy ćwiczeniach i właściciel przy seriach wskazywałyby
+ * w próżnię. Dopasowanie po restore idzie po adresie e-mail: konto, które w bazie
+ * docelowej już jest, zachowuje swój identyfikator, a odwołania są przeliczane.
  *
  * ## Dlaczego tylko wiersze żywe
  *
@@ -96,12 +96,50 @@ export const archiveUserSchema = z.object({
 
 export type ArchiveUser = z.infer<typeof archiveUserSchema>;
 
+/**
+ * Sposób logowania w archiwum systemowym — bez tego kopia nie jest kopią.
+ *
+ * Wcześniej poświadczeń tu nie było, „bo wrażliwe, a do odtworzenia zbędne".
+ * Drugie było nieprawdą i wychodziło dopiero w dniu, w którym kopia jest
+ * potrzebna: import wstawia wiersze kont razem z adresami, więc po odtworzeniu
+ * na czystą bazę konto **istnieje**, ale nie ma powiązanego sposobu logowania.
+ * Zalogować się nie da, a założyć konta ponownie też nie, bo adres jest zajęty.
+ * Resetu hasła przez e-mail nie ma — serwer nie ma czym wysłać wiadomości.
+ *
+ * Stąd `password`: hash, nie hasło. Wchodzi **wyłącznie** do archiwum
+ * systemowego (`scope: 'system'`), które i tak jest zastrzeżone dla
+ * administratora, a przy wysyłce poza maszynę `scripts/backup.sh` wymusza
+ * szyfrowanie `age`. W archiwum jednego konta, które użytkownik pobiera sobie
+ * sam, poświadczeń nie ma i być nie może.
+ *
+ * Tokenów OAuth (`accessToken`, `refreshToken`, `idToken`) nie ma nigdzie:
+ * wygasają, a bez nich powiązanie z Google i tak działa — Google wystawi nowy
+ * token przy pierwszym logowaniu.
+ */
+export const archiveCredentialSchema = z.object({
+  userId: uuidSchema,
+  /** `credential` dla e-maila z hasłem, `google` dla konta Google. */
+  providerId: z.string().min(1).max(64),
+  accountId: z.string().min(1),
+  /** Hash hasła; `null` przy logowaniu przez dostawcę zewnętrznego. */
+  password: z.string().nullable(),
+});
+
+export type ArchiveCredential = z.infer<typeof archiveCredentialSchema>;
+
 export const archiveSchema = z.object({
   format: z.literal(ARCHIVE_FORMAT),
   version: z.literal(ARCHIVE_VERSION),
   exportedAt: isoDateTimeSchema,
   scope: archiveScopeSchema,
   users: z.array(archiveUserSchema),
+  /**
+   * Puste w archiwum jednego konta i w plikach sprzed wprowadzenia tego pola —
+   * stąd `.default([])`, a nie podbicie `ARCHIVE_VERSION`. Dołożenie pola
+   * opcjonalnego jest zgodne wstecz w obie strony: starszy plik wczytuje się
+   * bez zmian, a nowy wczytany starszym kodem po prostu je zignoruje.
+   */
+  credentials: z.array(archiveCredentialSchema).default([]),
   tags: z.array(tagSchema),
   exercises: z.array(exerciseSchema),
   sets: z.array(workoutSetSchema),
@@ -111,7 +149,10 @@ export const archiveSchema = z.object({
 export type Archive = z.infer<typeof archiveSchema>;
 
 /** Zawartość archiwum bez metadanych — to, co składa strona czytająca bazę. */
-export type ArchiveContent = Pick<Archive, 'users' | 'tags' | 'exercises' | 'sets' | 'cycles'>;
+export type ArchiveContent = Pick<
+  Archive,
+  'users' | 'credentials' | 'tags' | 'exercises' | 'sets' | 'cycles'
+>;
 
 /**
  * Kolejność zapisu przy imporcie — od bytów niezależnych do zależnych.
@@ -120,10 +161,20 @@ export type ArchiveContent = Pick<Archive, 'users' | 'tags' | 'exercises' | 'set
  * swoim ćwiczeniem wywróci zapis. Kolejność jest tu, a nie w kodzie importu,
  * bo importują trzy różne miejsca i wszystkie muszą trzymać tę samą.
  */
-export const ARCHIVE_IMPORT_ORDER = ['users', 'tags', 'exercises', 'sets', 'cycles'] as const;
+export const ARCHIVE_IMPORT_ORDER = [
+  'users',
+  // Po kontach, bo wskazują na nie kluczem obcym, i przed resztą, bo bez nich
+  // odtworzone konto istnieje, a zalogować się na nie nie da.
+  'credentials',
+  'tags',
+  'exercises',
+  'sets',
+  'cycles',
+] as const;
 
 export interface ArchiveSummary {
   users: number;
+  credentials: number;
   tags: number;
   exercises: number;
   sets: number;
@@ -133,6 +184,7 @@ export interface ArchiveSummary {
 export function archiveSummary(archive: ArchiveContent): ArchiveSummary {
   return {
     users: archive.users.length,
+    credentials: archive.credentials.length,
     tags: archive.tags.length,
     exercises: archive.exercises.length,
     sets: archive.sets.length,
@@ -358,6 +410,18 @@ export function canonicalArchive(archive: ArchiveContent): unknown {
       nickname: user.nickname,
       role: user.role,
     })),
+    credentials: [...archive.credentials]
+      .sort((a, b) =>
+        a.userId === b.userId
+          ? a.providerId.localeCompare(b.providerId)
+          : a.userId.localeCompare(b.userId),
+      )
+      .map((credential) => ({
+        userId: credential.userId,
+        providerId: credential.providerId,
+        accountId: credential.accountId,
+        password: credential.password,
+      })),
     tags: byId(archive.tags).map((tag) => ({
       id: tag.id,
       name: tag.name,

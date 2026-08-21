@@ -277,6 +277,59 @@ describe('dopasowanie po adresie e-mail', () => {
   });
 });
 
+describe('odtworzony system da się użyć', () => {
+  /**
+   * Kryterium, którego brakowało: nie „dane się zgadzają", tylko „da się wejść".
+   *
+   * Archiwum systemowe nie niosło poświadczeń, a import wstawia konta razem
+   * z adresami — po odtworzeniu na czystą bazę konto **istniało**, ale nie miało
+   * sposobu logowania. Zalogować się nie było jak, a założyć konta ponownie też
+   * nie, bo adres jest zajęty; resetu hasła przez e-mail nie ma. Porównanie
+   * danych tego nie widziało: poświadczeń nie było po obu stronach, więc zera
+   * się zgadzały.
+   */
+  it('po odtworzeniu z kopii systemowej można się zalogować tym samym hasłem', async () => {
+    const source = await createHarness();
+    const owner = await source.signUp('wraca@example.com', 'haslo-testowe-123', 'Kuba');
+    await source.promoteToAdmin(owner);
+
+    const archive = await exportArchive(source.db, { kind: 'system' });
+    expect(archive.credentials.length).toBeGreaterThan(0);
+
+    const target = await createHarness();
+    const report = await importArchive(target.db, archive, {
+      actor: { id: owner.id, email: 'restore@example.local', role: 'admin' },
+    });
+    expect(report.imported.credentials).toBe(archive.credentials.length);
+
+    // Prawdziwy endpoint logowania na odtworzonej bazie — rozjazd formatu hasha
+    // wychodzi wyłącznie tędy.
+    const headers = await target.signIn('wraca@example.com', 'haslo-testowe-123');
+    const me = await target.json<{ email: string }>('GET', '/me', { headers });
+    expect(me.status).toBe(200);
+    expect(me.body.email).toBe('wraca@example.com');
+
+    await source.close();
+    await target.close();
+  });
+
+  it('archiwum jednego konta nie wywozi hasha hasła — także własnego', async () => {
+    const source = await createHarness();
+    const owner = await source.signUp('moje@example.com');
+
+    const mine = await exportArchive(source.db, { kind: 'user', userId: owner.id });
+    expect(mine.credentials).toEqual([]);
+
+    // Ta sama reguła po stronie endpointu, którym pobiera to użytkownik.
+    const downloaded = await source.json<{ credentials: unknown[] }>('GET', '/export', {
+      headers: owner.headers,
+    });
+    expect(downloaded.body.credentials).toEqual([]);
+
+    await source.close();
+  });
+});
+
 describe('sufit rozmiaru żądania', () => {
   /**
    * Ciało jest parsowane w całości do pamięci, zanim Zod zobaczy pierwsze pole,
