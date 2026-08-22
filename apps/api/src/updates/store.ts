@@ -62,6 +62,30 @@ const storedAssetSchema = z.object({
     }),
 });
 
+/**
+ * Konfiguracja aplikacji, którą telefon zobaczy jako `Constants.expoConfig`.
+ *
+ * Wymagana, i to jest **cała** różnica między wydaniem, które wstaje, a takim,
+ * które wywala aplikację przy pierwszym module. `expo-constants` bierze tę
+ * właściwość z dwóch różnych miejsc, zależnie od tego, jak aplikacja wystartowała:
+ *
+ * ```js
+ * if (ExpoUpdates && ExpoUpdates.isEmbeddedLaunch) return rawAppConfig;
+ * if (isExpoUpdatesManifest(manifest)) return manifest.extra?.expoClient ?? null;
+ * ```
+ *
+ * Paczka wbudowana w `.apk` czyta konfigurację z pakietu, pobrana — stąd.
+ * Wydanie bez tego pola daje więc `null` tam, gdzie aplikacja spodziewa się
+ * swojej konfiguracji, a to kończy się wyjątkiem przy starcie i cofnięciem do
+ * paczki wbudowanej przez `expo-updates`. Z zewnątrz wygląda to dokładnie jak
+ * aktualizacja, która się pobiera, prosi o restart i niczego nie zmienia.
+ */
+const expoClientSchema = z
+  .record(z.string(), z.unknown())
+  .refine((value) => Object.keys(value).length > 0, {
+    message: 'Konfiguracja aplikacji (extra.expoClient) nie może być pusta',
+  });
+
 const storedUpdateSchema = z.object({
   id: z.string().min(1),
   createdAt: z.string().min(1),
@@ -70,7 +94,14 @@ const storedUpdateSchema = z.object({
   launchAsset: storedAssetSchema,
   assets: z.array(storedAssetSchema),
   metadata: z.record(z.string(), z.unknown()).optional(),
-  extra: z.record(z.string(), z.unknown()).optional(),
+  /**
+   * Odrzucenie opisu bez `expoClient` jest **celowo** twardsze niż pominięcie
+   * pola: telefon dostaje wtedy „nie ma nic nowszego" i zostaje na paczce, na
+   * której chodzi. Wydanie, którego nie da się uruchomić, lepiej żeby nie
+   * dojechało wcale — cofnięcie po awarii kosztuje uruchomienie aplikacji,
+   * a odznaczonej paczki `expo-updates` nie uruchomi już nigdy.
+   */
+  extra: z.object({ expoClient: expoClientSchema }).catchall(z.unknown()),
 });
 
 export function isValidRuntimeVersion(value: string): boolean {

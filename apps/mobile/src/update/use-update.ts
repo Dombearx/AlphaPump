@@ -47,6 +47,8 @@ import {
   releaseUrl,
   type UpdateManifest,
 } from './manifest';
+import { downloadRelease, installRelease } from './apk';
+import { describeInstallFailure, type InstallStage } from './install';
 import { useOtaUpdate, useRunningPackage } from './ota';
 import { restartSucceeded, shouldOfferRestart } from './pending';
 import type { RunningBundle } from './running';
@@ -64,10 +66,21 @@ export type UpdateStage =
 
 export interface UpdateState {
   stage: UpdateStage;
-  /** Uruchamia pobraną paczkę albo otwiera plik wydania w przeglądarce. */
+  /**
+   * Uruchamia pobraną paczkę albo pobiera i instaluje pakiet — bez wychodzenia
+   * z aplikacji. Postęp i niepowodzenie widać w `install`.
+   */
   confirm: () => void;
   /** „Nie teraz". Dla wydania natywnego — do następnego wydania. */
   dismiss: () => void;
+  /** W czym jest instalacja pakietu; `idle`, dopóki nikt o nią nie poprosił. */
+  install: InstallStage;
+  /**
+   * Otwiera katalog wydań w przeglądarce — droga zapasowa, gdy instalacja
+   * z aplikacji się nie uda. Do tego wystarczy, żeby okno miało co pokazać
+   * zamiast ślepej uliczki.
+   */
+  openInBrowser: () => void;
 }
 
 export function useUpdateCheck(): UpdateState {
@@ -76,6 +89,7 @@ export function useUpdateCheck(): UpdateState {
   const [nativeRelease, setNativeRelease] = useState<UpdateManifest | null>(null);
   const [restartDismissed, setRestartDismissed] = useState(false);
   const [restartedFor, setRestartedFor] = useState<string | null>(null);
+  const [install, setInstall] = useState<InstallStage>({ kind: 'idle' });
   const lastCheckedAt = useRef(0);
 
   // Notatka o restarcie, którego użytkownik już raz zażądał. Czytana raz przy
@@ -171,13 +185,37 @@ export function useUpdateCheck(): UpdateState {
       return;
     }
     if (stage.kind === 'native') {
-      void openRelease(releaseUrl(appConfig.updateBaseUrl, stage.manifest)).catch(() => {
-        // Brak przeglądarki zdolnej otworzyć ten adres. Nie ma tu nic do
-        // zrobienia poza niewywaleniem aplikacji — okno zostaje otwarte, a
-        // adres katalogu wydań i tak jest w nim wypisany.
-      });
+      // Dwa kliknięcia mniej niż przeglądarka i bez wychodzenia z aplikacji:
+      // pobieramy pakiet tutaj i oddajemy go instalatorowi systemu. Wszystko
+      // dalej — zgoda na nieznane źródła, porównanie podpisu, podmiana — należy
+      // do systemu i tak ma zostać.
+      const url = releaseUrl(appConfig.updateBaseUrl, stage.manifest);
+      setInstall({ kind: 'downloading', received: 0, total: stage.manifest.size });
+
+      void (async () => {
+        try {
+          const file = await downloadRelease(url, ({ received, total }) => {
+            // Rozmiar z manifestu jest lepszy niż brak rozmiaru, gdy odpowiedź
+            // nie niosła `Content-Length`: pochodzi z tego samego wydania.
+            setInstall({ kind: 'downloading', received, total: total ?? stage.manifest.size });
+          });
+          setInstall({ kind: 'installing' });
+          await installRelease(file);
+        } catch (error) {
+          setInstall({ kind: 'failed', reason: describeInstallFailure(error) });
+        }
+      })();
     }
   }, [stage, ota]);
+
+  const openInBrowser = useCallback(() => {
+    if (stage.kind !== 'native') return;
+    void openRelease(releaseUrl(appConfig.updateBaseUrl, stage.manifest)).catch(() => {
+      // Brak przeglądarki zdolnej otworzyć ten adres. Nie ma tu nic do
+      // zrobienia poza niewywaleniem aplikacji — okno zostaje otwarte, a adres
+      // katalogu wydań i tak jest w nim wypisany.
+    });
+  }, [stage]);
 
   const dismiss = useCallback(() => {
     if (stage.kind === 'restart') {
@@ -190,10 +228,11 @@ export function useUpdateCheck(): UpdateState {
     if (stage.kind === 'native') {
       void rememberDismissedVersion(stage.manifest.versionCode);
       setNativeRelease(null);
+      setInstall({ kind: 'idle' });
     }
   }, [stage]);
 
-  return { stage, confirm, dismiss };
+  return { stage, confirm, dismiss, install, openInBrowser };
 }
 
 /**

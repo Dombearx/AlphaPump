@@ -330,6 +330,23 @@ jobs:
       - name: Zbuduj paczkę
         run: pnpm --filter @alphapump/mobile run build
 
+      # Bez tego pliku **żadna** pobrana paczka nie wstaje. `Constants.expoConfig`
+      # bierze się z pakietu tylko przy starcie z paczki wbudowanej; paczka
+      # pobrana czyta `extra.expoClient` z manifestu, a serwer aktualizacji ma je
+      # skąd wziąć wyłącznie stąd. `expo export` tego pliku nie pisze.
+      #
+      # To samo środowisko co przy budowaniu paczki, bo adres API wchodzi do
+      # konfiguracji tak samo jak do bundla — rozjazd między nimi dałby
+      # aplikację łączącą się gdzie indziej, niż mówi jej własny ekran.
+      - name: Dopisz konfigurację aplikacji do eksportu
+        working-directory: apps/mobile
+        run: |
+          set -euo pipefail
+          npx expo config --json --type public > dist/expoConfig.json
+          # Pusty albo niebędący JSON-em plik przechodzi przez `>` bez słowa,
+          # a wychodzi na telefonie — sprawdzamy tutaj, gdzie to jeszcze widać.
+          jq -e '.extra.apiUrl' dist/expoConfig.json >/dev/null
+
       - name: Spakuj wynik eksportu
         run: tar -czf export.tar.gz -C apps/mobile/dist .
 

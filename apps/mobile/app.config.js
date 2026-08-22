@@ -99,16 +99,23 @@ const config = {
     versionCode: Number(envValue('ANDROID_VERSION_CODE') ?? 1),
     adaptiveIcon: { backgroundColor: '#232327', foregroundImage: './assets/icon.png' },
     /**
-     * Aplikacja nie prosi o żadne uprawnienie ponad te, które Expo dokłada samo.
+     * Jedyne uprawnienie ponad te, które Expo dokłada samo — i jednocześnie
+     * najgroźniejsze, jakie ta aplikacja ma. Pozwala oddać pobrany plik `.apk`
+     * instalatorowi systemu (`src/update/apk.ts`), czyli zrobić w aplikacji to,
+     * po co do tej pory trzeba było wyjść do przeglądarki, znaleźć pobrany plik
+     * i otworzyć go ręcznie.
      *
-     * Stało tu `android.permission.REQUEST_INSTALL_PACKAGES` — aplikacja
-     * pobierała `.apk` i oddawała go instalatorowi systemu. Odkąd wydania
-     * ruszające sam JavaScript jadą przez `expo-updates`, instalator jest
-     * potrzebny wyłącznie przy zmianie warstwy natywnej, czyli parę razy w roku
-     * — a wtedy plik pobiera się przeglądarką z `/alphapump/download`, jak przy
-     * pierwszej instalacji. Najgroźniejsze uprawnienie w tej aplikacji zniknęło
-     * więc razem z kodem, który był jedynym jego użytkownikiem.
+     * Było już usunięte — razem z kodem, który go używał — kiedy wydania
+     * ruszające sam JavaScript pojechały przez `expo-updates` i nowy pakiet
+     * przestał być potrzebny częściej niż parę razy w roku. Wraca, bo „parę razy
+     * w roku" nie znaczy „można to zrobić byle jak": droga przez przeglądarkę
+     * jest tą częścią aktualizacji, której nikt nie robi od razu.
+     *
+     * Samo uprawnienie niczego nie instaluje: podmianę pakietu i tak wykonuje
+     * system, po zgodzie użytkownika na instalowanie z nieznanych źródeł
+     * i po sprawdzeniu, że podpis zgadza się z pakietem już zainstalowanym.
      */
+    permissions: ['android.permission.REQUEST_INSTALL_PACKAGES'],
   },
 
   /**

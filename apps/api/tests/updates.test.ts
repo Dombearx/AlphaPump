@@ -42,6 +42,7 @@ function storedUpdate(overrides: Partial<StoredUpdate> = {}): StoredUpdate {
         fileExtension: '.png',
       },
     ],
+    extra: { expoClient: { name: 'AlphaPump', extra: { apiUrl: 'http://minipc.test:3000' } } },
     ...overrides,
   };
 }
@@ -149,9 +150,31 @@ describe('manifest aktualizacji OTA', () => {
     expect(manifest.assets).toMatchObject([{ fileExtension: '.png' }]);
     expect(manifest.launchAsset).not.toHaveProperty('fileExtension');
 
+    // Konfiguracja aplikacji jedzie manifestem, bo paczka pobrana nie ma jej
+    // skąd wziąć: `Constants.expoConfig` czyta pakiet **tylko** przy starcie
+    // z paczki wbudowanej. Bez tego pola aplikacja wywala się przy pierwszym
+    // module i wraca do paczki wbudowanej.
+    expect(manifest.extra).toEqual(update.extra);
+
     // Część `extensions` jest wymagana przez klienta nawet pusta — jej brak
     // kończy się odrzuceniem całej odpowiedzi.
     expect(JSON.parse(parts.extensions ?? 'null')).toEqual({ assetRequestHeaders: {} });
+  });
+
+  it('nie podaje wydania bez konfiguracji aplikacji', async () => {
+    // Telefon dostaje „nie ma nic nowszego" i zostaje na paczce, na której
+    // chodzi. Wydanie, które i tak by nie wstało, lepiej żeby nie dojechało:
+    // paczki odznaczonej po awarii `expo-updates` nie uruchomi już nigdy.
+    const { extra: _dropped, ...withoutConfig } = storedUpdate();
+    await publish(harness.otaDir, withoutConfig as StoredUpdate);
+
+    const response = await harness.request('/updates/manifest', {
+      headers: { ...ANDROID, ...PROTOCOL_1 },
+    });
+    expect(response.status).toBe(200);
+
+    const parts = parseMultipart(await response.text(), response.headers.get('content-type') ?? '');
+    expect(JSON.parse(parts.directive ?? 'null')).toEqual({ type: 'noUpdateAvailable' });
   });
 
   it('nie proponuje wydania zbudowanego dla innej warstwy natywnej', async () => {

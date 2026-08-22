@@ -73,7 +73,12 @@ export interface StoredUpdate {
   launchAsset: StoredAsset;
   assets: StoredAsset[];
   metadata?: Record<string, unknown>;
-  extra?: Record<string, unknown>;
+  /**
+   * Musi nieść `expoClient` — konfigurację, którą telefon zobaczy jako
+   * `Constants.expoConfig`. Paczka pobrana nie ma jej skąd wziąć poza
+   * manifestem, a bez niej nie wstaje. Pilnuje tego `store.ts`.
+   */
+  extra: { expoClient: Record<string, unknown> } & Record<string, unknown>;
 }
 
 /** Zasób w manifeście — to samo co `StoredAsset`, tylko z pełnym adresem. */
@@ -174,7 +179,7 @@ export function toManifest(update: StoredUpdate, baseUrl: string): ExpoManifest 
     launchAsset: withUrl(update.launchAsset),
     assets: update.assets.map(withUrl),
     metadata: update.metadata ?? {},
-    extra: update.extra ?? {},
+    extra: update.extra,
   };
 }
 

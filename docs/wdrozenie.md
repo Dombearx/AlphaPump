@@ -331,7 +331,7 @@ Dalej workflow rozdziela się na dwie drogi, a wybiera między nimi zadanie
 | Kiedy | warstwa natywna bez zmian — prawie zawsze | podbicie SDK, nowa zależność natywna, zmiana wtyczki konfiguracyjnej |
 | Ile waży | ~7 MB | ~35 MB |
 | Ile trwa wydanie | kilka minut | kilkanaście minut gradle'a |
-| Co robi użytkownik | nic; aplikacja podmienia się sama przy następnym otwarciu | pobiera przeglądarką i instaluje |
+| Co robi użytkownik | nic; aplikacja podmienia się sama przy następnym otwarciu | potwierdza w oknie aplikacji i zgadza się na instalację |
 
 O drodze nie decyduje ani człowiek, ani lista ścieżek, tylko **odcisk warstwy
 natywnej**: `runtimeVersion` liczony przez `expo-updates` z konfiguracji
@@ -393,11 +393,13 @@ telefony odczytują swój odcisk z własnego pakietu.)
 Aplikacja pyta o ten plik przy starcie i przy każdym powrocie na wierzch (nie
 częściej niż raz na kwadrans), porównuje `versionCode` z własnym i przy nowszym
 pokazuje okno „Version X — Download / Not now". „Nie teraz" wycisza **to jedno**
-wydanie; kolejne pyta od nowa. Po zgodzie otwiera się przeglądarka i dalej
-prowadzi już system: pobranie, zgoda na nieznane źródła, instalator. Aplikacja
-nie bierze w tym udziału i nie ma po temu żadnego uprawnienia. Nieudane
-sprawdzenie manifestu nie pokazuje niczego — minipc bywa poza zasięgiem
-częściej, niż jest w nim.
+wydanie; kolejne pyta od nowa. Po zgodzie plik pobiera się **w aplikacji**,
+z paskiem postępu, po czym dalej prowadzi już system: zgoda na instalowanie
+z nieznanych źródeł, porównanie podpisu z pakietem zainstalowanym i sama
+podmiana. Gdy pobranie albo instalacja się nie uda, okno pokazuje powód
+i zostaje przy „Open in browser" — tej samej drodze, którą szło się wcześniej
+i którą idzie pierwsza instalacja. Nieudane sprawdzenie manifestu nie pokazuje
+niczego — minipc bywa poza zasięgiem częściej, niż jest w nim.
 
 #### Jak telefon dostaje paczkę JavaScriptu
 
@@ -418,11 +420,29 @@ z wydaniem natywnym, do którego nikt jeszcze nie wypuścił poprawki. Aplikacja
 uruchamia wtedy paczkę wbudowaną w `.apk`. Tak samo kończy się uszkodzony opis
 wydania — i to jest celowe, bo alternatywą byłaby aplikacja, która nie wstaje.
 
-#### Dwa sposoby, na które paczka nie dojeżdża po cichu
+#### Trzy sposoby, na które paczka nie dojeżdża po cichu
 
-Oba wyglądają dla użytkownika tak samo — „Update ready, restart to apply",
-restart, brak zmian, to samo okno przy następnym otwarciu — i oba biorą się
-z opisu wydania, a nie z sieci.
+Wszystkie wyglądają dla użytkownika tak samo — „Update ready, restart to apply",
+restart, brak zmian, to samo okno przy następnym otwarciu — i wszystkie biorą
+się z opisu wydania, a nie z sieci.
+
+**Konfiguracja aplikacji w manifeście (`extra.expoClient`).** Najważniejsza
+z całej trójki, bo bez niej **żadna** pobrana paczka nie wstaje.
+`expo-constants` bierze `Constants.expoConfig` z dwóch różnych miejsc:
+
+```js
+if (ExpoUpdates && ExpoUpdates.isEmbeddedLaunch) return rawAppConfig;
+if (isExpoUpdatesManifest(manifest)) return manifest.extra?.expoClient ?? null;
+```
+
+Paczka wbudowana w `.apk` czyta konfigurację z pakietu i dlatego działa; paczka
+pobrana czyta ją z manifestu. Wydanie bez tego pola daje więc `null` tam, gdzie
+`src/config/index.ts` spodziewa się swojej konfiguracji, aplikacja wywala się na
+pierwszym module, a `expo-updates` cofa ją do paczki wbudowanej i **nigdy**
+nie uruchamia ponownie. `expo export` tego pliku nie pisze — robi to zadanie
+wydania (`expo config --json --type public`), a `POST /ota` odmawia przyjęcia
+eksportu bez niego. API nie poda telefonowi opisu, który go nie niesie: lepiej,
+żeby telefon został na tym, co ma, niż dostał wydanie niezdolne wstać.
 
 **Data wydania, nie identyfikator.** Klient nie porównuje identyfikatorów,
 żeby zdecydować, czy proponować paczkę: porównuje `createdAt` z datą zapamiętaną
@@ -512,8 +532,9 @@ Od tego momentu każdy merge do `main` daje wydanie. Prawie każde jedzie paczk�
 JavaScriptu i podmienia się samo przy następnym otwarciu aplikacji — bez pytania
 i bez instalatora. Wydanie ruszające warstwę natywną telefony **proponują**,
 a instalacja nie jest cicha i nie będzie: użytkownik potwierdza ją w oknie
-aplikacji, potem pobiera plik przeglądarką, a system pyta o zgodę na podmianę
-pakietu. Androida nie da się o to nie zapytać i nie jest to nasza decyzja.
+aplikacji, plik pobiera się bez wychodzenia z niej, a system pyta o zgodę na
+podmianę pakietu. Androida nie da się o to nie zapytać i nie jest to nasza
+decyzja.
 
 Pierwsze wydanie po tej zmianie musi iść pełnym pakietem — `plan` nie ma z czym
 porównać odcisku, więc wybierze `.apk` sam. Dopiero telefony z tym pakietem
@@ -540,13 +561,15 @@ zaczną dostawać paczki.
   `ANDROID_KEY_ALIAS` i `ANDROID_KEY_PASSWORD`. Sam plik `.keystore` trzeba
   zachować poza repozytorium — razem z kluczem `age` od kopii zapasowych.
 
-- **Zgoda na „nieznane źródła" jest jednorazowa i dotyczy przeglądarki.**
-  Android pyta o nią dla aplikacji, która plik podaje — a plik `.apk` podaje
-  zawsze przeglądarka, także przy aktualizacji warstwy natywnej. AlphaPump
-  **nie** deklaruje `REQUEST_INSTALL_PACKAGES` i nie oddaje niczego
-  instalatorowi: odkąd zwykłe wydania jadą paczką JavaScriptu, uprawnienie
-  obsługiwałoby parę zdarzeń w roku, a jest najgroźniejszym, o jakie ta
-  aplikacja mogłaby poprosić.
+- **Zgoda na „nieznane źródła" jest jednorazowa i dotyczy tej aplikacji,
+  która plik podaje.** Przy pierwszej instalacji podaje go przeglądarka, przy
+  każdej kolejnej — AlphaPump, bo pakiet pobiera i oddaje instalatorowi sama
+  (`src/update/apk.ts`, uprawnienie `REQUEST_INSTALL_PACKAGES`). Jest to
+  najgroźniejsze uprawnienie, jakie ta aplikacja ma, i jedyne ponad te, które
+  Expo dokłada samo. Płaci za to, czego inaczej nie da się kupić: aktualizacja
+  warstwy natywnej kończy się w aplikacji, a nie w pobranych plikach
+  przeglądarki. Samej podmiany i tak dokonuje system, po sprawdzeniu, że podpis
+  zgadza się z pakietem już zainstalowanym.
 
 - **`versionCode` musi rosnąć** (dotyczy wyłącznie wydań `.apk` — paczki
   JavaScriptu rozróżnia identyfikator liczony z ich treści). W CI to numer
