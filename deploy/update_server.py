@@ -593,7 +593,9 @@ async def publish_update(
         _extract_export(archive, unpacked)
 
         launch, assets = _describe_export(unpacked, platform)
-        update = _assemble_update(runtime_version, platform, launch, assets)
+        update = _assemble_update(
+            runtime_version, platform, launch, assets, _read_expo_config(unpacked)
+        )
         # Same contents as the release already current means the same release,
         # so it keeps the moment it was first published -- see `_assemble_update`
         # for what a moved `createdAt` does to a phone.
@@ -692,6 +694,53 @@ def _extract_export(archive: Path, into: Path) -> None:
                     shutil.copyfileobj(source, sink, CHUNK_BYTES)
     except tarfile.TarError as error:
         raise HTTPException(status_code=400, detail=f"Export is not a readable tar: {error}") from error
+
+
+def _read_expo_config(root: Path) -> dict[str, Any]:
+    """The app config the phone will see as `Constants.expoConfig`.
+
+    Not decoration, and not optional: this is the whole reason an over-the-air
+    bundle can start at all. `expo-constants` resolves that property differently
+    depending on how the app launched --
+
+        if (ExpoUpdates && ExpoUpdates.isEmbeddedLaunch) return rawAppConfig;
+        if (isExpoUpdatesManifest(manifest)) return manifest.extra?.expoClient ?? null;
+
+    -- so the bundle inside the `.apk` reads the config baked into the package,
+    while a downloaded one reads **this**, out of the manifest. Serve a manifest
+    without it and every downloaded bundle gets `null` where it expects its
+    configuration, throws while its first module is still being evaluated, and
+    is rolled back by `expo-updates` to the embedded bundle. From the outside
+    that looks exactly like an update that downloads, asks for a restart, and
+    changes nothing.
+
+    `expo export` does not write this file -- the release workflow does, with
+    `expo config --json --type public` and the same environment the bundle was
+    built with, because the API address lives in it.
+    """
+    config_path = root / "expoConfig.json"
+    if not config_path.is_file():
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Export has no expoConfig.json. Without it every phone that downloads this "
+                "update crashes on launch, because `Constants.expoConfig` comes from the "
+                "manifest. Write it next to the bundle with "
+                "`expo config --json --type public` before packing the export."
+            ),
+        )
+
+    try:
+        config = json.loads(config_path.read_text())
+    except json.JSONDecodeError as error:
+        raise HTTPException(
+            status_code=400, detail=f"expoConfig.json is not JSON: {error}"
+        ) from error
+
+    if not isinstance(config, dict) or not config:
+        raise HTTPException(status_code=400, detail="expoConfig.json is not an app config")
+
+    return config
 
 
 def _describe_export(root: Path, platform: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -807,6 +856,7 @@ def _assemble_update(
     platform: str,
     launch: dict[str, Any],
     assets: list[dict[str, Any]],
+    expo_config: dict[str, Any],
     created_at: str | None = None,
 ) -> dict[str, Any]:
     """The description the API reads and turns into a manifest.
@@ -828,11 +878,18 @@ def _assemble_update(
     def public(entry: dict[str, Any]) -> dict[str, Any]:
         return {key: value for key, value in entry.items() if not key.startswith("_")}
 
+    # Everything the phone is served, except the two fields that describe the
+    # release rather than its contents. The app config belongs in here as much
+    # as the bundle does: two releases carrying the same JavaScript but a
+    # different API address are two different releases, and an identifier blind
+    # to that would leave phones on the first of them.
     body = {
         "runtimeVersion": runtime_version,
         "platform": platform,
         "launchAsset": public(launch),
         "assets": [public(asset) for asset in assets],
+        "metadata": {},
+        "extra": {"expoClient": expo_config},
     }
     digest = hashlib.sha256(
         json.dumps(body, sort_keys=True, separators=(",", ":")).encode()
@@ -843,8 +900,6 @@ def _assemble_update(
         "createdAt": created_at
         or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
         **body,
-        "metadata": {},
-        "extra": {},
     }
 
 

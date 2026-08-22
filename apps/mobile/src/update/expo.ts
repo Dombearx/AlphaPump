@@ -7,15 +7,15 @@
  * celowo: to jedna z dwóch warstw, których testy nie obejmują, więc ma nie
  * zawierać decyzji.
  *
- * ## Czego tu już nie ma
+ * ## Czego tu nie ma
  *
- * Stało tu pobieranie `.apk`, sprawdzanie sumy MD5 i oddawanie pliku
- * instalatorowi systemu przez `expo-intent-launcher` — razem z uprawnieniem
- * `REQUEST_INSTALL_PACKAGES` i ekranem „instalowanie nieznanych aplikacji".
- * Cała ta maszyneria obsługiwała **każde** wydanie, bo każde wydanie było
- * nowym pakietem. Odkąd wydania ruszające sam JavaScript jadą przez
- * `expo-updates` (`ota.ts`), nowy pakiet jest potrzebny parę razy w roku — a na
- * to wystarczy odesłanie do przeglądarki, tak jak przy pierwszej instalacji.
+ * Pobierania pakietu i oddawania go instalatorowi — to jest w `apk.ts` obok.
+ * Rozdział przebiega wzdłuż tego, co się psuje osobno: tutaj są rzeczy, które
+ * działają zawsze (numer wersji z pakietu, odczyt z magazynu), tam takie, które
+ * zależą od sieci, miejsca na dysku i zgód systemu. `openRelease` zostaje
+ * tutaj, bo jest **drogą zapasową** dla tamtego: gdy instalacja z aplikacji się
+ * nie uda, zostaje katalog wydań w przeglądarce — ta sama droga, którą idzie
+ * pierwsza instalacja.
  */
 
 import * as Application from 'expo-application';

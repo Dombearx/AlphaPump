@@ -7,10 +7,9 @@
  * pobiera wtedy kilka megabajtów paczki zamiast kilkudziesięciu megabajtów
  * pakietu.
  *
- * Takiego wydania nie da się zainstalować za użytkownika: aplikacja nie ma już
- * uprawnienia `REQUEST_INSTALL_PACKAGES` i nie oddaje pliku instalatorowi.
- * Umie tylko powiedzieć, że nowszy pakiet istnieje, i otworzyć katalog wydań
- * w przeglądarce — tą samą drogą, którą idzie pierwsza instalacja.
+ * Sam plik pobiera i oddaje instalatorowi `apk.ts` — bez wychodzenia
+ * z aplikacji. Ten moduł jest wcześniej: mówi tylko, **czy** jest nowszy pakiet
+ * i pod jakim adresem leży.
  *
  * Wydanie na Androida nie idzie przez sklep, więc nikt nie powie telefonowi
  * „jest aktualizacja". Robi to plik `latest.json` leżący obok `.apk` w katalogu

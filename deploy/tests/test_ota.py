@@ -49,14 +49,27 @@ def updates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return directory
 
 
+EXPO_CONFIG: dict = {
+    "name": "AlphaPump",
+    "slug": "alphapump",
+    "extra": {"apiUrl": "http://minipc.test:3000"},
+}
+
+
 def build_export(
     *,
     bundle: bytes = b"var app = 1;",
     assets: dict[str, bytes] | None = None,
     platform: str = "android",
     extra_members: dict[str, bytes] | None = None,
+    expo_config: dict | None = EXPO_CONFIG,
 ) -> bytes:
-    """A tarball shaped like the output of `expo export`."""
+    """A tarball shaped like the output of `expo export`, plus the app config.
+
+    `expo config --json --type public` writes that config; the release workflow
+    puts it next to the bundle. Without it no downloaded bundle starts, so the
+    default here carries one and only the test about its absence drops it.
+    """
     assets = {} if assets is None else assets
 
     metadata = {
@@ -75,6 +88,11 @@ def build_export(
 
     members: dict[str, bytes] = {
         "metadata.json": json.dumps(metadata).encode(),
+        **(
+            {}
+            if expo_config is None
+            else {"expoConfig.json": json.dumps(expo_config).encode()}
+        ),
         BUNDLE_PATH: bundle,
         **assets,
         **(extra_members or {}),
@@ -201,6 +219,36 @@ def test_assets_carry_their_file_extension(updates: Path):
     described = pointer(updates)
     assert described["assets"][0]["fileExtension"] == ".png"
     assert "fileExtension" not in described["launchAsset"]
+
+
+def test_pointer_carries_the_app_config_phones_read(updates: Path):
+    """`extra.expoClient` is what a downloaded bundle sees as `Constants.expoConfig`.
+
+    Only the embedded bundle reads the config baked into the `.apk`; a bundle
+    that arrived over the air reads this. Serve a manifest without it and the
+    app throws while evaluating its first module, gets rolled back to the
+    embedded bundle, and looks to its user like an update that never applies.
+    """
+    publish(build_export())
+
+    assert pointer(updates)["extra"]["expoClient"] == EXPO_CONFIG
+
+
+def test_export_without_an_app_config_is_refused(updates: Path):
+    response = publish(build_export(expo_config=None))
+
+    assert response.status_code == 400
+    assert "expoConfig.json" in response.text
+
+
+def test_changed_app_config_is_a_changed_release(updates: Path):
+    """Same JavaScript, different API address: phones must be told to fetch it."""
+    publish(build_export())
+    first = pointer(updates)["id"]
+
+    publish(build_export(expo_config={**EXPO_CONFIG, "extra": {"apiUrl": "http://inny.test"}}))
+
+    assert pointer(updates)["id"] != first
 
 
 def test_asset_without_an_extension_is_refused(updates: Path):
