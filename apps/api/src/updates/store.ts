@@ -42,6 +42,14 @@ const storedAssetSchema = z.object({
   contentType: z.string().min(1),
   hash: z.string().min(1),
   /**
+   * Rozszerzenie pliku — telefon składa z niego nazwę na dysku (`klucz.ext`).
+   * Nieobowiązkowe, bo paczka JavaScriptu go nie ma i mieć nie powinna, a opisy
+   * wgrane przed jego wprowadzeniem leżą na minipc do najbliższego wydania.
+   * Dla zasobów jest jednak **konieczne**: bez niego Android po cichu wyrzuca
+   * zasób z wydania, a iOS odrzuca cały manifest.
+   */
+  fileExtension: z.string().min(1).optional(),
+  /**
    * Ścieżka względna wewnątrz katalogu wydań. Sprawdzana mimo że powstaje po
    * naszej stronie: plik na dysku minipc jest jedynym wejściem tego modułu,
    * a ręczna podmiana przy diagnozie zdarza się częściej niż atak.

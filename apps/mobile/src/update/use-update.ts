@@ -21,6 +21,11 @@
  * do logu widocznego dla użytkownika: minipc bywa poza zasięgiem częściej, niż
  * jest w nim, a komunikat „nie sprawdziłem aktualizacji" przy każdym otwarciu
  * aplikacji poza domem byłby szumem, na który nie ma reakcji.
+ *
+ * O tym, czy w ogóle proponować restart, nie decyduje samo `isUpdatePending`
+ * z `expo-updates`, tylko `pending.ts` — bo „paczka czeka" i „restart coś
+ * zmieni" to nie to samo, a różnica między nimi jest dokładnie tym, co daje
+ * okno wracające po każdym uruchomieniu aplikacji.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -28,10 +33,13 @@ import { AppState, Platform } from 'react-native';
 import { appConfig } from '../config/index';
 import {
   dismissedVersionCode,
+  forgetRestartedForUpdate,
   installedVersionCode,
   installedVersionName,
   openRelease,
   rememberDismissedVersion,
+  rememberRestartedForUpdate,
+  restartedForUpdateId,
 } from './expo';
 import {
   fetchUpdateManifest,
@@ -40,6 +48,7 @@ import {
   type UpdateManifest,
 } from './manifest';
 import { useOtaUpdate, useRunningPackage } from './ota';
+import { restartSucceeded, shouldOfferRestart } from './pending';
 import type { RunningBundle } from './running';
 
 /** Najkrótszy odstęp między sprawdzeniami — powrót na wierzch bywa częsty. */
@@ -63,9 +72,34 @@ export interface UpdateState {
 
 export function useUpdateCheck(): UpdateState {
   const ota = useOtaUpdate();
+  const running = useRunningPackage();
   const [nativeRelease, setNativeRelease] = useState<UpdateManifest | null>(null);
   const [restartDismissed, setRestartDismissed] = useState(false);
+  const [restartedFor, setRestartedFor] = useState<string | null>(null);
   const lastCheckedAt = useRef(0);
+
+  // Notatka o restarcie, którego użytkownik już raz zażądał. Czytana raz przy
+  // starcie: dopisuje ją `confirm` niżej, a zmienia się wyłącznie razem
+  // z uruchomieniem aplikacji od nowa.
+  useEffect(() => {
+    let cancelled = false;
+
+    void restartedForUpdateId().then((stored) => {
+      if (cancelled) return;
+      // Restart się udał — notatka zrobiła swoje i tylko by przeszkadzała,
+      // gdyby to samo wydanie kiedyś wróciło (cofnięcie wydania na minipc).
+      if (restartSucceeded({ runningId: running.updateId, restartedForId: stored })) {
+        void forgetRestartedForUpdate();
+        setRestartedFor(null);
+        return;
+      }
+      setRestartedFor(stored);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [running.updateId]);
 
   const check = useCallback(() => {
     // Poza Androidem nie ma jak zainstalować pakietu spoza sklepu, więc nie ma
@@ -111,15 +145,28 @@ export function useUpdateCheck(): UpdateState {
    * zgoda systemowa i instalator. Pakiet nie zniknie: zapyta przy następnym
    * otwarciu.
    */
-  const stage: UpdateStage =
-    ota.ready && !restartDismissed
-      ? { kind: 'restart' }
-      : nativeRelease === null
-        ? { kind: 'none' }
-        : { kind: 'native', manifest: nativeRelease };
+  const offerRestart =
+    !restartDismissed &&
+    shouldOfferRestart({
+      pending: ota.ready,
+      downloadedId: ota.downloadedId,
+      runningId: running.updateId,
+      restartedForId: restartedFor,
+    });
+
+  const stage: UpdateStage = offerRestart
+    ? { kind: 'restart' }
+    : nativeRelease === null
+      ? { kind: 'none' }
+      : { kind: 'native', manifest: nativeRelease };
 
   const confirm = useCallback(() => {
     if (stage.kind === 'restart') {
+      // Zapis **przed** restartem, bo po nim nie ma już czego zapisywać: proces
+      // startuje od nowa. Bez `await` z tego samego powodu — czekanie na dysk
+      // przed restartem, który i tak zaraz nastąpi, opóźniałoby jedyną rzecz,
+      // o którą użytkownik prosił.
+      if (ota.downloadedId !== null) void rememberRestartedForUpdate(ota.downloadedId);
       ota.apply();
       return;
     }

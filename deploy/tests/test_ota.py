@@ -103,6 +103,17 @@ def pointer(updates: Path, runtime_version: str = RUNTIME, platform: str = "andr
     return json.loads((updates / platform / f"{runtime_version}.json").read_text())
 
 
+BACKDATED = "2020-01-01T00:00:00.000Z"
+
+
+def _backdate(updates: Path, runtime_version: str = RUNTIME, platform: str = "android") -> None:
+    """Moves the current release's `createdAt` back, so tests about it can be exact."""
+    target = updates / platform / f"{runtime_version}.json"
+    described = json.loads(target.read_text())
+    described["createdAt"] = BACKDATED
+    target.write_text(json.dumps(described))
+
+
 def test_publishing_writes_pointer_and_assets(updates: Path):
     bundle = b"var app = 'wydanie';"
     response = publish(build_export(bundle=bundle, assets={"assets/logo.png": b"udawany png"}))
@@ -141,6 +152,74 @@ def test_identical_export_keeps_its_identifier(updates: Path):
     second = pointer(updates)["id"]
 
     assert first == second
+
+
+def test_identical_export_keeps_the_moment_it_was_published(updates: Path):
+    """And it must keep its `createdAt`, which is the half phones actually read.
+
+    The client does not compare identifiers to decide whether to offer an
+    update -- it compares this timestamp with the one recorded when it
+    downloaded the release. A moved `createdAt` under an unchanged identifier is
+    a release that is forever newer than the copy already on the phone: offered
+    at every launch, already on disk, and unchanged by the restart it asks for.
+    """
+    archive = build_export(assets={"assets/logo.png": b"udawany png"})
+
+    publish(archive)
+    _backdate(updates)
+
+    publish(archive)
+
+    assert pointer(updates)["createdAt"] == BACKDATED
+
+
+def test_changed_export_gets_a_new_moment(updates: Path):
+    """Only the *same* release inherits a timestamp; a different one must not.
+
+    The pointer is backdated by hand so the assertion does not depend on two
+    publishes landing in different seconds.
+    """
+    publish(build_export(bundle=b"var app = 1;"))
+    _backdate(updates)
+
+    publish(build_export(bundle=b"var app = 2;"))
+
+    assert pointer(updates)["createdAt"] != BACKDATED
+
+
+def test_assets_carry_their_file_extension(updates: Path):
+    """Without it Android drops the asset from the update and says nothing.
+
+    The client reads `fileExtension` with `getString`, so a missing one throws
+    and the asset is skipped; iOS reads it with `requiredValue` and refuses the
+    whole manifest. Either way the release reaches phones describing only its
+    bundle. The launch asset is the documented exception -- the client stores it
+    under its bare key and EAS does not send one either.
+    """
+    publish(build_export(assets={"assets/logo.png": b"udawany png"}))
+
+    described = pointer(updates)
+    assert described["assets"][0]["fileExtension"] == ".png"
+    assert "fileExtension" not in described["launchAsset"]
+
+
+def test_asset_without_an_extension_is_refused(updates: Path):
+    """Better a failed release than one that quietly arrives without its files."""
+    without_extension = {
+        "version": 0,
+        "bundler": "metro",
+        "fileMetadata": {
+            "android": {"bundle": BUNDLE_PATH, "assets": [{"path": "assets/logo.png"}]}
+        },
+    }
+    response = publish(
+        build_export(
+            assets={"assets/logo.png": b"udawany png"},
+            extra_members={"metadata.json": json.dumps(without_extension).encode()},
+        )
+    )
+    assert response.status_code == 400
+    assert "file extension" in response.text
 
 
 def test_changed_bundle_changes_the_identifier(updates: Path):

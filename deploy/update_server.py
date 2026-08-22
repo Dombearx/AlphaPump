@@ -594,6 +594,12 @@ async def publish_update(
 
         launch, assets = _describe_export(unpacked, platform)
         update = _assemble_update(runtime_version, platform, launch, assets)
+        # Same contents as the release already current means the same release,
+        # so it keeps the moment it was first published -- see `_assemble_update`
+        # for what a moved `createdAt` does to a phone.
+        update["createdAt"] = _created_at_of_current_release(
+            directory, platform, runtime_version, update["id"]
+        ) or update["createdAt"]
 
         stored = _store_assets(directory, [launch, *assets])
         _write_pointer(directory, platform, runtime_version, update)
@@ -716,6 +722,10 @@ def _describe_export(root: Path, platform: str) -> tuple[dict[str, Any], list[di
     if not isinstance(bundle, str):
         raise HTTPException(status_code=400, detail=f"No bundle listed for {platform}")
 
+    # No `fileExtension` for the bundle, on purpose: the client stores the
+    # launch asset under its bare key and says so in the source ("the
+    # fileExtension is not necessary for the launch asset and EAS servers will
+    # not include it"). iOS ignores it there too.
     launch = _asset_entry(root, bundle, LAUNCH_CONTENT_TYPE)
 
     assets = []
@@ -723,22 +733,47 @@ def _describe_export(root: Path, platform: str) -> tuple[dict[str, Any], list[di
         path = asset.get("path")
         if not isinstance(path, str):
             raise HTTPException(status_code=400, detail=f"Malformed asset entry: {asset!r}")
+        extension = asset.get("ext")
+        if not isinstance(extension, str) or not extension:
+            raise HTTPException(
+                status_code=400, detail=f"Asset without a file extension: {asset!r}"
+            )
         # `mime.getType` on the client side keys off the extension too, so an
         # unknown one becomes the catch-all rather than an error: a font the
         # mimetypes table has not heard of should still reach the phone.
-        guessed = mimetypes.guess_type(f"asset.{asset.get('ext', '')}")[0]
-        assets.append(_asset_entry(root, path, guessed or "application/octet-stream"))
+        guessed = mimetypes.guess_type(f"asset.{extension}")[0]
+        assets.append(
+            _asset_entry(
+                root,
+                path,
+                guessed or "application/octet-stream",
+                file_extension=extension,
+            )
+        )
 
     return launch, assets
 
 
-def _asset_entry(root: Path, relative: str, content_type: str) -> dict[str, Any]:
+def _asset_entry(
+    root: Path,
+    relative: str,
+    content_type: str,
+    file_extension: str | None = None,
+) -> dict[str, Any]:
     """One exported file, described the way the update protocol wants it.
 
     Two hashes, because they answer two questions. `key` (MD5) is the file's
     name on the phone and in the shared directory here; `hash` (SHA-256,
     base64url) is what the client checks after downloading. Both are computed
     once, at publish time, rather than on every phone's check.
+
+    `fileExtension` is not decoration: every asset that is not the bundle
+    **must** carry it. Android reads it with `getString`, so a missing one
+    throws, and the client answers by dropping that asset from the update
+    without a word to anyone; iOS reads it with `requiredValue` and refuses the
+    whole manifest. An update published without it therefore reaches phones
+    describing only its bundle -- and every image or font it added arrives
+    nowhere.
     """
     source = root / _safe_member_name(relative)
     if not source.is_file():
@@ -750,7 +785,7 @@ def _asset_entry(root: Path, relative: str, content_type: str) -> dict[str, Any]
     key = hashlib.md5(data).hexdigest()
     digest = hashlib.sha256(data).digest()
 
-    return {
+    entry = {
         "key": key,
         "contentType": content_type,
         "hash": base64.urlsafe_b64encode(digest).decode().rstrip("="),
@@ -758,6 +793,13 @@ def _asset_entry(root: Path, relative: str, content_type: str) -> dict[str, Any]
         # Not part of the stored description -- stripped before writing.
         "_source": str(source),
     }
+    if file_extension is not None:
+        # With the leading dot, like the reference server: the client accepts
+        # both, and this is the form its own examples carry.
+        entry["fileExtension"] = (
+            file_extension if file_extension.startswith(".") else f".{file_extension}"
+        )
+    return entry
 
 
 def _assemble_update(
@@ -765,12 +807,23 @@ def _assemble_update(
     platform: str,
     launch: dict[str, Any],
     assets: list[dict[str, Any]],
+    created_at: str | None = None,
 ) -> dict[str, Any]:
     """The description the API reads and turns into a manifest.
 
     The identifier is derived from the contents rather than drawn at random, so
     republishing an unchanged export does not look to phones like a new release
     they have to download.
+
+    `createdAt` is passed in when the release being published is the one already
+    current, and that is what makes the promise above true. The client does not
+    compare identifiers to decide whether to offer an update -- it compares this
+    timestamp with the one it recorded when it downloaded the release. A rebuilt
+    `createdAt` under an unchanged identifier is therefore a release that is
+    forever newer than the copy the phone already runs: it offers it, the phone
+    already has it on disk, the restart changes nothing, and the next launch
+    offers it again. That is the "update ready, restart to apply" that never
+    goes away.
     """
     def public(entry: dict[str, Any]) -> dict[str, Any]:
         return {key: value for key, value in entry.items() if not key.startswith("_")}
@@ -787,11 +840,34 @@ def _assemble_update(
 
     return {
         "id": f"{digest[0:8]}-{digest[8:12]}-{digest[12:16]}-{digest[16:20]}-{digest[20:32]}",
-        "createdAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+        "createdAt": created_at
+        or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
         **body,
         "metadata": {},
         "extra": {},
     }
+
+
+def _created_at_of_current_release(
+    directory: Path, platform: str, runtime_version: str, update_id: str
+) -> str | None:
+    """When the release now being published was first published, if it already was.
+
+    `None` for anything else -- a different release, no release yet, a pointer
+    that cannot be read. Then the caller keeps the timestamp it just made, which
+    is the right answer for a release phones have never seen.
+    """
+    target = directory / platform / f"{runtime_version}.json"
+    try:
+        described = json.loads(target.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+
+    if not isinstance(described, dict) or described.get("id") != update_id:
+        return None
+
+    created = described.get("createdAt")
+    return created if isinstance(created, str) and created else None
 
 
 def _store_assets(directory: Path, entries: list[dict[str, Any]]) -> int:

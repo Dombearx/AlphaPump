@@ -76,3 +76,45 @@ export async function rememberDismissedVersion(versionCode: number): Promise<voi
     // Jak wyżej: nieudany zapis znaczy tylko tyle, że zapytamy ponownie.
   }
 }
+
+/* ------------------------------------------------------- restart dla paczki */
+
+/**
+ * Paczka, dla której użytkownik już raz kliknął „uruchom ponownie".
+ *
+ * Przeżywa restart, bo dokładnie o restart tu chodzi: paczka, która nie wstaje,
+ * zostaje przez `expo-updates` odznaczona jako nieudana i nigdy więcej nie jest
+ * uruchamiana, ale dalej leży na dysku jako „pobrana i gotowa". Bez tej notatki
+ * okno wracałoby po każdym otwarciu aplikacji, prosząc o czynność, o której
+ * z góry wiadomo, że nic nie zmieni. Decyzję podejmuje `pending.ts`.
+ *
+ * Ten sam magazyn co odłożone wydania wyżej i z tego samego powodu: to jedyny
+ * magazyn klucz-wartość, który aplikacja już ma.
+ */
+const RESTARTED_FOR_KEY = 'alphapump.update.restartedFor';
+
+export async function restartedForUpdateId(): Promise<string | null> {
+  try {
+    const stored = await SecureStore.getItemAsync(RESTARTED_FOR_KEY);
+    return stored === null || stored === '' ? null : stored;
+  } catch {
+    // Nieudany odczyt znaczy najwyżej jedno okno za dużo — nigdy za mało.
+    return null;
+  }
+}
+
+export async function rememberRestartedForUpdate(updateId: string): Promise<void> {
+  try {
+    await SecureStore.setItemAsync(RESTARTED_FOR_KEY, updateId);
+  } catch {
+    // Jak wyżej.
+  }
+}
+
+export async function forgetRestartedForUpdate(): Promise<void> {
+  try {
+    await SecureStore.deleteItemAsync(RESTARTED_FOR_KEY);
+  } catch {
+    // Jak wyżej.
+  }
+}
