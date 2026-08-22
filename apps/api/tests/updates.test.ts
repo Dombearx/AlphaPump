@@ -146,7 +146,7 @@ describe('manifest aktualizacji OTA', () => {
     // `getString`, więc brak znaczy zasób **po cichu** wyrzucony z wydania,
     // a iOS odrzuca wtedy cały manifest. Paczka JavaScriptu go nie ma i mieć
     // nie powinna — telefon trzyma ją pod samym kluczem.
-    expect(manifest.assets[0]).toMatchObject({ fileExtension: '.png' });
+    expect(manifest.assets).toMatchObject([{ fileExtension: '.png' }]);
     expect(manifest.launchAsset).not.toHaveProperty('fileExtension');
 
     // Część `extensions` jest wymagana przez klienta nawet pusta — jej brak
