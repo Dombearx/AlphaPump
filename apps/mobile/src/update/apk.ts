@@ -42,10 +42,16 @@ import { Platform } from 'react-native';
 const RELEASES_DIRECTORY = 'releases';
 
 /**
- * Instalator systemu. Akcja jest w API 29+ oznaczona jako przestarzała na rzecz
- * `PackageInstaller`, ale działa i jest jedyną osiągalną bez kodu natywnego.
+ * Instalator systemu — dwie akcje, w kolejności prób.
+ *
+ * `INSTALL_PACKAGE` mówi wprost, o co chodzi, ale jest od API 29 oznaczone jako
+ * przestarzałe na rzecz `PackageInstaller` (którego nie da się dosięgnąć bez
+ * kodu natywnego), a poszczególne wydania Androida bywają w tym niezgodne.
+ * `VIEW` z typem MIME pakietu trafia do tego samego instalatora okrężną drogą
+ * i jest tym, co pokazuje dokumentacja `expo-file-system`. Druga próba kosztuje
+ * jedno wywołanie, a jej brak kosztowałby wyjście do przeglądarki — więc jest.
  */
-const INSTALL_ACTION = 'android.intent.action.INSTALL_PACKAGE';
+const INSTALL_ACTIONS = ['android.intent.action.INSTALL_PACKAGE', 'android.intent.action.VIEW'];
 
 /** `FLAG_GRANT_READ_URI_PERMISSION` — bez tego instalator nie odczyta pliku. */
 const GRANT_READ_URI_PERMISSION = 1;
@@ -103,9 +109,21 @@ export async function installRelease(fileUri: string): Promise<void> {
 
   const contentUri = await getContentUriAsync(fileUri);
 
-  await IntentLauncher.startActivityAsync(INSTALL_ACTION, {
-    data: contentUri,
-    flags: GRANT_READ_URI_PERMISSION,
-    type: APK_MIME_TYPE,
-  });
+  let lastError: unknown;
+  for (const action of INSTALL_ACTIONS) {
+    try {
+      await IntentLauncher.startActivityAsync(action, {
+        data: contentUri,
+        flags: GRANT_READ_URI_PERMISSION,
+        type: APK_MIME_TYPE,
+      });
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error('No activity on this phone would open the package');
 }
