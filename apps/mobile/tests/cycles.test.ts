@@ -407,12 +407,14 @@ describe('cykle w bazie lokalnej', () => {
       expect([...marked.keys()].sort()).toEqual([TAGS.chest, tagId('abs')].sort());
     });
 
-    it('nie oznacza niczego, gdy pozycje są zrobione', async () => {
+    it('tag zrobiony w całości zostaje oznaczony pełnym wypełnieniem', async () => {
       await create([{ metric: 'sets', target: 1, exerciseId: null, tagId: TAGS.chest }]);
       await addBench();
 
       const { summaries } = await load();
-      expect(tagCycleProgress(summaries, DAY).size).toBe(0);
+      // Dokończona robota nie wypada z mapy: chips ma zostać wypełniony do końca,
+      // a nie wrócić do wyglądu tagu spoza cyklu.
+      expect(tagCycleProgress(summaries, DAY).get(TAGS.chest)).toBe(1);
     });
 
     it('podaje udział wykonania tagu — jedna seria z czterech to ćwierć', async () => {
@@ -423,23 +425,44 @@ describe('cykle w bazie lokalnej', () => {
       expect(tagCycleProgress(summaries, DAY).get(TAGS.chest)).toBe(0.25);
     });
 
-    it('uśrednia udział, gdy w jeden tag celuje kilka pozycji', async () => {
+    it('cztery serie z ośmiu zaplanowanych w tagu to połowa, choćby stały w dwóch pozycjach', async () => {
       await create([
-        { metric: 'sets', target: 4, exerciseId: null, tagId: TAGS.chest },
-        // Wyciskanie ma tag główny „chest", więc obie pozycje zostawiają robotę
-        // w tym samym tagu: ćwiartka i połowa dają na chipsie trzy ósme.
-        { metric: 'sets', target: 2, exerciseId: EXERCISES.bench!.id, tagId: null },
+        // Wyciskanie i dipy mają ten sam tag główny „chest", więc obie pozycje
+        // planują robotę w tym samym tagu: razem osiem serii.
+        { metric: 'sets', target: 4, exerciseId: EXERCISES.bench!.id, tagId: null },
+        { metric: 'sets', target: 4, exerciseId: EXERCISES.dips!.id, tagId: null },
       ]);
+      await addBench();
+      await addBench();
+      await addBench();
       await addBench();
 
       const { summaries } = await load();
-      expect(tagCycleProgress(summaries, DAY).get(TAGS.chest)).toBe(0.375);
+      expect(tagCycleProgress(summaries, DAY).get(TAGS.chest)).toBe(0.5);
     });
 
-    it('liczy do średniej też pozycję już gotową, zamiast ją pomijać', async () => {
+    it('liczy zrobioną robotę, a nie udziały pozycji', async () => {
       await create([
-        // Gotowa jedną serią — reszta cyklu jest w tagu „chest" dalej otwarta,
-        // więc gwiazdka zostaje, a ta pozycja ma wnieść do średniej swoją jedynkę.
+        { metric: 'sets', target: 8, exerciseId: EXERCISES.bench!.id, tagId: null },
+        { metric: 'sets', target: 2, exerciseId: EXERCISES.dips!.id, tagId: null },
+      ]);
+      await addBench();
+      await addBench();
+      await addBench();
+      await addBench();
+
+      const { summaries } = await load();
+      // Cztery serie z dziesięciu zaplanowanych w tagu to dwie piąte. Średnia
+      // z udziałów pozycji dawała tu ćwiartkę: pozycja na dwie serie ważyła
+      // w niej tyle samo, co pozycja na osiem, i wypełnienie rozjeżdżało się
+      // z tym, co zostało do zrobienia.
+      expect(tagCycleProgress(summaries, DAY).get(TAGS.chest)).toBe(0.4);
+    });
+
+    it('nadmiar w jednej pozycji nie zasypuje braku w drugiej', async () => {
+      await create([
+        // Pozycja na jedną serię jest zrobiona po pierwszym wyciskaniu; kolejne
+        // trzy serie wchodzą już tylko do pozycji tagowej.
         { metric: 'sets', target: 1, exerciseId: EXERCISES.bench!.id, tagId: null },
         { metric: 'sets', target: 8, exerciseId: null, tagId: TAGS.chest },
       ]);
@@ -449,9 +472,9 @@ describe('cykle w bazie lokalnej', () => {
       await addBench();
 
       const { summaries } = await load();
-      // Gotowa pozycja (1) i otwarta (4/8 = 0.5) uśrednione dają 0.75 — a nie 0.5,
-      // jak wychodziło, gdy gotowa pozycja znikała ze średniej zamiast ją podbić.
-      expect(tagCycleProgress(summaries, DAY).get(TAGS.chest)).toBe(0.75);
+      // Zaplanowane dziewięć serii, zrobione pięć: jedna z jednej i cztery
+      // z ośmiu. Czwarta seria wyciskania nie dolicza się do pozycji na jedną.
+      expect(tagCycleProgress(summaries, DAY).get(TAGS.chest)).toBeCloseTo(5 / 9, 10);
     });
   });
 });

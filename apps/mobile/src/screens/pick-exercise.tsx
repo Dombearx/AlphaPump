@@ -15,18 +15,20 @@
  *
  * ## Podpowiedź z cyklu
  *
- * Tag, w którym został jeszcze do wykonania cel aktywnego cyklu, ma gwiazdkę
- * **wewnątrz** swojego chipsa — w miejscu kropki koloru — a jego tło jest
- * wypełnione od lewej w proporcji zrobionej roboty: cztery serie z ośmiu
- * zaplanowanych to połowa chipsa. Osobnej sekcji z listą pozostałych pozycji tu
- * nie ma świadomie: ekran jest pomiędzy dniem a formularzem i każdy jego element
- * to koszt w najczęstszej czynności w aplikacji, a rząd tagów i tak stoi na
- * górze. Gwiazdka i wypełnienie mieszczą się w tym, co już zajmował filtr.
+ * Tag objęty celem aktywnego cyklu ma znak **wewnątrz** swojego chipsa —
+ * w miejscu kropki koloru — a jego tło jest wypełnione od lewej w proporcji
+ * zrobionej roboty: cztery serie z ośmiu zaplanowanych to połowa chipsa. Dopóki
+ * coś zostało, znakiem jest gwiazdka; po dokończeniu roboty ptaszek, a chips
+ * zostaje wypełniony do końca — postęp ma się domykać, a nie znikać przy
+ * ostatniej serii. Osobnej sekcji z listą pozostałych pozycji tu nie ma
+ * świadomie: ekran jest pomiędzy dniem a formularzem i każdy jego element to
+ * koszt w najczęstszej czynności w aplikacji, a rząd tagów i tak stoi na górze.
+ * Znak i wypełnienie mieszczą się w tym, co już zajmował filtr.
  *
  * To **wyłącznie podpowiedź, gdzie szukać**, a nie ręczne przypisanie serii do
  * cyklu — przypisania nie ma w ogóle, bo każda zapisana seria zalicza się sama
- * do wszystkich pasujących cykli. Cel wskazujący ćwiczenie zapala gwiazdkę na
- * jego tagu głównym: „12 serii na biceps" i tak nie mówi, którym ćwiczeniem je
+ * do wszystkich pasujących cykli. Cel wskazujący ćwiczenie oznacza jego tag
+ * główny: „12 serii na biceps" i tak nie mówi, którym ćwiczeniem je
  * zrobić, a od tagu do ćwiczenia jest jedno naciśnięcie.
  */
 

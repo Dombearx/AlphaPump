@@ -191,9 +191,10 @@ export function Chip({
   /** Kropka w kolorze tagu; pomijana tam, gdzie chips nie dotyczy tagu. */
   color?: string;
   /**
-   * „Tu coś jeszcze zostało", wraz z udziałem wykonania (0–1): kropka zamienia
-   * się w gwiazdkę, a tło chipsa wypełnia się od lewej w tylu procentach, ile
-   * z roboty jest zrobione. Gwiazdka stoi **w miejscu kropki**, a nie obok niej,
+   * Udział wykonania roboty z cyklu (0–1) dla tagu tego chipsa: tło wypełnia się
+   * od lewej w tylu procentach, ile z roboty jest zrobione, a kropka zamienia
+   * się w gwiazdkę „tu coś jeszcze zostało" — po dokończeniu w ptaszka, przy
+   * tle wypełnionym do końca. Znak stoi **w miejscu kropki**, a nie obok niej,
    * i wypełnienie idzie tłem, bo rząd chipsów ma po nich zajmować dokładnie tyle
    * samo miejsca, co przedtem.
    */
@@ -205,7 +206,16 @@ export function Chip({
    */
   onPress?: () => void;
 }) {
-  const shape = `flex-row items-center gap-2 overflow-hidden rounded-full border px-3 py-2 ${
+  // Wyściółka siedzi na wewnętrznym rzędzie, a nie na obramowanym pudełku, bo
+  // wypełnienie tła ma się rozciągać na **całą** szerokość chipsa. Procenty
+  // i krawędzie elementu ustawionego bezwzględnie liczą się względem pudełka
+  // rodzica, a to z wyściółką jest węższe od widocznego chipsa: przy `px-3`
+  // połowa roboty wychodziła na krótkim chipsie mniej więcej jedną trzecią jego
+  // szerokości. Bez wyściółki na zewnętrznym pudełku nie ma się co rozjechać.
+  // `justify-center` trzyma treść pośrodku wysokości chipsa: w łamanym rzędzie
+  // chipsy rozciągają się do najwyższego w linii, a wcześniej centrowanie
+  // załatwiał `items-center` stojący na tym samym pudełku, co treść.
+  const shape = `justify-center overflow-hidden rounded-full border ${
     selected ? 'border-accent bg-surface' : 'border-border bg-base'
   }`;
 
@@ -215,8 +225,10 @@ export function Chip({
   const content = (
     <>
       {progress === undefined ? null : <ChipFill ratio={progress} color={mark} />}
-      {progress === undefined ? dot : <TagStar color={mark} ratio={progress} />}
-      <Text className={selected ? 'text-text' : 'text-muted'}>{label}</Text>
+      <View className="flex-row items-center gap-2 px-3 py-2">
+        {progress === undefined ? dot : <TagStar color={mark} ratio={progress} />}
+        <Text className={selected ? 'text-text' : 'text-muted'}>{label}</Text>
+      </View>
     </>
   );
 
@@ -288,22 +300,32 @@ export function TagDot({ color }: { color: string }) {
 }
 
 /**
- * Gwiazdka w kolorze tagu, wielkości kropki — oznaczenie „tu coś zostało".
+ * Znak cyklu w kolorze tagu, wielkości kropki: gwiazdka „tu coś zostało",
+ * a po dokończeniu roboty ptaszek.
  *
- * Rozmiar jest podany wprost, a nie klasą, bo ma być związany z kropką: gwiazdka
- * wchodzi na jej miejsce i rząd chipsów nie może przez nią urosnąć. Wysokość
- * linii trzyma ją poniżej wysokości etykiety, więc przycisk zostaje ten sam.
+ * Zrobiony tag zostaje oznaczony, zamiast wracać do wyglądu tagu spoza cyklu —
+ * inaczej ostatnia seria wygląda jak cofnięcie postępu, a nie jak jego domknięcie.
+ *
+ * Rozmiar jest podany wprost, a nie klasą, bo ma być związany z kropką: znak
+ * wchodzi na jej miejsce i rząd chipsów nie może przez niego urosnąć. Wysokość
+ * linii trzyma go poniżej wysokości etykiety, więc przycisk zostaje ten sam.
  * Czytnikowi ekranu podajemy słowa, bo sam znak przeczytałby jako „czarna
  * gwiazdka" — a to nie jest informacja, którą tu przekazujemy. Udział wykonania
  * dopisujemy do tych samych słów: wypełnienie tła chipsa widać wyłącznie okiem,
  * więc bez tego czytnik ekranu nie miałby skąd wziąć procentu.
  */
 export function TagStar({ color, ratio }: { color: string; ratio?: number }) {
-  const label = ratio === undefined ? 'left to do' : `left to do, ${percentOf(ratio)}% done`;
+  const done = ratio !== undefined && ratio >= 1;
+  const label =
+    ratio === undefined
+      ? 'left to do'
+      : done
+        ? 'cycle work done'
+        : `left to do, ${percentOf(ratio)}% done`;
 
   return (
     <Text accessibilityLabel={label} style={{ color, fontSize: 13, lineHeight: 14 }}>
-      ★
+      {done ? '✓' : '★'}
     </Text>
   );
 }
@@ -317,13 +339,22 @@ export function TagStar({ color, ratio }: { color: string; ratio?: number }) {
  * przechodzi się do każdej serii. Kolor jest kolorem tagu, przygaszony: tło ma
  * być tłem, a nie drugą etykietą. Przycięcie do zaokrąglenia załatwia
  * `overflow-hidden` na samym chipsie.
+ *
+ * Szerokość wychodzi z podziału rzędu rozpiętego na całym chipsie (`left` i
+ * `right` naraz), a nie z procentu szerokości: procent w elemencie ustawionym
+ * bezwzględnie liczy się względem pudełka rodzica i różni się między wersjami
+ * silnika układu, a tu ma być dokładnie tyle, ile zrobionej roboty. Podział
+ * dwoma udziałami wzrostu daje tę proporcję wprost, bez zgadywania, od czego
+ * liczy się sto procent.
  */
 function ChipFill({ ratio, color }: { ratio: number; color: string }) {
+  const done = Math.min(Math.max(ratio, 0), 1);
+
   return (
-    <View
-      className="absolute bottom-0 left-0 top-0"
-      style={{ width: `${percentOf(ratio)}%`, backgroundColor: color, opacity: 0.3 }}
-    />
+    <View className="absolute bottom-0 left-0 right-0 top-0 flex-row" pointerEvents="none">
+      <View style={{ flexGrow: done, flexBasis: 0, backgroundColor: color, opacity: 0.3 }} />
+      <View style={{ flexGrow: 1 - done, flexBasis: 0 }} />
+    </View>
   );
 }
 
