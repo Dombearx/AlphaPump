@@ -16,10 +16,12 @@
  * ## Podpowiedź z cyklu
  *
  * Tag, w którym został jeszcze do wykonania cel aktywnego cyklu, ma gwiazdkę
- * **wewnątrz** swojego chipsa — w miejscu kropki koloru. Osobnej sekcji z listą
- * pozostałych pozycji tu nie ma świadomie: ekran jest pomiędzy dniem a formularzem
- * i każdy jego element to koszt w najczęstszej czynności w aplikacji, a rząd
- * tagów i tak stoi na górze. Gwiazdka mieści się w tym, co już zajmował filtr.
+ * **wewnątrz** swojego chipsa — w miejscu kropki koloru — a jego tło jest
+ * wypełnione od lewej w proporcji zrobionej roboty: cztery serie z ośmiu
+ * zaplanowanych to połowa chipsa. Osobnej sekcji z listą pozostałych pozycji tu
+ * nie ma świadomie: ekran jest pomiędzy dniem a formularzem i każdy jego element
+ * to koszt w najczęstszej czynności w aplikacji, a rząd tagów i tak stoi na
+ * górze. Gwiazdka i wypełnienie mieszczą się w tym, co już zajmował filtr.
  *
  * To **wyłącznie podpowiedź, gdzie szukać**, a nie ręczne przypisanie serii do
  * cyklu — przypisania nie ma w ogóle, bo każda zapisana seria zalicza się sama
@@ -39,7 +41,7 @@ import {
   cycleSummaries,
   earliestRelevantDay,
   remainingTargets,
-  tagsWithRemaining,
+  tagCycleProgress,
   withGoals,
 } from '../cycle-progress';
 import { db } from '../db/client';
@@ -82,8 +84,8 @@ export function PickExerciseScreen({ day }: { day: IsoDate }) {
   const from = useMemo(() => earliestRelevantDay(cycles, day), [cycles, day]);
   const sets = useLiveQuery(setsForCycles(db, userId, from), [userId, from]);
 
-  const markedTags = useMemo(
-    () => tagsWithRemaining(remainingTargets(cycleSummaries(cycles, sets.data ?? []), day)),
+  const cycleProgress = useMemo(
+    () => tagCycleProgress(remainingTargets(cycleSummaries(cycles, sets.data ?? []), day)),
     [cycles, sets.data, day],
   );
 
@@ -120,7 +122,7 @@ export function PickExerciseScreen({ day }: { day: IsoDate }) {
               key={tag.id}
               label={tag.name}
               color={tag.color}
-              marked={markedTags.has(tag.id)}
+              progress={cycleProgress.get(tag.id)}
               selected={tagId === tag.id}
               onPress={() => pickTag(tagId === tag.id ? null : tag.id)}
             />

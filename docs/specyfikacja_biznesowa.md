@@ -156,7 +156,7 @@ Przykład: jeśli w poniedziałek zapisano serie 10, 9, 6, 4 powtórzenia, to w 
 
 ### Wybór ćwiczenia z cyklu
 
-W widoku dodawania serii tagi, w których została jeszcze pozycja do wykonania w aktywnym cyklu, są oznaczone gwiazdką wewnątrz przycisku tagu. Oznaczenie ma się mieścić w miejscu, które filtr tagów zajmuje i bez niego — osobnej sekcji z listą pozostałych pozycji nie ma. Tag, w którym nic nie zostało, nie ma żadnego oznaczenia. Pozycja celu wskazująca konkretne ćwiczenie oznacza jego tag główny. Jest to tylko podpowiedź, gdzie szukać ćwiczenia, i nie oznacza ręcznego przypisania serii do cyklu. 
+W widoku dodawania serii tagi, w których została jeszcze pozycja do wykonania w aktywnym cyklu, są oznaczone gwiazdką wewnątrz przycisku tagu. Tło takiego tagu jest dodatkowo wypełnione od lewej w proporcji wykonania: cztery serie z ośmiu zaplanowanych dla tagu to wypełnienie w połowie. Gdy w jeden tag celuje kilka pozycji celu, wypełnienie pokazuje ich średnie wykonanie. Oznaczenie ma się mieścić w miejscu, które filtr tagów zajmuje i bez niego — osobnej sekcji z listą pozostałych pozycji nie ma. Tag, w którym nic nie zostało, nie ma żadnego oznaczenia ani wypełnienia. Pozycja celu wskazująca konkretne ćwiczenie oznacza jego tag główny. Jest to tylko podpowiedź, gdzie szukać ćwiczenia, i nie oznacza ręcznego przypisania serii do cyklu. 
 
 Każda zapisana seria jest automatycznie dopasowywana przez system do wszystkich pasujących cykli. 
 
