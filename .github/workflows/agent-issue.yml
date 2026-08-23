@@ -115,6 +115,16 @@ jobs:
           # o zalogowanie. Do samego `git push` token nie jest potrzebny: akcja
           # wstawia własny do adresu zdalnego repozytorium.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Agent pracuje bezinteraktywnie, więc nie ma go komu obudzić, kiedy
+          # zadanie w tle się skończy. Przebieg na zgłoszeniu #57 rozbił się
+          # dokładnie o to: `pnpm test` poszło w tło, agent oddał turę
+          # zapowiedzią „poczekam na wynik", a tura bez wywołania narzędzia
+          # jest dla akcji końcem pracy — proces się zamknął, a powłoka
+          # z testami została ubita kilka sekund później. Ta zmienna wyłącza
+          # automatyczne przenoszenie długich zadań w tło. Prośba w prompcie
+          # stoi obok niej, bo łapie też przypadek, w którym agent sam o tło
+          # poprosi.
+          CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: 1
         with:
           # Token z subskrypcji, generowany lokalnie przez `claude setup-token`.
           # Nie jest kluczem API i nie obciąża rachunku za API.
@@ -188,6 +198,16 @@ jobs:
                W opisie umieść linię `Fixes #${{ steps.zadanie.outputs.numer }}`
                — po tym powiązaniu bot na Discordzie znajduje PR-kę
                i podlinkuje ją w wątku z dyskusją o tym zgłoszeniu.
+
+            Pracujesz bezinteraktywnie — po drugiej stronie nikogo nie ma
+            i nikt cię nie obudzi. Tura, w której nie wywołasz żadnego
+            narzędzia, jest dla akcji końcem pracy: proces się zamyka,
+            a runner znika razem z tym, co na nim jeszcze działało. Nie
+            uruchamiaj więc niczego w tle i nie kończ wypowiedzi zapowiedzią,
+            że czekasz na czyjś wynik — polecenia, zwłaszcza `pnpm test`,
+            uruchamiaj wprost i czekaj, aż się skończą; na całe zadanie masz
+            godzinę. Zamilknąć wolno ci dopiero wtedy, kiedy PR-ka jest
+            założona albo kiedy zostawiłeś komentarz do zgłoszenia.
 
             Czego nie robić: nie zmieniaj wersji zależności, nie zmieniaj
             schematu bazy ani plików w `deploy/`, jeśli zgłoszenie tego wprost
