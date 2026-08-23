@@ -13,14 +13,19 @@
  * Filtrowanie idzie po slugu, tym samym, który wylicza identyfikator ćwiczenia.
  * Dzięki temu „lawka" znajduje „Ławkę", a użytkownik nie musi trafiać w ogonki.
  *
- * ## Skrót z cyklu
+ * ## Podpowiedź z cyklu
  *
- * Na górze stoją pozycje pozostałe do wykonania w aktywnych cyklach. To jest
- * **wyłącznie skrót do wskazania ćwiczenia albo obszaru**, a nie ręczne
- * przypisanie serii do cyklu — przypisania nie ma w ogóle, bo każda zapisana
- * seria zalicza się sama do wszystkich pasujących cykli. Pozycja wskazująca
- * ćwiczenie prowadzi wprost do formularza; pozycja tagowa zawęża listę poniżej,
- * bo „12 serii na biceps" nie mówi, którym ćwiczeniem je zrobić.
+ * Tag, w którym został jeszcze do wykonania cel aktywnego cyklu, ma gwiazdkę
+ * **wewnątrz** swojego chipsa — w miejscu kropki koloru. Osobnej sekcji z listą
+ * pozostałych pozycji tu nie ma świadomie: ekran jest pomiędzy dniem a formularzem
+ * i każdy jego element to koszt w najczęstszej czynności w aplikacji, a rząd
+ * tagów i tak stoi na górze. Gwiazdka mieści się w tym, co już zajmował filtr.
+ *
+ * To **wyłącznie podpowiedź, gdzie szukać**, a nie ręczne przypisanie serii do
+ * cyklu — przypisania nie ma w ogóle, bo każda zapisana seria zalicza się sama
+ * do wszystkich pasujących cykli. Cel wskazujący ćwiczenie zapala gwiazdkę na
+ * jego tagu głównym: „12 serii na biceps" i tak nie mówi, którym ćwiczeniem je
+ * zrobić, a od tagu do ćwiczenia jest jedno naciśnięcie.
  */
 
 import type { IsoDate } from '@alphapump/core';
@@ -34,8 +39,8 @@ import {
   cycleSummaries,
   earliestRelevantDay,
   remainingTargets,
+  tagsWithRemaining,
   withGoals,
-  type RemainingTarget,
 } from '../cycle-progress';
 import { db } from '../db/client';
 import {
@@ -50,18 +55,7 @@ import {
 } from '../db/queries';
 import { formatDate, today as currentDay } from '../day-labels';
 import { filterExercises } from '../exercise-search';
-import { formatMetric, GOAL_METRIC_LABELS } from '../measurements';
-import {
-  Button,
-  Chip,
-  ChipRow,
-  EmptyState,
-  Field,
-  Loading,
-  Row,
-  SectionTitle,
-  TagDot,
-} from '../ui/primitives';
+import { Button, Chip, ChipRow, EmptyState, Field, Loading, Row, TagDot } from '../ui/primitives';
 
 export function PickExerciseScreen({ day }: { day: IsoDate }) {
   const { data: session, isPending } = useSession();
@@ -88,8 +82,8 @@ export function PickExerciseScreen({ day }: { day: IsoDate }) {
   const from = useMemo(() => earliestRelevantDay(cycles, day), [cycles, day]);
   const sets = useLiveQuery(setsForCycles(db, userId, from), [userId, from]);
 
-  const targets = useMemo(
-    () => remainingTargets(cycleSummaries(cycles, sets.data ?? []), day),
+  const markedTags = useMemo(
+    () => tagsWithRemaining(remainingTargets(cycleSummaries(cycles, sets.data ?? []), day)),
     [cycles, sets.data, day],
   );
 
@@ -97,15 +91,6 @@ export function PickExerciseScreen({ day }: { day: IsoDate }) {
 
   if (isPending) return <Loading />;
   if (!session) return <Redirect href="/sign-in" />;
-
-  const pick = (target: RemainingTarget) => {
-    if (target.exerciseId !== null) {
-      router.replace(`/day/${day}/log/${target.exerciseId}`);
-      return;
-    }
-    Keyboard.dismiss();
-    setTagId(target.tagId);
-  };
 
   const pickTag = (id: string | null) => {
     Keyboard.dismiss();
@@ -135,29 +120,12 @@ export function PickExerciseScreen({ day }: { day: IsoDate }) {
               key={tag.id}
               label={tag.name}
               color={tag.color}
+              marked={markedTags.has(tag.id)}
               selected={tagId === tag.id}
               onPress={() => pickTag(tagId === tag.id ? null : tag.id)}
             />
           ))}
         </ChipRow>
-
-        {query.trim().length === 0 && targets.length > 0 && (
-          <View className="gap-2 pb-2">
-            <SectionTitle>Left in cycles</SectionTitle>
-            {targets.map((target) => (
-              <Row key={target.goalId} onPress={() => pick(target)}>
-                {target.color !== null && <TagDot color={target.color} />}
-                <View className="flex-1">
-                  <Text className="text-base text-text">{target.label}</Text>
-                  <Text className="text-xs text-muted">
-                    {target.cycleName} · {formatMetric(target.metric, target.remaining)}{' '}
-                    {GOAL_METRIC_LABELS[target.metric].toLowerCase()} left
-                  </Text>
-                </View>
-              </Row>
-            ))}
-          </View>
-        )}
 
         {matches.length === 0 ? (
           <View className="gap-4">

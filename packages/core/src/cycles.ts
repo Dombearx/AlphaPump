@@ -3,7 +3,7 @@
  *
  * Cykl to zestaw pozycji celu w zadanym zakresie dat. Seria nie jest do cyklu
  * przypisywana ręcznie: system dopasowuje ją automatycznie do **wszystkich**
- * pasujących cykli. Skrót „wybierz ćwiczenie z listy pozostałych pozycji" jest
+ * pasujących cykli. Oznaczenie tagu, w którym coś jeszcze zostało, jest
  * wyłącznie wygodą przy wskazywaniu ćwiczenia, nie przypisaniem.
  *
  * W celach opartych o tag liczy się wyłącznie **tag główny** ćwiczenia. Tagi

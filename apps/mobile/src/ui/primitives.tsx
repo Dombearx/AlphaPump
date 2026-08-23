@@ -183,12 +183,19 @@ export function Chip({
   label,
   selected = false,
   color,
+  marked = false,
   onPress,
 }: {
   label: string;
   selected?: boolean;
   /** Kropka w kolorze tagu; pomijana tam, gdzie chips nie dotyczy tagu. */
   color?: string;
+  /**
+   * „Tu coś jeszcze zostało" — kropka zamienia się w gwiazdkę. Oznaczenie stoi
+   * **w miejscu kropki**, a nie obok niej, bo rząd chipsów ma po nim zajmować
+   * dokładnie tyle samo miejsca, co przedtem.
+   */
+  marked?: boolean;
   /**
    * Bez `onPress` chips jest samą etykietą: nie reaguje na dotyk i nie
    * przedstawia się czytnikowi ekranu jako przycisk. Tak wyglądają tagi
@@ -200,9 +207,11 @@ export function Chip({
     selected ? 'border-accent bg-surface' : 'border-border bg-base'
   }`;
 
+  const dot = color === undefined ? null : <TagDot color={color} />;
+
   const content = (
     <>
-      {color !== undefined && <TagDot color={color} />}
+      {marked ? <TagStar color={color ?? COLORS.accent} /> : dot}
       <Text className={selected ? 'text-text' : 'text-muted'}>{label}</Text>
     </>
   );
@@ -267,6 +276,23 @@ export function ProgressBar({ ratio, done = false }: { ratio: number; done?: boo
 /** Kropka w kolorze tagu — jedyny nośnik koloru na listach ćwiczeń. */
 export function TagDot({ color }: { color: string }) {
   return <View className="h-3 w-3 rounded-full" style={{ backgroundColor: color }} />;
+}
+
+/**
+ * Gwiazdka w kolorze tagu, wielkości kropki — oznaczenie „tu coś zostało".
+ *
+ * Rozmiar jest podany wprost, a nie klasą, bo ma być związany z kropką: gwiazdka
+ * wchodzi na jej miejsce i rząd chipsów nie może przez nią urosnąć. Wysokość
+ * linii trzyma ją poniżej wysokości etykiety, więc przycisk zostaje ten sam.
+ * Czytnikowi ekranu podajemy słowa, bo sam znak przeczytałby jako „czarna
+ * gwiazdka" — a to nie jest informacja, którą tu przekazujemy.
+ */
+export function TagStar({ color }: { color: string }) {
+  return (
+    <Text accessibilityLabel="left to do" style={{ color, fontSize: 13, lineHeight: 14 }}>
+      ★
+    </Text>
+  );
 }
 
 /**

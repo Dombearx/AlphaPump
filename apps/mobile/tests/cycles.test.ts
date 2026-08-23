@@ -19,6 +19,7 @@ import {
   earliestRelevantDay,
   previousPeriodProgress,
   remainingTargets,
+  tagsWithRemaining,
   withGoals,
   type CycleWithGoals,
 } from '../src/cycle-progress';
@@ -347,7 +348,7 @@ describe('cykle w bazie lokalnej', () => {
     });
   });
 
-  describe('skrót wyboru ćwiczenia', () => {
+  describe('podpowiedź na ekranie wyboru ćwiczenia', () => {
     it('pokazuje pozostałe pozycje aktywnych cykli', async () => {
       await create([
         { metric: 'sets', target: 4, exerciseId: null, tagId: TAGS.chest },
@@ -390,6 +391,28 @@ describe('cykle w bazie lokalnej', () => {
       const summaries = cycleSummaries(withGoals(rows, goals), []);
 
       expect(remainingTargets(summaries, DAY)).toEqual([]);
+    });
+
+    it('oznacza tag pozycji tagowej i tag główny pozycji z ćwiczeniem', async () => {
+      await create([
+        { metric: 'sets', target: 4, exerciseId: null, tagId: TAGS.chest },
+        // Brzuszek ma tag główny „abs" — pozycja żadnego tagu nie wskazuje,
+        // a mimo to zostawia robotę właśnie tam.
+        { metric: 'sets', target: 2, exerciseId: EXERCISES.crunch!.id, tagId: null },
+      ]);
+
+      const { summaries } = await load();
+      const marked = tagsWithRemaining(remainingTargets(summaries, DAY));
+
+      expect([...marked].sort()).toEqual([TAGS.chest, tagId('abs')].sort());
+    });
+
+    it('nie oznacza niczego, gdy pozycje są zrobione', async () => {
+      await create([{ metric: 'sets', target: 1, exerciseId: null, tagId: TAGS.chest }]);
+      await addBench();
+
+      const { summaries } = await load();
+      expect(tagsWithRemaining(remainingTargets(summaries, DAY)).size).toBe(0);
     });
   });
 });
