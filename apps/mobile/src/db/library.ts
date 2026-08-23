@@ -121,9 +121,10 @@ export interface CreateTagCommand extends LibraryAuthor {
 /**
  * Dodaje tag albo oddaje ten, który już jest.
  *
- * Kolor nie jest losowany ani przydzielany przez serwer — wynika z nazwy, więc
- * tag utworzony offline ma od razu finalny kolor, identyczny na każdym
- * urządzeniu.
+ * Kolor bierze się z palety i omija te, które zajmują tagi znane lokalnie — tag
+ * utworzony offline ma od razu kolor niepowtarzający się w bibliotece, którą
+ * użytkownik widzi. Ostatnie słowo ma jednak serwer, bo tylko on widzi tagi
+ * wszystkich urządzeń: jego przydział przyjeżdża odpowiedzią pushu.
  */
 export async function createTag(
   db: SqliteDatabase,
@@ -136,11 +137,19 @@ export async function createTag(
   const [existing] = await db.select().from(tags).where(eq(tags.id, id)).limit(1);
   if (existing && existing.deletedAt === null) return { id, created: false };
 
+  // Kolory żywych tagów — bez nich dwudziesta paleta i tak dawałaby powtórki,
+  // bo sam slug nie wie, co zajęli sąsiedzi. Tag z tombstonem nie liczy się:
+  // użytkownik go nie widzi, więc nie ma po co blokować slotu.
+  const taken = await db.select({ color: tags.color }).from(tags).where(isNull(tags.deletedAt));
+
   const values = {
     id,
     name,
     slug: slug(name),
-    color: tagColor(name),
+    color: tagColor(
+      name,
+      taken.map((row) => row.color),
+    ),
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
     deletedAt: null,

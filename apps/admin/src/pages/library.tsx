@@ -345,9 +345,10 @@ export function LibraryPage() {
         )}
 
         <p className="text-xs text-muted">
-          The color follows from the name and cannot be set by hand — a tag created offline has its
-          final color right away, identical on every device. Renaming recomputes the color. A tag
-          used by exercises or cycle goals cannot be deleted; merging moves them onto tag docelowy.
+          The color comes from a fixed palette of 20 clearly distinct colors and cannot be set by
+          hand — a new tag takes one that no other tag uses, so up to 20 tags no color repeats.
+          Renaming keeps the color. A tag used by exercises or cycle goals cannot be deleted;
+          merging moves them onto tag docelowy.
         </p>
       </Card>
     </div>

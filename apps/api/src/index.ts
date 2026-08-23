@@ -27,6 +27,7 @@ import { createApp } from './app.js';
 import { createAuth } from './auth.js';
 import { loadConfig } from './config.js';
 import { createDatabase, runMigrations } from './db.js';
+import { normalizeTagColors } from './domain/tags.js';
 import { createEmbeddingBacklog, createOpenRouterLayers } from './duplicates/index.js';
 import { logger } from './logger.js';
 import { createTriageClient } from './triage.js';
@@ -50,6 +51,14 @@ export async function main(): Promise<void> {
     exercises: seeded.exercises,
     note: 'wstawione zostały tylko te, których brakowało',
   });
+
+  // Kolory tagów sprzed palety — patrz `normalizeTagColors`. Krok jest osobny od
+  // seeda, bo dotyczy także tagów założonych przez użytkowników, i idempotentny,
+  // więc drugi start nie ma już czego poprawiać.
+  const recolored = await normalizeTagColors(connection.db);
+  if (recolored > 0) {
+    logger.info('kolory tagów sprowadzone do palety', { tags: recolored });
+  }
 
   const auth = createAuth(connection.db, config);
   // Warstwy wykrywania duplikatów powstają **tutaj**, z konfiguracji — nie

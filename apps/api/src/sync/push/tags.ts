@@ -8,7 +8,13 @@
 import { clampRevision, resolveSyncConflict, slug, tagColor, tagId } from '@alphapump/core';
 import type { SyncRejection, TagPush } from '@alphapump/core';
 import { eq, inArray } from 'drizzle-orm';
-import { TAG_IN_USE, TAG_RULES, findTagBySlug, isTagInUse } from '../../domain/tags.js';
+import {
+  TAG_IN_USE,
+  TAG_RULES,
+  findTagBySlug,
+  isTagInUse,
+  takenTagColors,
+} from '../../domain/tags.js';
 import { tags } from '../../schema.js';
 import { revisionOf, toSyncedTagDto } from '../rows.js';
 import { incomingRevision, isWrite, stampFrom, writeStamp, type PushContext } from './shared.js';
@@ -85,26 +91,52 @@ export async function applyTags(context: PushContext, incoming: readonly TagPush
     }
 
     const stamp = stampFrom(revision, context.deviceId);
-    const values = { name, slug: newSlug, color: tagColor(name) };
+    // Koloru nie ma w tym zestawie i nie jest to przeoczenie: kolor jest
+    // **przydzielony**, a nie policzony z nazwy, więc przeliczanie go przy
+    // każdej zmianie pisowni wpychałoby tag na kolor sąsiada.
+    const values = { name, slug: newSlug };
 
-    const [written] =
-      decision === 'delete'
-        ? await tx
-            .update(tags)
-            .set({ updatedAt: stamp.updatedAt, deletedAt: stamp.deletedAt, ...writeStamp(stamp) })
-            .where(eq(tags.id, row.id))
-            .returning()
-        : decision === 'update'
-          ? await tx
-              .update(tags)
-              .set({ ...values, updatedAt: stamp.updatedAt, deletedAt: null, ...writeStamp(stamp) })
-              .where(eq(tags.id, row.id))
-              .returning()
-          : await tx
-              .insert(tags)
-              .values({ id: row.id, ...values, ...stamp })
-              .onConflictDoUpdate({ target: tags.id, set: { ...values, ...stamp } })
-              .returning();
+    /**
+     * Kolor wolny **w tej chwili**. Telefon policzył swój, nie znając cudzych
+     * tagów, więc ostatnie słowo ma serwer, a telefon dostaje poprawkę
+     * w odpowiedzi pushu. Zapytanie siedzi tutaj, a nie przed pętlą, bo dotyczy
+     * wyłącznie tagów nowych i wskrzeszanych: paczka z pięciuset tagami niesie
+     * zwykle same wiersze, które serwer już zna.
+     */
+    const withFreshColor = async () => ({
+      ...values,
+      color: tagColor(name, await takenTagColors(tx, row.id)),
+    });
+
+    const write = async () => {
+      if (decision === 'delete') {
+        return tx
+          .update(tags)
+          .set({ updatedAt: stamp.updatedAt, deletedAt: stamp.deletedAt, ...writeStamp(stamp) })
+          .where(eq(tags.id, row.id))
+          .returning();
+      }
+
+      if (decision === 'update') {
+        // Wskrzeszenie tagu, po którym serwer ma tombstone, jest tworzeniem na
+        // nowo — kolor sprzed skasowania mógł w międzyczasie zająć ktoś inny.
+        const set = existing?.deletedAt === null ? values : await withFreshColor();
+        return tx
+          .update(tags)
+          .set({ ...set, updatedAt: stamp.updatedAt, deletedAt: null, ...writeStamp(stamp) })
+          .where(eq(tags.id, row.id))
+          .returning();
+      }
+
+      const created = await withFreshColor();
+      return tx
+        .insert(tags)
+        .values({ id: row.id, ...created, ...stamp })
+        .onConflictDoUpdate({ target: tags.id, set: { ...created, ...stamp } })
+        .returning();
+    };
+
+    const [written] = await write();
 
     // Wiersz mógł zniknąć między odczytem a zapisem — na przykład przez zadanie
     // porządkowe tombstone'ów. Odrzucenie jest tu wynikiem, a nie awarią: wcześniej

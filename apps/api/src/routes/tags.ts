@@ -23,7 +23,13 @@ import type { RouteSpec } from '../openapi.js';
 import { createTagBodySchema, idParamSchema, updateTagBodySchema } from '../schemas.js';
 import { tags } from '../schema.js';
 import { stampDelete, stampWrite } from '../sync-columns.js';
-import { TAG_IN_USE, TAG_RULES, findTagBySlug, isTagInUse } from '../domain/tags.js';
+import {
+  TAG_IN_USE,
+  TAG_RULES,
+  findTagBySlug,
+  isTagInUse,
+  takenTagColors,
+} from '../domain/tags.js';
 
 const tagListSchema = z.array(tagSchema);
 
@@ -99,18 +105,22 @@ export function createTagRouter(dependencies: AppDependencies) {
       return context.json(toTagDto(existing), 200);
     }
 
+    // Kolor omija te, które zajmują już żywe tagi — dopóki tagów jest mniej niż
+    // dwadzieścia, żaden nie powtórzy się w bibliotece.
+    const color = tagColor(name, await takenTagColors(db, id));
+
     // Tag skasowany wcześniej wraca do życia zamiast zderzyć się z kluczem
     // głównym — jego identyfikator jest funkcją nazwy i innego mieć nie może.
     const stamp = stampWrite();
     const [row] = await db
       .insert(tags)
-      .values({ id, name, slug: slug(name), color: tagColor(name), ...stamp })
+      .values({ id, name, slug: slug(name), color, ...stamp })
       .onConflictDoUpdate({
         target: tags.id,
-        // Slug i kolor razem z nazwą, tak samo jak w gałęzi wstawiania obok.
-        // Jedno i drugie jest **funkcją nazwy**, więc odświeżenie samej nazwy
-        // zostawiało wskrzeszony tag z kolorem policzonym ze starej pisowni.
-        set: { name, slug: slug(name), color: tagColor(name), deletedAt: null, ...stamp },
+        // Slug i kolor razem z nazwą, tak samo jak w gałęzi wstawiania obok:
+        // wskrzeszony tag ma dostać kolor wolny **teraz**, a nie ten, który
+        // zajmował przed skasowaniem i który zdążył już przejąć ktoś inny.
+        set: { name, slug: slug(name), color, deletedAt: null, ...stamp },
       })
       .returning();
 
@@ -137,9 +147,12 @@ export function createTagRouter(dependencies: AppDependencies) {
       // Identyfikator zostaje. Wylicza się z nazwy tylko **przy tworzeniu** —
       // po zmianie nazwy przestaje jej odpowiadać i tak ma być, bo inaczej
       // poprawienie literówki osierociłoby wszystkie ćwiczenia z tym tagiem.
+      //
+      // Kolor też zostaje: jest przydzielony, a nie policzony z nazwy, więc
+      // przeliczenie go po zmianie pisowni wepchnęłoby tag na kolor sąsiada.
       const [row] = await db
         .update(tags)
-        .set({ name, slug: newSlug, color: tagColor(name), ...stampWrite() })
+        .set({ name, slug: newSlug, ...stampWrite() })
         .where(eq(tags.id, id))
         .returning();
 

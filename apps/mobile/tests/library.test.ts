@@ -7,7 +7,12 @@
  * cokolwiek tutaj wymagało serwera, test by nie przeszedł.
  */
 
-import { exerciseId as computeExerciseId, findSimilarExercises, tagId } from '@alphapump/core';
+import {
+  TAG_PALETTE,
+  exerciseId as computeExerciseId,
+  findSimilarExercises,
+  tagId,
+} from '@alphapump/core';
 import { exerciseTags, exercises, outbox, tags } from '@alphapump/db/sqlite';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -45,16 +50,28 @@ describe('tagi w bazie lokalnej', () => {
 
   afterEach(() => local.close());
 
-  it('tworzy tag z identyfikatorem i kolorem wyliczonym z nazwy', async () => {
+  it('tworzy tag z identyfikatorem i kolorem z palety', async () => {
     const saved = await createTag(local.db, { ...AUTHOR, name: 'Kark' });
 
     expect(saved).toEqual({ id: tagId('Kark'), created: true });
 
     const [row] = await local.db.select().from(tags).where(eq(tags.id, saved.id));
     expect(row).toMatchObject({ name: 'Kark', slug: 'kark', deviceId: 'device-a' });
-    // Kolor jest funkcją sluga, więc drugie urządzenie policzy dokładnie ten sam.
-    expect(row?.color).toMatch(/^#[0-9a-f]{6}$/);
+    expect(TAG_PALETTE).toContain(row?.color);
     expect(row?.serverSeq).toBeNull();
+  });
+
+  it('nie powtarza koloru, dopóki tagów jest najwyżej dwadzieścia', async () => {
+    // Seed daje dziesięć tagów; dokładamy tyle, żeby wyczerpać paletę co do
+    // slotu — offline, bez pytania serwera o cokolwiek.
+    const seeded = await local.db.select().from(tags);
+    for (let index = seeded.length; index < TAG_PALETTE.length; index += 1) {
+      await createTag(local.db, { ...AUTHOR, name: `Kolorowy ${String(index)}` });
+    }
+
+    const colors = (await local.db.select().from(tags)).map((row) => row.color);
+    expect(colors).toHaveLength(TAG_PALETTE.length);
+    expect(new Set(colors).size).toBe(TAG_PALETTE.length);
   });
 
   it('kolejkuje nowy tag do wysłania', async () => {
