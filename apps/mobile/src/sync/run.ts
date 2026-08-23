@@ -24,6 +24,7 @@ import type { SyncPushRequest, SyncResult } from '@alphapump/core';
 import type { SqliteDatabase } from '@alphapump/db/sqlite';
 import { withTransaction } from '../db/transaction';
 import { applyChanges } from './apply';
+import { authorityAfterPull, authorityAfterPush } from './authority';
 import { clearThrough, enqueue, takeBatch, type PendingRow } from './outbox';
 import { buildPushRequest, isEmptyPush, rowExists, withoutIncompleteRows } from './payload';
 import { reconcile, recordRejections } from './reconcile';
@@ -79,7 +80,10 @@ export async function runSync(options: SyncRunOptions): Promise<SyncRunResult> {
  *
  * Odpowiedź stosujemy lokalnie tą samą ścieżką co paczkę pullu — serwer przycina
  * znaczniki czasu z przyszłości, więc **przyjęty** wiersz też potrafi wrócić
- * inny, niż pojechał.
+ * inny, niż pojechał. Wersja serwera jest przy tym rozstrzygająca dla każdego
+ * wiersza, którego użytkownik nie zmienił w trakcie tej wymiany (`authority.ts`):
+ * przycięty znacznik, poprawiony kolor tagu i wiersz oddany przy odmowie mają
+ * wejść do bazy, a nie przegrać z lokalną wersją, której serwer nie przyjął.
  *
  * Wiersze odrzucone przez serwer i tak znikają z kolejki. Zostawienie ich
  * zatrzymałoby outbox na zawsze: skoro serwer odrzucił wiersz z powodu uprawnień
@@ -138,8 +142,14 @@ async function push(
   await withTransaction(
     db,
     async () => {
-      await applyChanges(db, response.changes);
-      await recordRejections(db, refused, now);
+      // Czytane **przed** `clearThrough`, bo liczy się stan kolejki z chwili
+      // odpowiedzi: wpis z numerem wyższym niż paczka to edycja zrobiona
+      // w trakcie wymiany i tylko ona broni wersji lokalnej.
+      const authoritative = await authorityAfterPush(db, response.changes, batch.highWater);
+      await applyChanges(db, response.changes, { authoritative });
+      // Wszystkie wyniki, nie tylko odmowy: wiersz przyjęty po wcześniejszej
+      // odmowie ma zniknąć z kwarantanny, a nie zostać w niej jako historia.
+      await recordRejections(db, response.results, now);
       await clearThrough(db, batch.highWater);
       await requeue(db, dropped, now);
       await markPushed(db, now);
@@ -177,6 +187,12 @@ async function requeue(db: SqliteDatabase, rows: readonly PendingRow[], now: Dat
  * Pobiera zmiany od kursora, paczka po paczce, aż serwer przestanie zgłaszać,
  * że jest jeszcze co pobierać.
  *
+ * Wiersz, który nie czeka ani w kolejce, ani w kwarantannie odrzuceń, nie ma
+ * czego bronić — wersja serwera wchodzi bez rozstrzygania konfliktu. Dzięki temu
+ * rozjazd powstały wcześniej (choćby na telefonie z zegarem do przodu) domyka
+ * się sam przy pierwszej zmianie tego wiersza na serwerze, zamiast trwać do
+ * czasu, aż zegar świata dogoni lokalny `updated_at`.
+ *
  * Każda paczka zapisuje się **razem z kursorem**, w jednej transakcji. Kursor
  * przesunięty osobno mógłby wyprzedzić dane (przy awarii zapisu wiersze
  * przepadłyby bezpowrotnie) albo zostać za nimi (paczka wracałaby w kółko).
@@ -196,7 +212,8 @@ async function pull(
     const outcome = await withTransaction(
       db,
       async () => {
-        const applied = await applyChanges(db, response.changes);
+        const authoritative = await authorityAfterPull(db, response.changes);
+        const applied = await applyChanges(db, response.changes, { authoritative });
         await writeCursor(db, response.cursor, at);
         return applied;
       },

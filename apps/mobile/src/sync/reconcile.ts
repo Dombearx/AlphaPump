@@ -106,8 +106,13 @@ function backoffFor(attempts: number, reason: SyncRejection | null): number {
 }
 
 /**
- * Zapisuje odrzucenia z jednej wymiany. Wiersz odrzucony ponownie dostaje
- * dłuższy odstęp, a nie nowy wpis — inaczej licznik prób nigdy by nie urósł.
+ * Zapisuje wynik jednej wymiany. Wiersz odrzucony ponownie dostaje dłuższy
+ * odstęp, a nie nowy wpis — inaczej licznik prób nigdy by nie urósł.
+ *
+ * Bierze **wszystkie** wyniki, nie tylko odmowy: wiersz, o którym serwer tym
+ * razem wypowiedział się bez odmowy, przestaje na cokolwiek czekać, więc jego
+ * wpis w kwarantannie znika. Inaczej licznik „serwer nie przyjął" pokazywałby
+ * odmowę jeszcze długo po tym, jak ten sam wiersz w końcu wszedł.
  */
 export async function recordRejections(
   db: SqliteDatabase,
@@ -120,6 +125,13 @@ export async function recordRejections(
   const attemptsOf = new Map(seen.map((row) => [key(row.entity, row.rowId), row.attempts]));
 
   for (const result of results) {
+    if (result.decision !== 'rejected') {
+      await db
+        .delete(syncRejections)
+        .where(and(eq(syncRejections.entity, result.entity), eq(syncRejections.rowId, result.id)));
+      continue;
+    }
+
     const attempts = (attemptsOf.get(key(result.entity, result.id)) ?? 0) + 1;
     const values = {
       entity: result.entity,
@@ -151,7 +163,7 @@ export async function stuckRows(db: SqliteDatabase): Promise<SyncRejectionRow[]>
  * czekają. Zwraca, ile ich było — zero jest normalnym wynikiem.
  */
 export async function reconcile(db: SqliteDatabase, now: Date): Promise<number> {
-  await forgetSettled(db);
+  await forgetSettled(db, now);
 
   const queued = await db
     .select({ entity: outbox.entity, rowId: outbox.rowId })
@@ -190,28 +202,47 @@ export async function reconcile(db: SqliteDatabase, now: Date): Promise<number> 
 }
 
 /**
- * Sprząta kwarantannę z wierszy, dla których nie ma już czego ponawiać: serwer
- * je w końcu przyjął, użytkownik je skasował albo zniknęły z bazy lokalnej.
- * Bez tego licznik „serwer nie przyjął" pokazywałby historię zamiast stanu.
+ * Sprząta kwarantannę z wierszy, dla których nie ma już czego ponawiać:
+ * użytkownik je skasował albo zniknęły z bazy lokalnej.
+ *
+ * Wiersz, o którym serwer **wie** (`server_seq` niepusty), do kolejki już nie
+ * wróci — `reconcile` szuka wyłącznie wierszy nieznanych serwerowi, a jego
+ * lokalną wersję zastąpiła wersja serwerowa oddana przy odmowie (`authority.ts`).
+ * Jego wpis nie znika jednak od razu, tylko wraz z upływem odstępu: wcześniej
+ * kasował go ten sam przebieg, który go stworzył, więc odmowa nie zdążyła
+ * pokazać się w pigułce statusu i **żadna** odmowa dotycząca biblioteki nie była
+ * dla użytkownika widoczna.
  */
-async function forgetSettled(db: SqliteDatabase): Promise<void> {
+async function forgetSettled(db: SqliteDatabase, now: Date): Promise<void> {
   const records = await db.select().from(syncRejections);
   if (records.length === 0) return;
 
   const settled: { entity: SyncEntity; rowId: string }[] = [];
 
   for (const entity of SYNC_ENTITIES) {
-    const ids = records.filter((row) => row.entity === entity).map((row) => row.rowId);
-    if (ids.length === 0) continue;
+    const held = records.filter((row) => row.entity === entity);
+    if (held.length === 0) continue;
 
     const table: SyncedColumns = TABLES[entity];
-    const alive = await db
-      .select({ id: table.id })
+    const rows = await db
+      .select({ id: table.id, serverSeq: table.serverSeq, deletedAt: table.deletedAt })
       .from(table)
-      .where(and(inArray(table.id, ids), isNull(table.serverSeq), isNull(table.deletedAt)));
-    const pending = new Set(alive.map((row) => row.id));
+      .where(
+        inArray(
+          table.id,
+          held.map((row) => row.rowId),
+        ),
+      );
+    const byId = new Map(rows.map((row) => [row.id, row]));
 
-    for (const id of ids) if (!pending.has(id)) settled.push({ entity, rowId: id });
+    for (const record of held) {
+      const row = byId.get(record.rowId);
+      const gone = row === undefined || row.deletedAt !== null;
+      const acknowledged = row !== undefined && row.serverSeq !== null;
+      if (gone || (acknowledged && record.retryAfter <= now)) {
+        settled.push({ entity, rowId: record.rowId });
+      }
+    }
   }
 
   for (const row of settled) {

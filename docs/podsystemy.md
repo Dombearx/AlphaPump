@@ -513,6 +513,18 @@ Wiersz przychodzący nie wygrywa automatycznie — przechodzi przez
 rozstrzyga pushe. Bez tego odpowiedź na push cofałaby edycję zrobioną w trakcie
 wysyłki.
 
+Rozstrzygany jest jednak wyłącznie wiersz, który **ma czego bronić**: taki,
+którego zmiana czeka jeszcze w kolejce albo w kwarantannie odrzuceń. Dla reszty
+wersja serwera wchodzi wprost (`src/sync/authority.ts`), bo LWW jest tam złym
+przybliżeniem pytania „czy użytkownik zmienił to w międzyczasie" i myli się
+w obie strony: wiersz oddany przez serwer przy odmowie, znacznik przycięty
+z przyszłości i kolor tagu przydzielony przez serwer są **starsze** niż wersja
+lokalna, więc przegrywały każde rozstrzygnięcie. Skutek był zawsze ten sam:
+telefon i serwer trzymały różną treść tego samego wiersza, numer wiersza stał już
+za kursorem — więc pull nigdy go nie przywoził — i nikt tego nie widział. Tak
+powstawało ćwiczenie z tagiem głównym `legs` na telefonie i `quads` w panelu,
+mimo działającej synchronizacji.
+
 Odrzucony wiersz schodzi z outboxu — inaczej jedna zatruta mutacja zatrzymałaby
 kolejkę na zawsze — ale **nie przepada**. Ląduje w `sync_rejections`, razem
 z powodem i licznikiem prób, a po każdej udanej wymianie `reconcile`
@@ -524,6 +536,14 @@ wymianę opóźnienia, a nie zapisaną serię. Odstęp przed kolejną próbą ro
 (minuta, pięć, pół godziny, dwie godziny, doba), więc wiersz, którego serwer nie
 przyjmie nigdy, nie kręci kolejką w kółko — a licznik takich wierszy widać
 w pigułce statusu.
+
+Odmowa dotycząca wiersza, o którym serwer **już wie** (edycja ćwiczenia albo
+tagu z biblioteki), niczego nie ponawia: do kolejki wracają tylko wiersze bez
+`server_seq`, a lokalna wersja takiego wiersza została już zastąpiona wersją
+serwerową. Jej wpis w kwarantannie żyje więc dokładnie tyle, co odstęp — po to,
+żeby zdążył pokazać się w pigułce statusu. Wcześniej kasował go ten sam przebieg
+`reconcile`, który go tworzył, więc **żadna** odmowa dotycząca biblioteki nie
+była dla użytkownika widoczna.
 
 Brak łączności jest stanem pracy, a nie awarią: serwer stoi za NetBirdem, więc
 telefon z pełnym zasięgiem bywa poza VPN-em, a systemowy stan sieci i tak mówi
