@@ -1,5 +1,5 @@
 /**
- * Eksport dziennika do pliku kopii FitNotesa — od strony telefonu.
+ * Wymiana dziennika z plikiem kopii FitNotesa — od strony telefonu.
  *
  * Testy jadą po **prawdziwych** plikach SQLite z obu stron: baza lokalna
  * powstaje z bundle'a migracji aplikacji, a plik docelowy ze schematu FitNotesa
@@ -16,20 +16,27 @@
  *    dopisanie wiersza do `Category` dałoby plik, którego nie da się przywrócić.
  * 4. **Błąd w środku nie zostawia połowy treningu.** Rejestr odhacza wpisy po
  *    zapisie, więc połowa dopisana i nieodhaczona wjechałaby potem drugi raz.
+ *
+ * Import sprawdzany jest tą samą metodą, tylko w drugą stronę — razem z drogą
+ * tam i z powrotem, bo to ona pokazuje, czy obie strony mówią o tej samej serii.
  */
 
-import { fitNotesExportKey, planFitNotesExport, tagId } from '@alphapump/core';
+import { fitNotesExportKey, planFitNotesExport, planFitNotesImport, tagId } from '@alphapump/core';
+import { exercises, workoutSets } from '@alphapump/db/sqlite';
 import BetterSqlite3 from 'better-sqlite3';
+import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createExercise } from '../src/db/library';
 import { createSet, type SetValues } from '../src/db/sets';
 import {
   applyFitNotesPlan,
+  readFitNotesLog,
   readFitNotesTarget,
   NotAFitNotesBackupError,
   type FitNotesDatabase,
 } from '../src/fitnotes/file';
-import { fitNotesSourceSets } from '../src/fitnotes/source';
+import { applyFitNotesImport, type FitNotesImportReport } from '../src/fitnotes/import';
+import { fitNotesLibrary, fitNotesSourceSets } from '../src/fitnotes/source';
 import {
   EMPTY_FITNOTES_STATE,
   FitNotesStateError,
@@ -137,6 +144,32 @@ const logRows = (backup: Backup) =>
     )
     .all() as Record<string, unknown>[];
 
+/** Dwie serie: jedna na ćwiczeniu, które w pliku jest, druga na własnym. */
+async function seedSets(db: LocalDatabase['db']): Promise<void> {
+  await createSet(db, {
+    ...AUTHOR,
+    exerciseId: EXERCISES.bench!.id,
+    performedOn: '2026-08-10',
+    values: reps(82.5, 5),
+  });
+
+  const own = await createExercise(db, {
+    ...AUTHOR,
+    name: 'Zwis na jednej ręce',
+    loggingType: 'weight_reps',
+    primaryTagId: tagId('back'),
+    additionalTagIds: [],
+    note: null,
+    gym: null,
+  });
+  await createSet(db, {
+    ...AUTHOR,
+    exerciseId: own.id,
+    performedOn: '2026-08-11',
+    values: reps(20, 8),
+  });
+}
+
 describe('eksport do pliku FitNotes', () => {
   let local: LocalDatabase;
   let backup: Backup;
@@ -152,34 +185,8 @@ describe('eksport do pliku FitNotes', () => {
     backup.client.close();
   });
 
-  /** Dwie serie: jedna na ćwiczeniu, które w pliku jest, druga na własnym. */
-  async function seedSets(): Promise<void> {
-    await createSet(local.db, {
-      ...AUTHOR,
-      exerciseId: EXERCISES.bench!.id,
-      performedOn: '2026-08-10',
-      values: reps(82.5, 5),
-    });
-
-    const own = await createExercise(local.db, {
-      ...AUTHOR,
-      name: 'Zwis na jednej ręce',
-      loggingType: 'weight_reps',
-      primaryTagId: tagId('back'),
-      additionalTagIds: [],
-      note: null,
-      gym: null,
-    });
-    await createSet(local.db, {
-      ...AUTHOR,
-      exerciseId: own.id,
-      performedOn: '2026-08-11',
-      values: reps(20, 8),
-    });
-  }
-
   it('dopisuje serie i zakłada brakujące ćwiczenie w kategorii tagu głównego', async () => {
-    await seedSets();
+    await seedSets(local.db);
 
     const target = await readFitNotesTarget(backup.file);
     const plan = planFitNotesExport({
@@ -217,7 +224,7 @@ describe('eksport do pliku FitNotes', () => {
   });
 
   it('drugi eksport nie dopisuje niczego, gdy nic nowego nie doszło', async () => {
-    await seedSets();
+    await seedSets(local.db);
 
     const sets = await fitNotesSourceSets(local.db, TEST_USER.id);
     const target = await readFitNotesTarget(backup.file);
@@ -239,7 +246,7 @@ describe('eksport do pliku FitNotes', () => {
   });
 
   it('dopisuje wyłącznie serie z ostatniego treningu', async () => {
-    await seedSets();
+    await seedSets(local.db);
 
     const target = await readFitNotesTarget(backup.file);
     const first = planFitNotesExport({
@@ -307,7 +314,7 @@ describe('eksport do pliku FitNotes', () => {
   });
 
   it('błąd w środku wycofuje cały zapis', async () => {
-    await seedSets();
+    await seedSets(local.db);
 
     const target = await readFitNotesTarget(backup.file);
     const plan = planFitNotesExport({
@@ -325,6 +332,185 @@ describe('eksport do pliku FitNotes', () => {
   it('odmawia pliku, który nie jest kopią FitNotesa', async () => {
     const other = createBackup('CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT)');
     await expect(readFitNotesTarget(other.file)).rejects.toThrow(NotAFitNotesBackupError);
+    other.client.close();
+  });
+});
+
+describe('import z pliku FitNotes', () => {
+  let local: LocalDatabase;
+  let backup: Backup;
+
+  beforeEach(async () => {
+    local = await createLocalDatabase();
+    await insertTestUser(local.db);
+    backup = createBackup();
+  });
+
+  afterEach(() => {
+    local.close();
+    backup.client.close();
+  });
+
+  /** Dopisuje wpis do dziennika pliku, zakładając ćwiczenie, gdy trzeba. */
+  function logEntry(entry: {
+    exercise: string;
+    categoryId: number;
+    date: string;
+    weight?: number;
+    reps?: number;
+    distance?: number;
+    duration?: number;
+  }): void {
+    const found = backup.client
+      .prepare('select _id as id from exercise where name = ?')
+      .get(entry.exercise) as { id: number } | undefined;
+
+    const id =
+      found?.id ??
+      Number(
+        backup.client
+          .prepare('insert into exercise (name, category_id) values (?, ?)')
+          .run(entry.exercise, entry.categoryId).lastInsertRowid,
+      );
+
+    backup.client
+      .prepare(
+        'insert into training_log ' +
+          '(exercise_id, date, metric_weight, reps, unit, distance, duration_seconds) ' +
+          'values (?, ?, ?, ?, 0, ?, ?)',
+      )
+      .run(
+        id,
+        entry.date,
+        entry.weight ?? 0,
+        entry.reps ?? 0,
+        entry.distance ?? 0,
+        entry.duration ?? 0,
+      );
+  }
+
+  /** Cała droga importu: odczyt pliku, plan i zapis do bazy lokalnej. */
+  async function importBackup(): Promise<FitNotesImportReport> {
+    const library = await fitNotesLibrary(local.db, TEST_USER.id);
+    const plan = planFitNotesImport({
+      entries: await readFitNotesLog(backup.file),
+      known: library,
+      existing: await fitNotesSourceSets(local.db, TEST_USER.id),
+    });
+
+    return applyFitNotesImport(local.db, plan, library, AUTHOR);
+  }
+
+  it('wciąga dziennik: dopisuje serie i zakłada brakujące ćwiczenie', async () => {
+    logEntry({
+      exercise: 'Flat Barbell Bench Press',
+      categoryId: 1,
+      date: '2026-08-10',
+      weight: 82.5,
+      reps: 5,
+    });
+    logEntry({ exercise: 'Barbell row', categoryId: 2, date: '2026-08-11', weight: 60, reps: 8 });
+
+    expect(await importBackup()).toEqual({ sets: 2, exercises: 1, duplicates: 0, skipped: 0 });
+
+    // Ćwiczenie z pliku trafiło pod nazwę wbudowanego, a nie założyło drugiego.
+    expect(await fitNotesSourceSets(local.db, TEST_USER.id)).toEqual([
+      expect.objectContaining({
+        exerciseName: 'Flat barbell bench press',
+        performedOn: '2026-08-10',
+        weightG: 82500,
+        reps: 5,
+      }),
+      expect.objectContaining({
+        exerciseName: 'Barbell row',
+        performedOn: '2026-08-11',
+        weightG: 60000,
+        reps: 8,
+      }),
+    ]);
+
+    const [created] = await local.db
+      .select()
+      .from(exercises)
+      .where(eq(exercises.name, 'Barbell row'));
+    // Kategoria „Back" z pliku jest tagiem głównym — tym, który już mamy.
+    expect(created?.primaryTagId).toBe(tagId('back'));
+    expect(created?.loggingType).toBe('weight_reps');
+  });
+
+  it('drugi import tego samego pliku nie dokłada niczego', async () => {
+    logEntry({
+      exercise: 'Flat Barbell Bench Press',
+      categoryId: 1,
+      date: '2026-08-10',
+      weight: 82.5,
+      reps: 5,
+    });
+    // Dwie identyczne serie z jednego treningu mają zostać dwiema seriami.
+    logEntry({ exercise: 'Barbell row', categoryId: 2, date: '2026-08-11', weight: 60, reps: 8 });
+    logEntry({ exercise: 'Barbell row', categoryId: 2, date: '2026-08-11', weight: 60, reps: 8 });
+
+    expect((await importBackup()).sets).toBe(3);
+    expect(await importBackup()).toEqual({
+      sets: 0,
+      exercises: 0,
+      duplicates: 3,
+      skipped: 0,
+    });
+    expect(await fitNotesSourceSets(local.db, TEST_USER.id)).toHaveLength(3);
+  });
+
+  it('dokłada wyłącznie to, czego jeszcze nie ma', async () => {
+    await createSet(local.db, {
+      ...AUTHOR,
+      exerciseId: EXERCISES.bench!.id,
+      performedOn: '2026-08-10',
+      values: reps(82.5, 5),
+    });
+
+    logEntry({
+      exercise: 'Flat Barbell Bench Press',
+      categoryId: 1,
+      date: '2026-08-10',
+      weight: 82.5,
+      reps: 5,
+    });
+    logEntry({
+      exercise: 'Flat Barbell Bench Press',
+      categoryId: 1,
+      date: '2026-08-10',
+      weight: 85,
+      reps: 3,
+    });
+
+    expect(await importBackup()).toMatchObject({ sets: 1, duplicates: 1 });
+
+    const stored = await local.db
+      .select()
+      .from(workoutSets)
+      .where(eq(workoutSets.exerciseId, EXERCISES.bench!.id));
+    expect(stored).toHaveLength(2);
+    // Kolejność w dniu liczy się dalej po naszemu: dopisana seria jest kolejna.
+    expect(stored.map((row) => row.position)).toEqual([0, 1]);
+  });
+
+  it('eksport i import w drugą stronę nie dublują historii', async () => {
+    await seedSets(local.db);
+
+    const target = await readFitNotesTarget(backup.file);
+    await applyFitNotesPlan(
+      backup.file,
+      target,
+      planFitNotesExport({ sets: await fitNotesSourceSets(local.db, TEST_USER.id), target }),
+    );
+
+    expect(await importBackup()).toEqual({ sets: 0, exercises: 0, duplicates: 2, skipped: 0 });
+    expect(await fitNotesSourceSets(local.db, TEST_USER.id)).toHaveLength(2);
+  });
+
+  it('odmawia pliku, który nie jest kopią FitNotesa', async () => {
+    const other = createBackup('CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT)');
+    await expect(readFitNotesLog(other.file)).rejects.toThrow(NotAFitNotesBackupError);
     other.client.close();
   });
 });

@@ -200,18 +200,20 @@ kanonicznej: nie sprawdzamy, czy import się wykonał, ale czy powiązania autor
 ćwiczeń i właścicieli serii są po odtworzeniu takie same. Dane próby są fikcyjne
 i powstają na miejscu; prawdziwy eksport nigdy nie trafia do CI.
 
-### Eksport do kopii FitNotesa
+### Wymiana z kopią FitNotesa
 
 Osobna ścieżka w tej samej sekcji aplikacji, bo cel jest inny niż przy archiwum:
-nie odtworzenie danych, tylko oddanie ich aplikacji, której ktoś używa obok.
-Plik `FitNotes_Backup.fitnotes` jest nieszyfrowaną bazą SQLite, więc dopisujemy
-do niego wprost — do tabeli `training_log` — zamiast produkować trzeci format
-wymiany, którego i tak nie miałby kto zaimportować.
+nie odtworzenie danych, tylko wymiana z aplikacją, której ktoś używa obok — albo
+używał wcześniej. Plik `FitNotes_Backup.fitnotes` jest nieszyfrowaną bazą SQLite,
+więc czytamy z niego i dopisujemy do niego wprost — do tabeli `training_log` —
+zamiast produkować trzeci format wymiany, którego i tak nie miałby kto
+zaimportować.
 
 | Warstwa | Gdzie | Co robi |
 | ------- | ----- | ------- |
-| plan    | `packages/core/src/fitnotes.ts`      | co dopisać, co pominąć, które ćwiczenie utworzyć |
-| zapis   | `apps/mobile/src/fitnotes/file.ts`   | jedna transakcja na pliku użytkownika |
+| plan    | `packages/core/src/fitnotes.ts`      | co dopisać, co pominąć, które ćwiczenie utworzyć — w obie strony |
+| plik    | `apps/mobile/src/fitnotes/file.ts`   | odczyt dziennika i zapis w jednej transakcji na pliku użytkownika |
+| zapis   | `apps/mobile/src/fitnotes/import.ts` | wciągnięcie planu importu do bazy lokalnej |
 | rejestr | `apps/mobile/src/fitnotes/state.ts`  | co już poszło i czym zastąpić brakującą kategorię |
 | system  | `apps/mobile/src/fitnotes/expo.ts`   | wybór pliku, SQLite, oddanie go z powrotem |
 
@@ -234,10 +236,34 @@ Trzy rzeczy są w tym nieoczywiste i wszystkie wynikają z FitNotesa, nie z nas:
   sam go nie podmieni.
 
 Poza zakresem są pomiary ciała (`BodyWeight`, `Measurement`) i szablony treningów
-(`Routine…`): eksportujemy dziennik, a nie całą bazę FitNotesa. Nowym ćwiczeniom
+(`Routine…`): wymieniamy dziennik, a nie całą bazę FitNotesa. Nowym ćwiczeniom
 nie ustawiamy też `exercise_type_id` — zostaje wartość domyślna ze schematu,
 bo znaczenia pozostałych typów FitNotes nigdzie nie deklaruje, a zgadnięty numer
 zmieniłby użytkownikowi wygląd formularza w cudzej aplikacji.
+
+Import idzie tą samą warstwą planu, ale rozstrzyga inaczej trzy rzeczy — bo
+tym razem to **nasza** baza jest stroną, w której coś przybywa:
+
+- **Duplikat rozpoznaje sam plik zestawiony z bazą, bez rejestru.** Kluczem jest
+  dzień + ćwiczenie + pomiary, a porównujemy liczności, a nie zbiór kluczy: cztery
+  identyczne serie z jednego treningu, z których trzy już mamy, dokładają jedną.
+  Rejestr byłby tu wręcz szkodliwy — plik może pochodzić z innego telefonu, a jego
+  wpisy mogły wejść do AlphaPump dowolną drogą.
+- **Tagi i ćwiczenia zakładamy sami.** W drugą stronę nie możemy (darmowy FitNotes
+  nie tworzy kategorii), a u siebie nie ma o co pytać. Typ logowania nowego
+  ćwiczenia wynika z **całości** jego wpisów, nie z pierwszego: podciąganie
+  z obciążeniem ma w pliku także serie z ciężarem zero, a typu logowania nie da
+  się później zmienić.
+- **Zapis idzie wierszami, nie jedną transakcją.** Odwrotnie niż przy eksporcie,
+  bo tam plik jest cudzy, a tu przerwany import zostawia to, co zdążyło wejść —
+  i jest to bezpieczne dokładnie dlatego, że powtórzenie rozpozna te serie jako
+  duplikaty. Serie zapisują się tymi samymi funkcjami co z ekranu, więc trafiają
+  do outboxu i jadą na serwer przy najbliższej synchronizacji.
+
+Wpisy, których nie da się zapisać — bez żadnego pomiaru, z datą, której nie ma
+w kalendarzu, albo z nazwą, której nie przyjmuje biblioteka — są pomijane
+i policzone w podsumowaniu. Przerwanie całego importu na jednym takim wierszu
+kosztowałoby użytkownika resztę dziennika.
 
 ## Panel administracyjny
 

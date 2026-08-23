@@ -27,12 +27,19 @@
  * wymaga rozmowy z użytkownikiem — kategorią, której w jego pliku nie ma i
  * której darmowy FitNotes nie pozwala utworzyć. Dlatego ta sekcja ma dwa kroki:
  * najpierw pokazuje, co się stanie, i dopiero potwierdzenie pisze do pliku.
+ *
+ * ## Czwarta sekcja: import z FitNotesa
+ *
+ * Import idzie jednym krokiem, bo nie ma o co pytać: tagi i ćwiczenia, których
+ * u nas nie ma, po prostu zakładamy, a duplikaty rozpoznaje sam plik zestawiony
+ * z bazą. Wynik pokazujemy tak jak przy imporcie archiwum — liczbami.
  */
 
 import {
   archiveSummary,
   parseArchive,
   planFitNotesExport,
+  planFitNotesImport,
   type Archive,
   type FitNotesSourceSet,
   type FitNotesTarget,
@@ -51,8 +58,14 @@ import {
   writeFitNotesState,
   type OpenFitNotesBackup,
 } from '../fitnotes/expo';
-import { applyFitNotesPlan, readFitNotesTarget, type FitNotesWriteReport } from '../fitnotes/file';
-import { fitNotesSourceSets } from '../fitnotes/source';
+import {
+  applyFitNotesPlan,
+  readFitNotesLog,
+  readFitNotesTarget,
+  type FitNotesWriteReport,
+} from '../fitnotes/file';
+import { applyFitNotesImport, type FitNotesImportReport } from '../fitnotes/import';
+import { fitNotesLibrary, fitNotesSourceSets } from '../fitnotes/source';
 import { withCategoryChoices, withExportedKeys, type FitNotesState } from '../fitnotes/state';
 import { useLocalAuthor } from '../hooks';
 import { useRequestSync } from '../sync/provider';
@@ -80,6 +93,7 @@ export function TransferScreen() {
   const [report, setReport] = useState<LocalImportReport | null>(null);
   const [session, setSession] = useState<FitNotesSession | null>(null);
   const [written, setWritten] = useState<FitNotesWriteReport | null>(null);
+  const [pulled, setPulled] = useState<FitNotesImportReport | null>(null);
 
   if (author === null) return <Loading />;
 
@@ -162,6 +176,7 @@ export function TransferScreen() {
   const pickBackup = () =>
     run(async () => {
       setWritten(null);
+      setPulled(null);
       await session?.backup.close();
       setSession(null);
 
@@ -200,6 +215,37 @@ export function TransferScreen() {
 
       setSession(null);
       setWritten(outcome);
+    });
+
+  const importFitNotes = () =>
+    run(async () => {
+      setWritten(null);
+      setPulled(null);
+      // Wybór pliku czyści katalog roboczy, więc otwarta sesja eksportu straciłaby
+      // spod siebie plik. Zamykamy ją, zamiast zostawiać podgląd, który nie ma
+      // już pokrycia.
+      await session?.backup.close();
+      setSession(null);
+
+      const backup = await pickFitNotesBackup();
+      if (backup === null) return;
+
+      try {
+        const library = await fitNotesLibrary(db, author.userId);
+        const plan = planFitNotesImport({
+          entries: await readFitNotesLog(backup.database),
+          known: library,
+          existing: await fitNotesSourceSets(db, author.userId),
+        });
+
+        setPulled(await applyFitNotesImport(db, plan, library, author));
+      } finally {
+        await backup.close();
+      }
+
+      // Tak jak przy imporcie archiwum: dane są już na ekranie, na serwer jadą
+      // outboxem przy najbliższej synchronizacji.
+      requestSync();
     });
 
   return (
@@ -324,6 +370,35 @@ export function TransferScreen() {
               Wrote {String(written.sets)} sets and {String(written.exercises)} new exercises.
               Restore the shared file in FitNotes.
             </Text>
+          )}
+        </Card>
+
+        <Card className="gap-2">
+          <SectionTitle>Import from FitNotes</SectionTitle>
+          <Text className="text-muted">
+            Reads a FitNotes backup file and adds its training log here. Your data stays — only what
+            isn&apos;t already on this device is added, so you can repeat it safely. Missing
+            exercises and tags are created from the file. It reaches the server on the next sync.
+          </Text>
+          <View className="mt-1">
+            <Button
+              variant="secondary"
+              label="Import FitNotes backup"
+              busy={busy}
+              onPress={importFitNotes}
+            />
+          </View>
+
+          {pulled !== null && (
+            <View className="gap-1">
+              <Text className="text-success">
+                Imported: {String(pulled.sets)} sets, {String(pulled.exercises)} new exercises.
+              </Text>
+              <Text className="text-xs text-muted">
+                {String(pulled.duplicates)} entries were already here
+                {pulled.skipped > 0 && `, ${String(pulled.skipped)} couldn't be read`}.
+              </Text>
+            </View>
           )}
         </Card>
 
