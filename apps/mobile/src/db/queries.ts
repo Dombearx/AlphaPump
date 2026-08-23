@@ -45,6 +45,7 @@ import {
   max,
   ne,
   or,
+  sql,
 } from 'drizzle-orm';
 import { union } from 'drizzle-orm/sqlite-core';
 
@@ -270,7 +271,9 @@ function librarySourceCondition(source: LibrarySource) {
  *
  * Filtr po tagu obejmuje tag główny **i** dodatkowe: w bibliotece tag jest
  * etykietą do przeglądania, a nie kryterium zaliczania serii do cyklu — tam
- * liczy się wyłącznie tag główny.
+ * liczy się wyłącznie tag główny. W wyniku ćwiczenia, dla których wybrany tag
+ * jest główny, idą przed tymi, dla których jest dodatkowy — bez tego lista
+ * miesza oba przypadki i główne dopasowania giną między drugorzędnymi.
  */
 export function exerciseLibrary(db: SqliteDatabase, userId: string, filter: LibraryFilter = {}) {
   const mySets = db
@@ -302,6 +305,12 @@ export function exerciseLibrary(db: SqliteDatabase, userId: string, filter: Libr
         );
 
   const setCount = count(mySets.id);
+  // Sam literał liczbowy w ORDER BY SQLite czyta jako pozycję kolumny (1-indeks),
+  // więc bez filtra po tagu ten człon trzeba pominąć zamiast podstawiać stałą.
+  const isPrimaryMatch =
+    filter.tagId == null
+      ? null
+      : sql`case when ${exercises.primaryTagId} = ${filter.tagId} then 0 else 1 end`;
 
   return db
     .select({
@@ -321,7 +330,9 @@ export function exerciseLibrary(db: SqliteDatabase, userId: string, filter: Libr
     .leftJoin(mySets, eq(mySets.exerciseId, exercises.id))
     .where(and(isNull(exercises.deletedAt), librarySourceCondition(filter.source ?? 'all'), tagged))
     .groupBy(exercises.id, tags.id)
-    .orderBy(desc(setCount), asc(exercises.name));
+    .orderBy(
+      ...[isPrimaryMatch, desc(setCount), asc(exercises.name)].filter((term) => term != null),
+    );
 }
 
 export type LibraryRow = Awaited<ReturnType<typeof exerciseLibrary>>[number];

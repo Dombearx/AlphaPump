@@ -129,6 +129,21 @@ describe('zapytania ekranów', () => {
     expect(dips?.tagName).toBe('chest');
   });
 
+  it('biblioteka po tagu stawia ćwiczenia z tym tagiem jako główny przed tymi, gdzie jest dodatkowy', async () => {
+    // „Lying triceps extension" i „Overhead cable triceps extension" mają
+    // triceps jako tag główny, a alfabetycznie idą po ćwiczeniach z chestem
+    // jako głównym i triceps jako dodatkowym (np. „Flat barbell bench press") —
+    // bez priorytetu tagu głównego wynik by je pomieszał.
+    const rows = await exerciseLibrary(local.db, TEST_USER.id, { tagId: tagId('triceps') });
+
+    const isPrimaryMatch = rows.map((row) => row.tagName === 'triceps');
+    const firstAdditionalIndex = isPrimaryMatch.indexOf(false);
+
+    expect(firstAdditionalIndex).toBeGreaterThan(0);
+    expect(isPrimaryMatch.slice(0, firstAdditionalIndex).every(Boolean)).toBe(true);
+    expect(isPrimaryMatch.slice(firstAdditionalIndex).some(Boolean)).toBe(false);
+  });
+
   it('grupuje tagi dodatkowe po ćwiczeniu, w kolejności zapisu', async () => {
     const rows = await allAdditionalTags(local.db);
     const grouped = groupAdditionalTags(rows);
