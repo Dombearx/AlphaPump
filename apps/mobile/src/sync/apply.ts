@@ -14,7 +14,14 @@
  * ekranie. Ta edycja czeka już w outboxie, więc dojedzie następną paczką —
  * ale do tego czasu ekran pokazywałby coś, czego użytkownik nie napisał.
  *
- * Dlatego każdy wiersz przechodzi przez `resolveSyncConflict` z `@alphapump/core`
+ * Wiersz, o którym wiadomo, że **nie ma nic do wysłania**, tego wyjątku nie
+ * potrzebuje: dla niego wersja serwera jest rozstrzygająca i wchodzi do bazy
+ * bez rozstrzygania konfliktu (`ApplyOptions.authoritative`, składane
+ * w `authority.ts`). Bez tego wiersz odrzucony przez serwer, wiersz z przyciętym
+ * znacznikiem z przyszłości i tag z poprawionym kolorem zostawały na telefonie
+ * w wersji, której serwer nigdy nie przyjął — na zawsze i bez żadnego sygnału.
+ *
+ * Reszta przechodzi przez `resolveSyncConflict` z `@alphapump/core`
  * — **tę samą** funkcję, którą serwer rozstrzyga pushe. Reguły są symetryczne:
  * nowsza wersja wygrywa, usunięcie bije edycję, a świadome odtworzenie encji
  * (data utworzenia późniejsza niż usunięcie) wraca do życia.
@@ -35,6 +42,8 @@ import {
   resolveSyncConflict,
   isWrite,
   type SyncChanges,
+  type SyncDecision,
+  type SyncEntity,
   type SyncRevision,
   type SyncedCycle,
   type SyncedExercise,
@@ -53,6 +62,16 @@ import {
   type SqliteDatabase,
 } from '@alphapump/db/sqlite';
 import { eq } from 'drizzle-orm';
+import { rowKey } from './authority';
+
+export interface ApplyOptions {
+  /**
+   * Klucze wierszy (`encja:id`), dla których wersja przychodząca jest
+   * rozstrzygająca — wchodzi do bazy bez porównywania z lokalną. Składa je
+   * `authority.ts`; pusty zbiór znaczy „rozstrzygaj wszystko po staremu".
+   */
+  authoritative?: ReadonlySet<string>;
+}
 
 export interface ApplyOutcome {
   /** Wiersze zapisane do bazy. */
@@ -95,17 +114,37 @@ function incomingRevision(row: {
   return { ...row, deviceId: null };
 }
 
+/**
+ * Los jednego wiersza: albo rozstrzygnięcie konfliktu, albo `update` bez
+ * pytania, gdy wersja serwera jest rozstrzygająca.
+ *
+ * `update` jest tu poprawne także wtedy, gdy wiersza lokalnie nie ma: zapis idzie
+ * przez `insert … onConflictDoUpdate`, więc jedna decyzja obsługuje oba
+ * przypadki, a tombstone wchodzi razem z resztą kolumn.
+ */
+function decide(
+  entity: SyncEntity,
+  id: string,
+  local: Parameters<typeof localRevision>[0] | undefined,
+  incoming: { createdAt: string; updatedAt: string; deletedAt: string | null },
+  options: ApplyOptions | undefined,
+): SyncDecision {
+  if (options?.authoritative?.has(rowKey(entity, id)) === true) return 'update';
+  return resolveSyncConflict(local ? localRevision(local) : null, incomingRevision(incoming));
+}
+
 export async function applyChanges(
   db: SqliteDatabase,
   changes: SyncChanges,
+  options?: ApplyOptions,
 ): Promise<ApplyOutcome> {
   const outcome: ApplyOutcome = { written: 0, kept: 0 };
 
   for (const row of changes.users) await applyUser(db, row, outcome);
-  for (const row of changes.tags) await applyTag(db, row, outcome);
-  for (const row of changes.exercises) await applyExercise(db, row, outcome);
-  for (const row of changes.cycles) await applyCycle(db, row, outcome);
-  for (const row of changes.sets) await applySet(db, row, outcome);
+  for (const row of changes.tags) await applyTag(db, row, outcome, options);
+  for (const row of changes.exercises) await applyExercise(db, row, outcome, options);
+  for (const row of changes.cycles) await applyCycle(db, row, outcome, options);
+  for (const row of changes.sets) await applySet(db, row, outcome, options);
 
   return outcome;
 }
@@ -149,9 +188,14 @@ async function applyUser(
 
 /* ---------------------------------------------------------------------- tagi */
 
-async function applyTag(db: SqliteDatabase, row: SyncedTag, outcome: ApplyOutcome): Promise<void> {
+async function applyTag(
+  db: SqliteDatabase,
+  row: SyncedTag,
+  outcome: ApplyOutcome,
+  options?: ApplyOptions,
+): Promise<void> {
   const [local] = await db.select().from(tags).where(eq(tags.id, row.id)).limit(1);
-  const decision = resolveSyncConflict(local ? localRevision(local) : null, incomingRevision(row));
+  const decision = decide('tag', row.id, local, row, options);
 
   if (!isWrite(decision)) {
     if (local) await db.update(tags).set({ serverSeq: row.serverSeq }).where(eq(tags.id, row.id));
@@ -185,9 +229,10 @@ async function applyExercise(
   db: SqliteDatabase,
   row: SyncedExercise,
   outcome: ApplyOutcome,
+  options?: ApplyOptions,
 ): Promise<void> {
   const [local] = await db.select().from(exercises).where(eq(exercises.id, row.id)).limit(1);
-  const decision = resolveSyncConflict(local ? localRevision(local) : null, incomingRevision(row));
+  const decision = decide('exercise', row.id, local, row, options);
 
   if (!isWrite(decision)) {
     if (local) {
@@ -237,9 +282,10 @@ async function applyCycle(
   db: SqliteDatabase,
   row: SyncedCycle,
   outcome: ApplyOutcome,
+  options?: ApplyOptions,
 ): Promise<void> {
   const [local] = await db.select().from(cycles).where(eq(cycles.id, row.id)).limit(1);
-  const decision = resolveSyncConflict(local ? localRevision(local) : null, incomingRevision(row));
+  const decision = decide('cycle', row.id, local, row, options);
 
   if (!isWrite(decision)) {
     if (local)
@@ -287,9 +333,10 @@ async function applySet(
   db: SqliteDatabase,
   row: SyncedWorkoutSet,
   outcome: ApplyOutcome,
+  options?: ApplyOptions,
 ): Promise<void> {
   const [local] = await db.select().from(workoutSets).where(eq(workoutSets.id, row.id)).limit(1);
-  const decision = resolveSyncConflict(local ? localRevision(local) : null, incomingRevision(row));
+  const decision = decide('set', row.id, local, row, options);
 
   if (!isWrite(decision)) {
     if (local) {

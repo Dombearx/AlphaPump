@@ -11,11 +11,17 @@
  * integracyjne `@alphapump/api` — powtarzanie ich tutaj oznaczałoby utrzymywanie
  * drugiej implementacji serwera.
  *
- * Jedna reguła spoza LWW jest tu jednak odwzorowana, bo bez niej testy
- * przepuściłyby najgorszy z możliwych błędów: **seria wskazująca na nieznane
- * ćwiczenie jest odrzucana**, dokładnie jak w `apps/api/src/sync/push.ts`.
- * To ta reguła zżarła serie zapisane na bibliotece wbudowanej, dopóki serwer
- * nie dostawał seeda.
+ * Dwie reguły spoza LWW są tu jednak odwzorowane, bo bez nich testy
+ * przepuściłyby najgorsze z możliwych błędów: **seria wskazująca na nieznane
+ * ćwiczenie jest odrzucana** i **ćwiczenie z tagiem, którego serwer nie zna,
+ * jest odrzucane** — jak w `apps/api/src/sync/push/`. Pierwsza zżarła serie
+ * zapisane na bibliotece wbudowanej, dopóki serwer nie dostawał seeda; druga
+ * jest tą, przez którą telefon zostawał z tagiem głównym, którego serwer nigdy
+ * nie przyjął.
+ *
+ * Odmowa oddaje przy tym **wiersz serwerowy**, tak jak `reject` w prawdziwym
+ * pushu — to on jest jedyną drogą, którą telefon może wrócić do wersji leżącej
+ * na serwerze.
  */
 
 import {
@@ -76,9 +82,16 @@ export class FakeSyncServer implements SyncTransport {
   /** Ustawione na błąd sprawia, że każde żądanie kończy się tym błędem. */
   failWith: Error | null = null;
   /**
-   * Serie, których serwer nie przyjmie, cokolwiek by przyszło. Prawdziwy serwer
-   * odrzuca z paru powodów (cudze ćwiczenie, niespójne pomiary) — testom
-   * wystarczy jeden, żeby sprawdzić, co telefon robi z odmową.
+   * Wołane na początku pushu, zanim serwer cokolwiek rozstrzygnie. Jedyny
+   * sposób, żeby w teście zapisać coś lokalnie **w trakcie** wymiany — a to jest
+   * ten przypadek, dla którego wersja lokalna ma pierwszeństwo nad odpowiedzią.
+   */
+  beforePush: (() => Promise<void>) | null = null;
+  /**
+   * Wiersze, których serwer nie przyjmie, cokolwiek by przyszło — po
+   * identyfikatorze, niezależnie od encji. Prawdziwy serwer odrzuca z paru
+   * powodów (cudzy wiersz, niespójne pomiary, reguła tylko dla administratora);
+   * testom wystarczy jeden, żeby sprawdzić, co telefon robi z odmową.
    */
   readonly refuse = new Set<string>();
 
@@ -154,6 +167,7 @@ export class FakeSyncServer implements SyncTransport {
   async push(request: SyncPushRequest): Promise<SyncPushResponse> {
     this.guard();
     this.pushCalls += 1;
+    if (this.beforePush) await this.beforePush();
 
     const now = this.now;
     const results: SyncResult[] = [];
@@ -162,6 +176,19 @@ export class FakeSyncServer implements SyncTransport {
     for (const incoming of request.tags) {
       const revision = clampRevision(revisionOf(incoming, request.deviceId), now);
       const decision = resolveSyncConflict(existing(this.tags.get(incoming.id)), revision);
+
+      if (this.refuse.has(incoming.id)) {
+        results.push({
+          entity: 'tag',
+          id: incoming.id,
+          decision: 'rejected',
+          reason: 'slug_taken',
+          reasonDetail: incoming.name,
+        });
+        const known = this.tags.get(incoming.id);
+        if (known) changes.tags.push(strip(known));
+        continue;
+      }
 
       if (isWrite(decision)) {
         // Kolor przydziela serwer, tak jak prawdziwy: nowy tag dostaje wolny
@@ -188,6 +215,26 @@ export class FakeSyncServer implements SyncTransport {
     for (const incoming of request.exercises) {
       const revision = clampRevision(revisionOf(incoming, request.deviceId), now);
       const decision = resolveSyncConflict(existing(this.exercises.get(incoming.id)), revision);
+
+      // Druga reguła spoza LWW: **ćwiczenie z tagiem, którego serwer nie zna,
+      // jest odrzucane** — dokładnie jak w `apps/api/src/sync/push/exercises.ts`.
+      // Odmowa oddaje przy tym wiersz serwerowy, bo bez niego telefon nie miałby
+      // jak wrócić do wersji, która na serwerze faktycznie leży.
+      const known = this.exercises.get(incoming.id);
+      const unknownTag = [incoming.primaryTagId, ...incoming.additionalTagIds].find(
+        (id) => !this.tags.has(id),
+      );
+      if (this.refuse.has(incoming.id) || unknownTag !== undefined) {
+        results.push({
+          entity: 'exercise',
+          id: incoming.id,
+          decision: 'rejected',
+          reason: unknownTag === undefined ? 'not_author' : 'missing_tags',
+          reasonDetail: unknownTag ?? null,
+        });
+        if (known) changes.exercises.push(strip(known));
+        continue;
+      }
 
       if (isWrite(decision)) {
         this.exercises.set(incoming.id, {
@@ -317,6 +364,22 @@ export class FakeSyncServer implements SyncTransport {
       hasMore: candidates.length > batch.length,
       changes,
     };
+  }
+
+  /**
+   * Zmiana wiersza po stronie serwera — tak, jak robi to panel administracyjny:
+   * nowy `updated_at` z zegara serwera i kolejny numer sekwencji.
+   */
+  editExercise(id: string, values: Partial<SyncedExercise>): void {
+    const row = this.exercises.get(id);
+    if (!row) throw new Error(`Fake server has no exercise ${id}`);
+    this.exercises.set(id, {
+      ...row,
+      ...values,
+      updatedAt: this.now.toISOString(),
+      deviceId: null,
+      serverSeq: this.next(),
+    });
   }
 
   /** Wgląd w stan serwera — do sprawdzania, co faktycznie dojechało. */

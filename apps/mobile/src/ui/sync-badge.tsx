@@ -49,8 +49,9 @@ export function SyncBadge() {
 
             {snapshot.rejected > 0 && (
               <Text className="text-danger">
-                The server would not accept {snapshot.rejected} change(s). They are kept on this
-                device and retried automatically
+                The server would not accept {snapshot.rejected} change(s). Changes it knows nothing
+                about are retried automatically; edits to library entries it already has are undone
+                on this device, so both sides show the same thing
                 {snapshot.rejectedReason === null ? '' : ` — ${snapshot.rejectedReason}`}.
               </Text>
             )}
