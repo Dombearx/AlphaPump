@@ -205,8 +205,7 @@ jobs:
             a runner znika razem z tym, co na nim jeszcze działało. Nie
             uruchamiaj więc niczego w tle i nie kończ wypowiedzi zapowiedzią,
             że czekasz na czyjś wynik — polecenia, zwłaszcza `pnpm test`,
-            uruchamiaj wprost i czekaj, aż się skończą; na całe zadanie masz
-            godzinę. Zamilknąć wolno ci dopiero wtedy, kiedy PR-ka jest
+            uruchamiaj wprost i czekaj, aż się skończą. Zamilknąć wolno ci dopiero wtedy, kiedy PR-ka jest
             założona albo kiedy zostawiłeś komentarz do zgłoszenia.
 
             Czego nie robić: nie zmieniaj wersji zależności, nie zmieniaj
