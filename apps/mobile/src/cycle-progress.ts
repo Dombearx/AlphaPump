@@ -203,55 +203,72 @@ export function remainingTargets(
 }
 
 /**
- * Tagi, w których została jeszcze robota z cyklu, wraz z udziałem wykonania —
- * do gwiazdki na chipsie tagu i do wypełnienia jego tła.
+ * Tagi objęte celami aktywnych cykli, wraz z udziałem wykonania — do gwiazdki
+ * na chipsie tagu i do wypełnienia jego tła.
  *
  * Pozycja tagowa wskazuje swój tag wprost, pozycja z ćwiczeniem — tag główny
  * tego ćwiczenia, bo to on rozstrzyga, gdzie ćwiczenie stoi na liście. Pozycja,
- * której nie da się przypisać do żadnego tagu (usunięte ćwiczenie), gwiazdki
- * nigdzie nie zapala, zamiast zapalać ją wszędzie.
+ * której nie da się przypisać do żadnego tagu (usunięte ćwiczenie), nie oznacza
+ * żadnego tagu, zamiast oznaczać wszystkie.
  *
- * Gdy w jeden tag celuje kilka pozycji, udziałem tagu jest ich średnia — ta sama
- * reguła, którą rdzeń liczy postęp całego cyklu. Sumowanie nie wchodzi w grę:
- * „12 serii" i „30 minut" nie dodają się do żadnej sensownej liczby.
+ * Tag **zrobiony w całości zostaje w mapie** z udziałem równym jedynce, więc
+ * jego chips jest wypełniony do końca. Znikanie wypełnienia w momencie
+ * dokończenia roboty czytało się jak cofnięcie postępu: tag przez cały czas
+ * pełzł w prawo, a po ostatniej serii wracał do wyglądu tagu spoza cyklu.
+ * Gwiazdkę „tu coś zostało" zapala dopiero udział mniejszy od jedynki — patrz
+ * `Chip`.
  *
- * Średnia liczy się ze **wszystkich** pozycji celujących w tag, nie tylko
- * z niedokończonych: pozycja już zrobiona wnosi do niej pełny udział (1), a nie
- * znika z niej całkiem. `remainingTargets` filtruje dokończone pozycje, bo służy
- * podpowiedzi „gdzie jeszcze coś zostało" — licząc udział tagu z samego jego
- * wyniku, gotowa pozycja wypadałaby ze średniej zamiast wnosić do niej swoją
- * jedynkę, a chips pokazywałby mniej wypełnienia, niż faktycznie zrobiono.
+ * Gdy w jeden tag celuje kilka pozycji, liczy się **robota, a nie liczba
+ * pozycji**: w obrębie jednej metryki sumują się wykonania i cele, więc „cztery
+ * serie z ośmiu zaplanowanych w tagu" to połowa niezależnie od tego, czy te
+ * osiem serii stoi w jednej pozycji, czy w dwóch po cztery. Średnia z udziałów
+ * pozycji tego nie dawała: pozycja na jedną serię ważyła w niej tyle samo, co
+ * pozycja na dwadzieścia, i wypełnienie rozjeżdżało się z tym, co użytkownik
+ * ma jeszcze do zrobienia.
+ *
+ * Metryk nie da się sumować między sobą — „12 serii" i „30 minut" nie dodają
+ * się do żadnej sensownej liczby — więc każda metryka daje swój udział, a tag
+ * dostaje ich średnią. W praktyce metryka jest jedna i średnia nie ma czego
+ * uśredniać.
+ *
+ * Wykonanie pojedynczej pozycji wchodzi do sumy przycięte do jej celu: nadmiar
+ * w jednej pozycji nie ma zasypywać braku w drugiej.
  */
 export function tagCycleProgress(
   summaries: readonly CycleSummary[],
   day: IsoDate,
 ): ReadonlyMap<string, number> {
-  const eligible = new Set<string>();
-  for (const target of remainingTargets(summaries, day)) {
-    const tagId = target.tagId ?? target.exerciseTagId;
-    if (tagId !== null) eligible.add(tagId);
-  }
+  /** Na tag: na metrykę para „zrobione / do zrobienia". */
+  const work = new Map<string, Map<GoalMetric, { current: number; target: number }>>();
 
-  const ratios = new Map<string, number[]>();
   for (const { cycle, progress } of activeCycleSummaries(summaries, day)) {
     for (const goal of progress.goals) {
       const row = cycle.goals.find((candidate) => candidate.id === goal.goalId);
       if (row === undefined) continue;
 
       const tagId = row.tagId ?? row.exercisePrimaryTagId;
-      if (tagId === null || !eligible.has(tagId)) continue;
+      if (tagId === null) continue;
 
-      const forTag = ratios.get(tagId);
-      if (forTag === undefined) ratios.set(tagId, [goal.ratio]);
-      else forTag.push(goal.ratio);
+      let byMetric = work.get(tagId);
+      if (byMetric === undefined) {
+        byMetric = new Map();
+        work.set(tagId, byMetric);
+      }
+
+      const sum = byMetric.get(goal.metric) ?? { current: 0, target: 0 };
+      sum.current += Math.min(goal.current, goal.target);
+      sum.target += goal.target;
+      byMetric.set(goal.metric, sum);
     }
   }
 
   return new Map(
-    [...ratios].map(([tagId, values]) => [
-      tagId,
-      values.reduce((sum, value) => sum + value, 0) / values.length,
-    ]),
+    [...work].map(([tagId, byMetric]) => {
+      const ratios = [...byMetric.values()].map((sum) =>
+        sum.target === 0 ? 1 : Math.min(sum.current / sum.target, 1),
+      );
+      return [tagId, ratios.reduce((total, ratio) => total + ratio, 0) / ratios.length];
+    }),
   );
 }
 

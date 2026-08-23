@@ -1,10 +1,11 @@
 /**
- * Wybór ćwiczenia — sprawdza oznaczenie tagów, w których została jeszcze robota
- * z cyklu. Oznaczeniem jest gwiazdka **wewnątrz** chipsa tagu i wypełnienie jego
- * tła w proporcji zrobionej roboty (patrz nagłówek `pick-exercise.tsx`).
- * Gwiazdkę sprawdzamy na tekście, który ekran skleja — stoi w miejscu kropki
- * koloru, czyli tuż przed nazwą tagu. Wypełnienie tekstu nie ma i mieć nie może,
- * więc jego jedynym śladem jest szerokość policzona chipsowi.
+ * Wybór ćwiczenia — sprawdza oznaczenie tagów objętych celami aktywnego cyklu.
+ * Oznaczeniem jest znak **wewnątrz** chipsa tagu (gwiazdka, dopóki coś zostało,
+ * ptaszek po dokończeniu) i wypełnienie jego tła w proporcji zrobionej roboty
+ * (patrz nagłówek `pick-exercise.tsx`). Znak sprawdzamy na tekście, który ekran
+ * skleja — stoi w miejscu kropki koloru, czyli tuż przed nazwą tagu.
+ * Wypełnienie tekstu nie ma i mieć nie może, więc jego jedynym śladem jest
+ * udział, w jakim dzieli chipsa pasek stojący pod jego treścią.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -17,16 +18,19 @@ import { mount, openLocalDatabase, screenText, type MountedScreen } from './harn
 const DAY = '2026-08-11';
 
 /**
- * Szerokość wypełnienia chipsa danego tagu, tak jak zobaczy ją użytkownik.
- * Wypełnienie stoi pod treścią chipsa, więc jest jego pierwszym dzieckiem;
- * chips bez wypełnienia zaczyna się kropką koloru, a ta żadnej szerokości nie
- * dostaje.
+ * Udział, w jakim wypełnione jest tło chipsa danego tagu — tak, jak zobaczy je
+ * użytkownik. Wypełnienie stoi pod treścią chipsa, więc jest jego pierwszym
+ * dzieckiem, a rozciąga się na całą jego szerokość i dzieli ją między część
+ * zrobioną i resztę. Zrobiona część jest pierwsza, a jej udział wzrostu jest
+ * dokładnie tym, co widać. Chips bez wypełnienia zaczyna się rzędem treści
+ * i żadnego udziału nie dostaje.
  */
 function chipFill(tag: string): string {
-  const chip = Array.from(document.querySelectorAll('button')).find(
-    (node) => node.textContent === tag || node.textContent === `★${tag}`,
+  const chip = Array.from(document.querySelectorAll('button')).find((node) =>
+    [tag, `★${tag}`, `✓${tag}`].includes(node.textContent ?? ''),
   );
-  return (chip?.firstElementChild as HTMLElement | undefined)?.style.width ?? '';
+  const done = chip?.firstElementChild?.firstElementChild as HTMLElement | undefined;
+  return done?.style.flexGrow ?? '';
 }
 
 describe('wybór ćwiczenia', () => {
@@ -94,7 +98,18 @@ describe('wybór ćwiczenia', () => {
     await addBench();
     await withGoal({ exerciseId: null, tagId: TAGS.chest }, 4);
 
-    expect(chipFill('chest')).toBe('50%');
+    expect(chipFill('chest')).toBe('0.5');
+  });
+
+  it('tag z dokończoną robotą zostaje wypełniony do końca, ze znakiem zrobienia', async () => {
+    await addBench();
+    await withGoal({ exerciseId: null, tagId: TAGS.chest }, 1);
+
+    // Ostatnia seria domyka postęp, zamiast go kasować: chips zostaje pełny,
+    // a gwiazdka „tu coś zostało" ustępuje ptaszkowi.
+    expect(screenText()).toContain('✓chest');
+    expect(screenText()).not.toContain('★chest');
+    expect(chipFill('chest')).toBe('1');
   });
 
   it('nie wypełnia tagów spoza cyklu', async () => {
