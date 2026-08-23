@@ -45,6 +45,7 @@ import type {
   LoggingType,
   SyncEntity,
   SyncRejection,
+  Translations,
   UserRole,
 } from '@alphapump/core';
 import { sql } from 'drizzle-orm';
@@ -111,6 +112,14 @@ export const tags = sqliteTable(
     name: text('name').notNull(),
     slug: text('slug').notNull(),
     color: text('color').notNull(),
+    /**
+     * Nazwy w pozostałych językach — mapa „kod języka → nazwa" (patrz
+     * `languages.ts` w rdzeniu). `name` zostaje nazwą **kanoniczną**: to z niej
+     * liczy się slug i identyfikator, więc tłumaczenie nie ma prawa jej ruszyć.
+     * Jedno pole zamiast kolumny na język, bo języków ma przybywać, a każda
+     * kolumna to migracja w dwóch dialektach.
+     */
+    translations: text('translations', { mode: 'json' }).$type<Translations>(),
     ...syncColumns(),
   },
   (table) => [
@@ -143,6 +152,14 @@ export const exercises = sqliteTable(
      * siłowni dalej się deduplikowały tak jak przed dodaniem tego pola.
      */
     gym: text('gym'),
+    /**
+     * Nazwy w pozostałych językach — mapa „kod języka → nazwa" (patrz
+     * `languages.ts` w rdzeniu). `name` zostaje nazwą **kanoniczną**: to z niej
+     * liczy się slug i identyfikator, więc tłumaczenie nie ma prawa jej ruszyć.
+     * Jedno pole zamiast kolumny na język, bo języków ma przybywać, a każda
+     * kolumna to migracja w dwóch dialektach.
+     */
+    translations: text('translations', { mode: 'json' }).$type<Translations>(),
     ...syncColumns(),
   },
   (table) => [

@@ -22,6 +22,7 @@ import {
   slug,
   tagId,
   type LoggingType,
+  type Translations,
 } from '@alphapump/core';
 
 /**
@@ -51,6 +52,7 @@ export interface SeedTag {
   name: string;
   slug: string;
   color: string;
+  translations: Translations;
 }
 
 export interface SeedExercise {
@@ -61,6 +63,7 @@ export interface SeedExercise {
   loggingType: LoggingType;
   primaryTagId: string;
   additionalTagIds: string[];
+  translations: Translations;
 }
 
 /**
@@ -68,20 +71,23 @@ export interface SeedExercise {
  * poniżej mają tylko sprawić, że pierwsze ćwiczenie da się dodać bez zakładania
  * słownika od zera.
  */
-const TAG_NAMES = [
-  'abs',
-  'back',
-  'biceps',
-  'calves',
-  'chest',
-  'glutes',
-  'hamstrings',
-  'quads',
-  'shoulders',
-  'triceps',
-] as const;
+const TAG_NAMES_PL = {
+  abs: 'brzuch',
+  back: 'plecy',
+  biceps: 'biceps',
+  calves: 'łydki',
+  chest: 'klatka',
+  glutes: 'pośladki',
+  hamstrings: 'dwugłowe uda',
+  quads: 'czworogłowe uda',
+  shoulders: 'barki',
+  triceps: 'triceps',
+} as const;
 
-export type SeedTagName = (typeof TAG_NAMES)[number];
+export type SeedTagName = keyof typeof TAG_NAMES_PL;
+
+/** Kolejność jest tu istotna: z niej wynika przydział kolorów paru linijek niżej. */
+const TAG_NAMES = Object.keys(TAG_NAMES_PL) as readonly SeedTagName[];
 
 /**
  * Kolory idą przez `assignTagColors`, a nie po jednym z nazwy: unikalność jest
@@ -95,10 +101,14 @@ export const SEED_TAGS: readonly SeedTag[] = TAG_NAMES.map((name, index) => ({
   name,
   slug: slug(name),
   color: SEED_TAG_COLORS[index]!,
+  translations: { en: name, pl: TAG_NAMES_PL[name] },
 }));
 
 interface ExerciseDefinition {
   name: string;
+  /** Nazwa polska. Wpisana ręcznie, a nie tłumaczona automatem: biblioteka
+   *  wbudowana jedzie w seedzie, który nie ma prawa wołać sieci. */
+  namePl: string;
   loggingType: LoggingType;
   primaryTag: SeedTagName;
   additionalTags?: readonly SeedTagName[];
@@ -111,33 +121,52 @@ interface ExerciseDefinition {
  */
 const EXERCISE_DEFINITIONS: readonly ExerciseDefinition[] = [
   // biceps
-  { name: 'Lying dumbbell curl', loggingType: 'weight_reps', primaryTag: 'biceps' },
+  {
+    name: 'Lying dumbbell curl',
+    namePl: 'Uginanie ramion z hantlami leżąc',
+    loggingType: 'weight_reps',
+    primaryTag: 'biceps',
+  },
 
   // triceps
-  { name: 'Lying triceps extension', loggingType: 'weight_reps', primaryTag: 'triceps' },
-  { name: 'Overhead cable triceps extension', loggingType: 'weight_reps', primaryTag: 'triceps' },
+  {
+    name: 'Lying triceps extension',
+    namePl: 'Wyciskanie francuskie leżąc',
+    loggingType: 'weight_reps',
+    primaryTag: 'triceps',
+  },
+  {
+    name: 'Overhead cable triceps extension',
+    namePl: 'Wyprost ramion z wyciągu zza głowy',
+    loggingType: 'weight_reps',
+    primaryTag: 'triceps',
+  },
 
   // quads
   {
     name: 'Barbell squat',
+    namePl: 'Przysiad ze sztangą',
     loggingType: 'weight_reps',
     primaryTag: 'quads',
     additionalTags: ['glutes'],
   },
   {
     name: 'Zercher squat',
+    namePl: 'Przysiad Zerchera',
     loggingType: 'weight_reps',
     primaryTag: 'quads',
     additionalTags: ['glutes', 'back'],
   },
   {
     name: 'Leg press',
+    namePl: 'Wyciskanie nogami na suwnicy',
     loggingType: 'weight_reps',
     primaryTag: 'quads',
     additionalTags: ['glutes'],
   },
   {
     name: 'Rear kick',
+    namePl: 'Zakopywanie nogi w tył',
     loggingType: 'weight_reps',
     primaryTag: 'quads',
     additionalTags: ['glutes'],
@@ -146,17 +175,20 @@ const EXERCISE_DEFINITIONS: readonly ExerciseDefinition[] = [
   // hamstrings
   {
     name: 'Romanian deadlift',
+    namePl: 'Martwy ciąg rumuński',
     loggingType: 'weight_reps',
     primaryTag: 'hamstrings',
     additionalTags: ['glutes', 'back'],
   },
   {
     name: 'Single leg seated hamstring curl',
+    namePl: 'Uginanie jednej nogi siedząc',
     loggingType: 'weight_reps',
     primaryTag: 'hamstrings',
   },
   {
     name: 'Dumbbell jefferson curl',
+    namePl: 'Jefferson curl z hantlem',
     loggingType: 'weight_reps',
     primaryTag: 'hamstrings',
     additionalTags: ['back'],
@@ -165,12 +197,14 @@ const EXERCISE_DEFINITIONS: readonly ExerciseDefinition[] = [
   // glutes
   {
     name: 'Deadlift',
+    namePl: 'Martwy ciąg',
     loggingType: 'weight_reps',
     primaryTag: 'glutes',
     additionalTags: ['hamstrings', 'back'],
   },
   {
     name: 'Single leg hip thrust',
+    namePl: 'Wypychanie bioder na jednej nodze',
     loggingType: 'weight_reps',
     primaryTag: 'glutes',
     additionalTags: ['hamstrings'],
@@ -179,30 +213,35 @@ const EXERCISE_DEFINITIONS: readonly ExerciseDefinition[] = [
   // chest
   {
     name: 'Flat dumbbell bench press',
+    namePl: 'Wyciskanie hantli na ławce płaskiej',
     loggingType: 'weight_reps',
     primaryTag: 'chest',
     additionalTags: ['triceps', 'shoulders'],
   },
   {
     name: 'Flat barbell bench press',
+    namePl: 'Wyciskanie sztangi na ławce płaskiej',
     loggingType: 'weight_reps',
     primaryTag: 'chest',
     additionalTags: ['triceps', 'shoulders'],
   },
   {
     name: 'Weighted push up',
+    namePl: 'Pompki z obciążeniem',
     loggingType: 'weight_reps',
     primaryTag: 'chest',
     additionalTags: ['triceps', 'shoulders'],
   },
   {
     name: 'Weighted deep push up',
+    namePl: 'Głębokie pompki z obciążeniem',
     loggingType: 'weight_reps',
     primaryTag: 'chest',
     additionalTags: ['triceps', 'shoulders'],
   },
   {
     name: 'Weighted dip',
+    namePl: 'Pompki na poręczach z obciążeniem',
     loggingType: 'weight_reps',
     primaryTag: 'chest',
     additionalTags: ['triceps', 'shoulders'],
@@ -211,38 +250,62 @@ const EXERCISE_DEFINITIONS: readonly ExerciseDefinition[] = [
   // back
   {
     name: 'Machine row',
+    namePl: 'Wiosłowanie na maszynie',
     loggingType: 'weight_reps',
     primaryTag: 'back',
     additionalTags: ['biceps'],
   },
   {
     name: 'Weighted pull up',
+    namePl: 'Podciąganie z obciążeniem',
     loggingType: 'weight_reps',
     primaryTag: 'back',
     additionalTags: ['biceps'],
   },
   {
     name: 'Dumbbell pullover',
+    namePl: 'Przenoszenie hantla za głowę',
     loggingType: 'weight_reps',
     primaryTag: 'back',
     additionalTags: ['chest'],
   },
 
   // abs
-  { name: "Mason's crunch", loggingType: 'bodyweight_reps', primaryTag: 'abs' },
+  {
+    name: "Mason's crunch",
+    namePl: 'Brzuszki masona',
+    loggingType: 'bodyweight_reps',
+    primaryTag: 'abs',
+  },
 
   // shoulders
-  { name: 'Lateral dumbbell raise', loggingType: 'weight_reps', primaryTag: 'shoulders' },
+  {
+    name: 'Lateral dumbbell raise',
+    namePl: 'Wznosy hantli bokiem',
+    loggingType: 'weight_reps',
+    primaryTag: 'shoulders',
+  },
   {
     name: 'Overhead press',
+    namePl: 'Wyciskanie żołnierskie',
     loggingType: 'weight_reps',
     primaryTag: 'shoulders',
     additionalTags: ['triceps'],
   },
-  { name: 'Lying lateral raise', loggingType: 'weight_reps', primaryTag: 'shoulders' },
+  {
+    name: 'Lying lateral raise',
+    namePl: 'Wznosy bokiem leżąc',
+    loggingType: 'weight_reps',
+    primaryTag: 'shoulders',
+  },
 
   // calves
-  { name: 'Calf raise', loggingType: 'weight_reps', primaryTag: 'calves' },
+  {
+    name: 'Calf raise',
+    namePl: 'Wspięcia na palce',
+    loggingType: 'weight_reps',
+    primaryTag: 'calves',
+  },
 ];
 
 export const SEED_EXERCISES: readonly SeedExercise[] = EXERCISE_DEFINITIONS.map((definition) => ({
@@ -253,4 +316,5 @@ export const SEED_EXERCISES: readonly SeedExercise[] = EXERCISE_DEFINITIONS.map(
   loggingType: definition.loggingType,
   primaryTagId: tagId(definition.primaryTag),
   additionalTagIds: (definition.additionalTags ?? []).map(tagId),
+  translations: { en: definition.name, pl: definition.namePl },
 }));

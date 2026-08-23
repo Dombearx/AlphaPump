@@ -75,6 +75,7 @@ describe('ćwiczenie', () => {
     additionalTagIds: [],
     note: null,
     gym: null,
+    translations: { pl: 'Martwy ciąg', en: 'Deadlift' },
     ...sync,
   };
 

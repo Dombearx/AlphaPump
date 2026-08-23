@@ -11,6 +11,7 @@
 export * from './units.js';
 export * from './dates.js';
 export * from './slug.js';
+export * from './languages.js';
 export * from './ids.js';
 export * from './tag-color.js';
 export * from './logging-type.js';

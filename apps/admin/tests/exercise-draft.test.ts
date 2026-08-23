@@ -23,6 +23,7 @@ const TAGS: Tag[] = [PLECY, BICEPS, NOGI].map((id, index) => ({
   id,
   name: ['Plecy', 'Biceps', 'Nogi'][index] as string,
   slug: ['plecy', 'biceps', 'nogi'][index] as string,
+  translations: null,
   color: '#4ade80',
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
@@ -42,6 +43,7 @@ const EXERCISE: Exercise = {
   id: '22222222-2222-4222-8222-222222222222',
   name: 'Podciąganie nachwytem',
   slug: 'podciaganie-nachwytem',
+  translations: null,
   authorId: '11111111-1111-4111-8111-111111111111',
   loggingType: 'bodyweight_reps',
   primaryTagId: PLECY,
@@ -104,6 +106,8 @@ describe('wejście do utworzenia', () => {
       primaryTagId: PLECY,
       additionalTagIds: [BICEPS],
       note: 'Chwyt szerszy',
+      // Panel nie ma pól na nazwy w innych językach — uzupełnia je serwer.
+      translations: null,
       gym: 'Zdrofit',
     });
   });

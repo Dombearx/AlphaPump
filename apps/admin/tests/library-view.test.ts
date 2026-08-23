@@ -43,6 +43,7 @@ function exercise(id: string, overrides: ExerciseOverrides = {}): LibraryExercis
       id,
       name,
       slug: name.toLowerCase(),
+      translations: null,
       authorId: 'autor',
       loggingType: 'weight_reps',
       primaryTagId: BICEPS,
@@ -62,7 +63,14 @@ function exercise(id: string, overrides: ExerciseOverrides = {}): LibraryExercis
 
 function tag(id: string, overrides: Partial<LibraryTag> = {}): LibraryTag {
   return {
-    tag: { id, name: `Tag ${id}`, slug: `tag-${id}`, color: '#4ade80', ...STAMPS },
+    tag: {
+      id,
+      name: `Tag ${id}`,
+      slug: `tag-${id}`,
+      color: '#4ade80',
+      translations: null,
+      ...STAMPS,
+    },
     builtIn: false,
     usage: { primaryExercises: 0, additionalExercises: 0, exercises: 0, sets: 0, goals: 0 },
     ...overrides,

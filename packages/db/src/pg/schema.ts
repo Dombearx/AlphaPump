@@ -21,7 +21,14 @@
  */
 
 import { GOAL_METRICS, LOGGING_TYPES, USER_ROLES } from '@alphapump/core';
-import type { GoalMetric, IsoDate, LoggingType, RerankVerdict, UserRole } from '@alphapump/core';
+import type {
+  GoalMetric,
+  IsoDate,
+  LoggingType,
+  RerankVerdict,
+  Translations,
+  UserRole,
+} from '@alphapump/core';
 import { sql } from 'drizzle-orm';
 import {
   bigint,
@@ -126,6 +133,14 @@ export const tags = pgTable(
     slug: text('slug').notNull(),
     /** Z dwudziestoelementowej palety, przydzielony przy tworzeniu — patrz `tag-color.ts`. */
     color: text('color').notNull(),
+    /**
+     * Nazwy w pozostałych językach — mapa „kod języka → nazwa" (patrz
+     * `languages.ts` w rdzeniu). `name` zostaje nazwą **kanoniczną**: to z niej
+     * liczy się slug i identyfikator, więc tłumaczenie nie ma prawa jej ruszyć.
+     * Jedno pole zamiast kolumny na język, bo języków ma przybywać, a każda
+     * kolumna to migracja w dwóch dialektach.
+     */
+    translations: jsonb('translations').$type<Translations>(),
     ...syncColumns(),
   },
   (table) => [
@@ -159,6 +174,14 @@ export const exercises = pgTable(
      * siłowni dalej się deduplikowały tak jak przed dodaniem tego pola.
      */
     gym: text('gym'),
+    /**
+     * Nazwy w pozostałych językach — mapa „kod języka → nazwa" (patrz
+     * `languages.ts` w rdzeniu). `name` zostaje nazwą **kanoniczną**: to z niej
+     * liczy się slug i identyfikator, więc tłumaczenie nie ma prawa jej ruszyć.
+     * Jedno pole zamiast kolumny na język, bo języków ma przybywać, a każda
+     * kolumna to migracja w dwóch dialektach.
+     */
+    translations: jsonb('translations').$type<Translations>(),
     ...syncColumns(),
   },
   (table) => [

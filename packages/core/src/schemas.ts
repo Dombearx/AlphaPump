@@ -10,6 +10,7 @@
 
 import { z } from 'zod';
 import { isIsoDate } from './dates.js';
+import { LANGUAGES } from './languages.js';
 import { LOGGING_TYPES, requiredMeasurements, usesBodyweight } from './logging-type.js';
 import { isSlug, slug } from './slug.js';
 
@@ -44,6 +45,15 @@ export const displayNameSchema = z
   .refine((value) => slug(value).length > 0, {
     message: 'Nazwa musi zawierać przynajmniej jedną literę lub cyfrę',
   });
+
+export const languageSchema = z.enum(LANGUAGES);
+
+/**
+ * Nazwy encji w poszczególnych językach. Rekord **częściowy** — komplet nie
+ * jest wymagany, bo tłumaczenia dochodzą później (automatem albo ręcznie),
+ * a do wyświetlenia zawsze zostaje nazwa kanoniczna.
+ */
+export const translationsSchema = z.partialRecord(languageSchema, displayNameSchema);
 
 export const noteSchema = z.string().trim().max(1000);
 
@@ -88,6 +98,7 @@ export const tagSchema = z
     name: displayNameSchema,
     slug: slugSchema,
     color: hexColorSchema,
+    translations: translationsSchema.nullable(),
   })
   .extend(syncFieldsSchema.shape);
 
@@ -95,6 +106,8 @@ export type Tag = z.infer<typeof tagSchema>;
 
 export const createTagInputSchema = z.object({
   name: displayNameSchema,
+  /** Nazwy w pozostałych językach; brakujące uzupełnia tłumaczenie automatyczne. */
+  translations: translationsSchema.nullable().default(null),
 });
 
 export type CreateTagInput = z.infer<typeof createTagInputSchema>;
@@ -115,6 +128,7 @@ export const exerciseSchema = z
     additionalTagIds: z.array(uuidSchema),
     note: noteSchema.nullable(),
     gym: gymSchema.nullable(),
+    translations: translationsSchema.nullable(),
   })
   .extend(syncFieldsSchema.shape)
   .refine((exercise) => !exercise.additionalTagIds.includes(exercise.primaryTagId), {
@@ -136,6 +150,8 @@ export const createExerciseInputSchema = z.object({
   additionalTagIds: z.array(uuidSchema).default([]),
   note: noteSchema.nullable().default(null),
   gym: gymSchema.nullable().default(null),
+  /** Nazwy w pozostałych językach; brakujące uzupełnia tłumaczenie automatyczne. */
+  translations: translationsSchema.nullable().default(null),
 });
 
 export type CreateExerciseInput = z.infer<typeof createExerciseInputSchema>;

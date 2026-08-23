@@ -74,6 +74,9 @@ export function exerciseInput(draft: ExerciseDraft): CreateExerciseInput {
     additionalTagIds: [...draft.additionalTagIds],
     note: orNull(draft.note),
     gym: orNull(draft.gym),
+    // Panel nie ma jeszcze pól na nazwy w innych językach — uzupełnia je
+    // tłumaczenie po stronie serwera.
+    translations: null,
   };
 }
 

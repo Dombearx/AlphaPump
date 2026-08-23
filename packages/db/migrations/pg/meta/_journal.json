@@ -57,6 +57,13 @@
       "when": 1787295755452,
       "tag": "0007_freezing_hellfire_club",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787490895119,
+      "tag": "0008_hot_metal_master",
+      "breakpoints": true
     }
   ]
 }

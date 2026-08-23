@@ -67,6 +67,7 @@ async function readTags(
   return rows.map((row) => ({
     id: row.id,
     name: row.name,
+    translations: row.translations ?? null,
     createdAt: instant(row.createdAt),
     updatedAt: instant(row.updatedAt),
     deletedAt: nullableInstant(row.deletedAt),
@@ -106,6 +107,7 @@ async function readExercises(
     additionalTagIds: links.filter((link) => link.exerciseId === row.id).map((link) => link.tagId),
     note: row.note,
     gym: row.gym,
+    translations: row.translations ?? null,
     createdAt: instant(row.createdAt),
     updatedAt: instant(row.updatedAt),
     deletedAt: nullableInstant(row.deletedAt),

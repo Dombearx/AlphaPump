@@ -22,6 +22,7 @@ function entry(overrides: Partial<LibraryExercise['usage']> = {}): LibraryExerci
       id: '22222222-2222-4222-8222-222222222222',
       name: 'Barbell bench press',
       slug: 'barbell-bench-press',
+      translations: null,
       authorId: '11111111-1111-4111-8111-111111111111',
       loggingType: 'weight_reps',
       primaryTagId: CHEST,

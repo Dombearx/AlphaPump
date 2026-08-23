@@ -57,6 +57,13 @@
       "when": 1787302226847,
       "tag": "0007_talented_harpoon",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1787490896130,
+      "tag": "0008_far_jigsaw",
+      "breakpoints": true
     }
   ]
 }
