@@ -19,7 +19,7 @@ import {
   earliestRelevantDay,
   previousPeriodProgress,
   remainingTargets,
-  tagsWithRemaining,
+  tagCycleProgress,
   withGoals,
   type CycleWithGoals,
 } from '../src/cycle-progress';
@@ -402,9 +402,9 @@ describe('cykle w bazie lokalnej', () => {
       ]);
 
       const { summaries } = await load();
-      const marked = tagsWithRemaining(remainingTargets(summaries, DAY));
+      const marked = tagCycleProgress(remainingTargets(summaries, DAY));
 
-      expect([...marked].sort()).toEqual([TAGS.chest, tagId('abs')].sort());
+      expect([...marked.keys()].sort()).toEqual([TAGS.chest, tagId('abs')].sort());
     });
 
     it('nie oznacza niczego, gdy pozycje są zrobione', async () => {
@@ -412,7 +412,28 @@ describe('cykle w bazie lokalnej', () => {
       await addBench();
 
       const { summaries } = await load();
-      expect(tagsWithRemaining(remainingTargets(summaries, DAY)).size).toBe(0);
+      expect(tagCycleProgress(remainingTargets(summaries, DAY)).size).toBe(0);
+    });
+
+    it('podaje udział wykonania tagu — jedna seria z czterech to ćwierć', async () => {
+      await create([{ metric: 'sets', target: 4, exerciseId: null, tagId: TAGS.chest }]);
+      await addBench();
+
+      const { summaries } = await load();
+      expect(tagCycleProgress(remainingTargets(summaries, DAY)).get(TAGS.chest)).toBe(0.25);
+    });
+
+    it('uśrednia udział, gdy w jeden tag celuje kilka pozycji', async () => {
+      await create([
+        { metric: 'sets', target: 4, exerciseId: null, tagId: TAGS.chest },
+        // Wyciskanie ma tag główny „chest", więc obie pozycje zostawiają robotę
+        // w tym samym tagu: ćwiartka i połowa dają na chipsie trzy ósme.
+        { metric: 'sets', target: 2, exerciseId: EXERCISES.bench!.id, tagId: null },
+      ]);
+      await addBench();
+
+      const { summaries } = await load();
+      expect(tagCycleProgress(remainingTargets(summaries, DAY)).get(TAGS.chest)).toBe(0.375);
     });
   });
 });

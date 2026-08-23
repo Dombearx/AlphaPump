@@ -183,7 +183,7 @@ export function Chip({
   label,
   selected = false,
   color,
-  marked = false,
+  progress,
   onPress,
 }: {
   label: string;
@@ -191,11 +191,13 @@ export function Chip({
   /** Kropka w kolorze tagu; pomijana tam, gdzie chips nie dotyczy tagu. */
   color?: string;
   /**
-   * „Tu coś jeszcze zostało" — kropka zamienia się w gwiazdkę. Oznaczenie stoi
-   * **w miejscu kropki**, a nie obok niej, bo rząd chipsów ma po nim zajmować
-   * dokładnie tyle samo miejsca, co przedtem.
+   * „Tu coś jeszcze zostało", wraz z udziałem wykonania (0–1): kropka zamienia
+   * się w gwiazdkę, a tło chipsa wypełnia się od lewej w tylu procentach, ile
+   * z roboty jest zrobione. Gwiazdka stoi **w miejscu kropki**, a nie obok niej,
+   * i wypełnienie idzie tłem, bo rząd chipsów ma po nich zajmować dokładnie tyle
+   * samo miejsca, co przedtem.
    */
-  marked?: boolean;
+  progress?: number;
   /**
    * Bez `onPress` chips jest samą etykietą: nie reaguje na dotyk i nie
    * przedstawia się czytnikowi ekranu jako przycisk. Tak wyglądają tagi
@@ -203,15 +205,17 @@ export function Chip({
    */
   onPress?: () => void;
 }) {
-  const shape = `flex-row items-center gap-2 rounded-full border px-3 py-2 ${
+  const shape = `flex-row items-center gap-2 overflow-hidden rounded-full border px-3 py-2 ${
     selected ? 'border-accent bg-surface' : 'border-border bg-base'
   }`;
 
   const dot = color === undefined ? null : <TagDot color={color} />;
+  const mark = color ?? COLORS.accent;
 
   const content = (
     <>
-      {marked ? <TagStar color={color ?? COLORS.accent} /> : dot}
+      {progress === undefined ? null : <ChipFill ratio={progress} color={mark} />}
+      {progress === undefined ? dot : <TagStar color={mark} ratio={progress} />}
       <Text className={selected ? 'text-text' : 'text-muted'}>{label}</Text>
     </>
   );
@@ -256,12 +260,17 @@ export function ChipRow({ children, wrap = false }: { children: ReactNode; wrap?
   );
 }
 
+/** Procent z udziału 0–1, przycięty do zakresu — wspólny dla paska i chipsa. */
+function percentOf(ratio: number): number {
+  return Math.round(Math.min(Math.max(ratio, 0), 1) * 100);
+}
+
 /**
  * Pasek postępu pozycji cyklu. Udział jest już przycięty do jedynki przez
  * rdzeń — nadmiar nie ma jak wyjechać poza pasek.
  */
 export function ProgressBar({ ratio, done = false }: { ratio: number; done?: boolean }) {
-  const percent = Math.round(Math.min(Math.max(ratio, 0), 1) * 100);
+  const percent = percentOf(ratio);
 
   return (
     <View className="h-2 overflow-hidden rounded-full bg-border">
@@ -285,13 +294,36 @@ export function TagDot({ color }: { color: string }) {
  * wchodzi na jej miejsce i rząd chipsów nie może przez nią urosnąć. Wysokość
  * linii trzyma ją poniżej wysokości etykiety, więc przycisk zostaje ten sam.
  * Czytnikowi ekranu podajemy słowa, bo sam znak przeczytałby jako „czarna
- * gwiazdka" — a to nie jest informacja, którą tu przekazujemy.
+ * gwiazdka" — a to nie jest informacja, którą tu przekazujemy. Udział wykonania
+ * dopisujemy do tych samych słów: wypełnienie tła chipsa widać wyłącznie okiem,
+ * więc bez tego czytnik ekranu nie miałby skąd wziąć procentu.
  */
-export function TagStar({ color }: { color: string }) {
+export function TagStar({ color, ratio }: { color: string; ratio?: number }) {
+  const label = ratio === undefined ? 'left to do' : `left to do, ${percentOf(ratio)}% done`;
+
   return (
-    <Text accessibilityLabel="left to do" style={{ color, fontSize: 13, lineHeight: 14 }}>
+    <Text accessibilityLabel={label} style={{ color, fontSize: 13, lineHeight: 14 }}>
       ★
     </Text>
+  );
+}
+
+/**
+ * Wypełnienie tła chipsa w proporcji wykonanej roboty z cyklu.
+ *
+ * Stoi pod treścią i jest wyjęte z układu (pozycja bezwzględna), żeby chips
+ * został dokładnie tej samej wielkości, co bez wypełnienia — pasek pod nim
+ * kosztowałby wysokość rzędu tagów, a ten rząd stoi na ekranie, przez który
+ * przechodzi się do każdej serii. Kolor jest kolorem tagu, przygaszony: tło ma
+ * być tłem, a nie drugą etykietą. Przycięcie do zaokrąglenia załatwia
+ * `overflow-hidden` na samym chipsie.
+ */
+function ChipFill({ ratio, color }: { ratio: number; color: string }) {
+  return (
+    <View
+      className="absolute bottom-0 left-0 top-0"
+      style={{ width: `${percentOf(ratio)}%`, backgroundColor: color, opacity: 0.3 }}
+    />
   );
 }
 

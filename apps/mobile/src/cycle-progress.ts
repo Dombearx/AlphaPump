@@ -144,6 +144,8 @@ export interface RemainingTarget {
   /** Tag główny wskazanego ćwiczenia — ten, w którym pozycja się zalicza. */
   exerciseTagId: string | null;
   remaining: number;
+  /** Udział wykonania pozycji, 0–1 — z niego bierze się wypełnienie chipsa. */
+  ratio: number;
 }
 
 const DEFAULT_COLOR = null;
@@ -179,6 +181,7 @@ export function remainingTargets(
         tagId: row.tagId,
         exerciseTagId: row.exercisePrimaryTagId,
         remaining: goal.remaining,
+        ratio: goal.ratio,
       });
     }
   }
@@ -187,22 +190,36 @@ export function remainingTargets(
 }
 
 /**
- * Tagi, w których została jeszcze robota z cyklu — do oznaczenia filtra tagów.
+ * Tagi, w których została jeszcze robota z cyklu, wraz z udziałem wykonania —
+ * do gwiazdki na chipsie tagu i do wypełnienia jego tła.
  *
  * Pozycja tagowa wskazuje swój tag wprost, pozycja z ćwiczeniem — tag główny
  * tego ćwiczenia, bo to on rozstrzyga, gdzie ćwiczenie stoi na liście. Pozycja,
  * której nie da się przypisać do żadnego tagu (usunięte ćwiczenie), gwiazdki
  * nigdzie nie zapala, zamiast zapalać ją wszędzie.
+ *
+ * Gdy w jeden tag celuje kilka pozycji, udziałem tagu jest ich średnia — ta sama
+ * reguła, którą rdzeń liczy postęp całego cyklu. Sumowanie nie wchodzi w grę:
+ * „12 serii" i „30 minut" nie dodają się do żadnej sensownej liczby.
  */
-export function tagsWithRemaining(targets: readonly RemainingTarget[]): ReadonlySet<string> {
-  const tagIds = new Set<string>();
+export function tagCycleProgress(targets: readonly RemainingTarget[]): ReadonlyMap<string, number> {
+  const ratios = new Map<string, number[]>();
 
   for (const target of targets) {
     const tagId = target.tagId ?? target.exerciseTagId;
-    if (tagId !== null) tagIds.add(tagId);
+    if (tagId === null) continue;
+
+    const forTag = ratios.get(tagId);
+    if (forTag === undefined) ratios.set(tagId, [target.ratio]);
+    else forTag.push(target.ratio);
   }
 
-  return tagIds;
+  return new Map(
+    [...ratios].map(([tagId, values]) => [
+      tagId,
+      values.reduce((sum, value) => sum + value, 0) / values.length,
+    ]),
+  );
 }
 
 /** Ile z pozycji zostało — do podpisu pod skrótem i pod paskiem postępu. */
