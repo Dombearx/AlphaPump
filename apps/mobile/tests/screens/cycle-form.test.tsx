@@ -21,7 +21,7 @@ describe('formularz cyklu', () => {
 
   beforeEach(async () => {
     local = await openLocalDatabase();
-    mount(<CycleFormScreen mode={{ kind: 'create' }} />);
+    await mount(<CycleFormScreen mode={{ kind: 'create' }} />);
   });
 
   afterEach(() => local.close());

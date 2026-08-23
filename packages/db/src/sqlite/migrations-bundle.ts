@@ -81,6 +81,13 @@ export const sqliteMigrationBundle: SqliteMigrationBundle = {
         "when": 1787302226847,
         "tag": "0007_talented_harpoon",
         "breakpoints": true
+      },
+      {
+        "idx": 8,
+        "version": "6",
+        "when": 1787490896130,
+        "tag": "0008_far_jigsaw",
+        "breakpoints": true
       }
     ]
   },
@@ -93,6 +100,7 @@ export const sqliteMigrationBundle: SqliteMigrationBundle = {
   m0005: "CREATE TABLE `sync_rejections` (\n\t`entity` text NOT NULL,\n\t`row_id` text NOT NULL,\n\t`reason` text,\n\t`attempts` integer DEFAULT 1 NOT NULL,\n\t`rejected_at` integer NOT NULL,\n\t`retry_after` integer NOT NULL,\n\tPRIMARY KEY(`entity`, `row_id`),\n\tCONSTRAINT \"sync_rejections_entity_check\" CHECK(\"entity\" IN ('tag', 'exercise', 'cycle', 'set'))\n);\n",
   m0006: "CREATE INDEX `users_server_seq_idx` ON `users` (`server_seq`);",
   m0007: "ALTER TABLE `sync_rejections` ADD `reason_detail` text;",
+  m0008: "ALTER TABLE `exercises` ADD `translations` text;--> statement-breakpoint\nALTER TABLE `tags` ADD `translations` text;",
   },
 };
 

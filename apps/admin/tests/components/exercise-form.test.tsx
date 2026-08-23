@@ -27,6 +27,7 @@ const TAGS: readonly Tag[] = [
 ].map((tag) => ({
   ...tag,
   color: '#4ade80',
+  translations: null,
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
   deletedAt: null,
@@ -36,6 +37,7 @@ const EXERCISE: Exercise = {
   id: '22222222-2222-4222-8222-222222222222',
   name: 'Barbell bench press',
   slug: 'barbell-bench-press',
+  translations: null,
   authorId: '11111111-1111-4111-8111-111111111111',
   loggingType: 'weight_reps',
   primaryTagId: CHEST,
@@ -107,6 +109,32 @@ describe('formularz ćwiczenia', () => {
 
     expect(onSubmit).not.toHaveBeenCalled();
     expect(document.body.textContent).toContain('Enter an exercise name');
+  });
+
+  it('wpisana nazwa w innym języku wychodzi z formularza', async () => {
+    // Pole na nazwę polską jest **obok** nazwy kanonicznej, a nie zamiast niej:
+    // to z kanonicznej liczy się identyfikator ćwiczenia.
+    const onSubmit = renderForm(EXERCISE);
+
+    await userEvent.type(screen.getByLabelText(/^Name — Polski/), 'Wyciskanie sztangi');
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    const draft = onSubmit.mock.calls[0]?.[0] as {
+      name: string;
+      translations: Record<string, string>;
+    };
+    expect(draft.name).toBe('Barbell bench press');
+    expect(draft.translations.pl).toBe('Wyciskanie sztangi');
+  });
+
+  it('samo otwarcie formularza z tłumaczeniami nie jest zmianą', async () => {
+    // Zestaw wraca do pól i z powrotem bez różnicy — inaczej każde otwarcie
+    // i zamknięcie formularza podbijałoby `updated_at` na wszystkich telefonach.
+    const onSubmit = renderForm({ ...EXERCISE, translations: { pl: 'Wyciskanie sztangi' } });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it('nie wysyła zmiany, w której nic się nie zmieniło', async () => {

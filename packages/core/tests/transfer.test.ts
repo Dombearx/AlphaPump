@@ -52,7 +52,16 @@ function content(): ArchiveContent {
     // Puste, bo ten zestaw opisuje archiwum jednego konta — poświadczenia
     // wchodzą wyłącznie do systemowego.
     credentials: [],
-    tags: [{ id: plecy, name: 'Plecy', slug: slug('Plecy'), color: tagColor('Plecy'), ...STAMPS }],
+    tags: [
+      {
+        id: plecy,
+        name: 'Plecy',
+        slug: slug('Plecy'),
+        color: tagColor('Plecy'),
+        translations: { pl: 'Plecy', en: 'Back' },
+        ...STAMPS,
+      },
+    ],
     exercises: [
       {
         id: deadlift,
@@ -62,6 +71,7 @@ function content(): ArchiveContent {
         loggingType: 'weight_reps',
         primaryTagId: plecy,
         additionalTagIds: [],
+        translations: { pl: 'Martwy ciąg', en: 'Deadlift' },
         note: null,
         gym: null,
         ...STAMPS,

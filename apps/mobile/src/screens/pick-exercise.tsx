@@ -30,7 +30,7 @@
  * zrobić, a od tagu do ćwiczenia jest jedno naciśnięcie.
  */
 
-import type { IsoDate } from '@alphapump/core';
+import type { IsoDate, Translatable } from '@alphapump/core';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { Redirect, Stack, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
@@ -56,9 +56,13 @@ import {
 } from '../db/queries';
 import { formatDate, today as currentDay } from '../day-labels';
 import { filterExercises } from '../exercise-search';
+import { useLocalizedName } from '../language/provider';
 import { Button, Chip, ChipRow, EmptyState, Field, Loading, Row, TagDot } from '../ui/primitives';
 
 export function PickExerciseScreen({ day }: { day: IsoDate }) {
+  // Nazwa do pokazania zależy od wyboru języka, więc powstaje przy renderowaniu
+  // — patrz `language/provider.tsx`.
+  const named = useLocalizedName();
   const { data: session, isPending } = useSession();
   const router = useRouter();
   const userId = session?.user.id ?? '';
@@ -119,7 +123,7 @@ export function PickExerciseScreen({ day }: { day: IsoDate }) {
           {(tags.data ?? []).map((tag) => (
             <Chip
               key={tag.id}
-              label={tag.name}
+              label={named(tag)}
               color={tag.color}
               progress={cycleProgress.get(tag.id)}
               selected={tagId === tag.id}
@@ -155,8 +159,8 @@ export function PickExerciseScreen({ day }: { day: IsoDate }) {
               >
                 <TagDot color={exercise.tagColor} />
                 <View className="flex-1">
-                  <Text className="text-base text-text">{exercise.name}</Text>
-                  <Text className="text-xs text-muted">{describeUsage(exercise)}</Text>
+                  <Text className="text-base text-text">{named(exercise)}</Text>
+                  <Text className="text-xs text-muted">{describeUsage(exercise, named)}</Text>
                   {/* Filtr po tagu obejmuje też tagi dodatkowe (patrz
                       `exerciseLibrary`), więc np. dipy wyskakują pod „Triceps",
                       choć ich tagiem głównym — tym, co liczy się do cyklu —
@@ -164,7 +168,7 @@ export function PickExerciseScreen({ day }: { day: IsoDate }) {
                       w ogóle trafił na przefiltrowaną listę. */}
                   {extra.length > 0 && (
                     <Text className="text-xs text-muted">
-                      Also: {extra.map((tag) => tag.name).join(', ')}
+                      Also: {extra.map((tag) => named(tag)).join(', ')}
                     </Text>
                   )}
                 </View>
@@ -191,11 +195,12 @@ export function PickExerciseScreen({ day }: { day: IsoDate }) {
   );
 }
 
-function describeUsage(exercise: LibraryRow): string {
+function describeUsage(exercise: LibraryRow, named: (entity: Translatable) => string): string {
   const gym = exercise.gym === null ? '' : ` · ${exercise.gym}`;
-  if (exercise.setCount === 0) return `${exercise.tagName}${gym}`;
+  const tag = named({ name: exercise.tagName, translations: exercise.tagTranslations });
+  if (exercise.setCount === 0) return `${tag}${gym}`;
   const last = exercise.lastPerformedOn;
   const when = last === null ? '' : ` · last ${formatDate(last, currentDay())}`;
   const sets = exercise.setCount === 1 ? 'set' : 'sets';
-  return `${exercise.tagName} · ${String(exercise.setCount)} ${sets}${when}${gym}`;
+  return `${tag} · ${String(exercise.setCount)} ${sets}${when}${gym}`;
 }

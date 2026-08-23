@@ -12,10 +12,17 @@
  * Dzięki temu reguła „co właściwie zmieniono" jest testowana bez renderowania.
  */
 
-import { LOGGING_TYPES, type Exercise, type Tag } from '@alphapump/core';
+import { LANGUAGES, LANGUAGE_LABELS, type Exercise, type Tag } from '@alphapump/core';
+import { LOGGING_TYPES } from '@alphapump/core';
 import { useState } from 'react';
 import { Button, Field, Input, Select, Textarea, ToggleChip } from './ui';
-import { exercisePatch, exerciseProblem, type ExerciseDraft } from '../lib/exercise-draft';
+import {
+  EMPTY_TRANSLATIONS,
+  exercisePatch,
+  exerciseProblem,
+  translationDraft,
+  type ExerciseDraft,
+} from '../lib/exercise-draft';
 
 export const LOGGING_TYPE_LABELS: Record<Exercise['loggingType'], string> = {
   weight_reps: 'weight + reps',
@@ -34,6 +41,7 @@ export function emptyDraft(tags: readonly Tag[]): ExerciseDraft {
     additionalTagIds: [],
     note: '',
     gym: '',
+    translations: { ...EMPTY_TRANSLATIONS },
   };
 }
 
@@ -45,6 +53,7 @@ export function draftFrom(exercise: Exercise): ExerciseDraft {
     additionalTagIds: [...exercise.additionalTagIds],
     note: exercise.note ?? '',
     gym: exercise.gym ?? '',
+    translations: translationDraft(exercise.translations),
   };
 }
 
@@ -148,6 +157,31 @@ export function ExerciseForm({ tags, editing, busy, onCancel, onSubmit }: Exerci
             }}
           />
         </Field>
+      </div>
+
+      {/* Nazwy w pozostałych językach stoją **pod** nazwą kanoniczną i są
+          opcjonalne: to z nazwy kanonicznej liczy się identyfikator, a puste
+          pole znaczy „niech dołoży model". Nazwa wpisana tutaj nigdy nie jest
+          przez niego nadpisywana. */}
+      <div className="grid gap-4 md:grid-cols-2">
+        {LANGUAGES.map((language) => (
+          <Field
+            key={language}
+            label={`Name — ${LANGUAGE_LABELS[language]}`}
+            hint="Optional. Left empty, it gets translated automatically."
+          >
+            <Input
+              value={draft.translations[language]}
+              maxLength={80}
+              placeholder="optional"
+              onChange={(event) => {
+                patch({
+                  translations: { ...draft.translations, [language]: event.target.value },
+                });
+              }}
+            />
+          </Field>
+        ))}
       </div>
 
       <Field label="Additional tags" hint="They widen filtering; cycle goals ignore them.">

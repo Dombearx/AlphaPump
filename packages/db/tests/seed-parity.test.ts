@@ -9,7 +9,8 @@
  */
 
 import { describe, expect, it, afterAll, beforeAll } from 'vitest';
-import { builtInExerciseId, tagId } from '@alphapump/core';
+import { builtInExerciseId, missingLanguages, tagId, type Translations } from '@alphapump/core';
+import { eq } from 'drizzle-orm';
 import {
   exerciseTags as pgExerciseTags,
   exercises as pgExercises,
@@ -72,6 +73,67 @@ describe('parzystość seeda między dialektami', () => {
     expect(asKeys(await sqlite.db.select().from(sqliteExerciseTags))).toEqual(
       asKeys(await postgres.db.select().from(pgExerciseTags)),
     );
+  });
+
+  it('daje komplet nazw polskich i angielskich po obu stronach', async () => {
+    const byName = (rows: { name: string; translations: Translations | null }[]) =>
+      rows
+        .map((row) => `${row.name}|${row.translations?.en ?? ''}|${row.translations?.pl ?? ''}`)
+        .sort();
+
+    const tagsFromPg = byName(await postgres.db.select().from(pgTags));
+    expect(byName(await sqlite.db.select().from(sqliteTags))).toEqual(tagsFromPg);
+
+    const exercisesFromPg = byName(await postgres.db.select().from(pgExercises));
+    expect(byName(await sqlite.db.select().from(sqliteExercises))).toEqual(exercisesFromPg);
+
+    // Żadnej luki: brakujące tłumaczenie wbudowanego wiersza pokazałoby się
+    // w interfejsie jako nazwa w drugim języku, czyli jako niedokończona zmiana.
+    for (const row of [...SEED_TAGS, ...SEED_EXERCISES]) {
+      expect(missingLanguages(row.translations)).toEqual([]);
+    }
+  });
+
+  /**
+   * Wiersze wbudowane, które są w bazie **od wcześniej**, seed pomija — wstawia
+   * wyłącznie brakujące. Tłumaczenia muszą więc dojść osobnym przebiegiem,
+   * inaczej biblioteka sprzed tej zmiany zostałaby bez nazw polskich na zawsze.
+   */
+  it('uzupełnia tłumaczenia wierszy, które już były w bazie', async () => {
+    const [tag] = SEED_TAGS;
+    const [exercise] = SEED_EXERCISES;
+    if (!tag || !exercise) throw new Error('Pusty seed');
+
+    await postgres.db.update(pgTags).set({ translations: null }).where(eq(pgTags.id, tag.id));
+    await postgres.db
+      .update(pgExercises)
+      .set({ translations: null })
+      .where(eq(pgExercises.id, exercise.id));
+
+    await seedPostgres(postgres.db);
+
+    const [tagRow] = await postgres.db.select().from(pgTags).where(eq(pgTags.id, tag.id));
+    const [exerciseRow] = await postgres.db
+      .select()
+      .from(pgExercises)
+      .where(eq(pgExercises.id, exercise.id));
+
+    expect(tagRow?.translations).toEqual(tag.translations);
+    expect(exerciseRow?.translations).toEqual(exercise.translations);
+  });
+
+  /** Nazwa poprawiona ręcznie jest ważniejsza niż ta z seeda — także tutaj. */
+  it('nie nadpisuje tłumaczeń, które ktoś już poprawił', async () => {
+    const [tag] = SEED_TAGS;
+    if (!tag) throw new Error('Pusty seed');
+
+    const custom = { pl: 'moja nazwa', en: 'my name' };
+    await postgres.db.update(pgTags).set({ translations: custom }).where(eq(pgTags.id, tag.id));
+
+    await seedPostgres(postgres.db);
+
+    const [row] = await postgres.db.select().from(pgTags).where(eq(pgTags.id, tag.id));
+    expect(row?.translations).toEqual(custom);
   });
 
   it('identyfikatory w bazie zgadzają się z tym, co wyliczy klient offline', async () => {

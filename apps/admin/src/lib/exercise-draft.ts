@@ -13,12 +13,16 @@
  * po cichu zgubić.
  */
 
-import type {
-  CreateExerciseInput,
-  Exercise,
-  LoggingType,
-  Tag,
-  UpdateExerciseInput,
+import {
+  LANGUAGES,
+  sameTranslations,
+  type CreateExerciseInput,
+  type Exercise,
+  type Language,
+  type LoggingType,
+  type Tag,
+  type Translations,
+  type UpdateExerciseInput,
 } from '@alphapump/core';
 
 /**
@@ -32,6 +36,38 @@ export interface ExerciseDraft {
   additionalTagIds: string[];
   note: string;
   gym: string;
+  /**
+   * Nazwy w pozostałych językach — napis na język, bo tym operuje `<input>`.
+   * Puste pole znaczy „brak nazwy", a nie „pusta nazwa": brakujące uzupełnia
+   * tłumaczenie automatyczne po stronie serwera i nie nadpisuje przy tym tego,
+   * co administrator wpisał tutaj.
+   */
+  translations: TranslationDraft;
+}
+
+export type TranslationDraft = Record<Language, string>;
+
+export const EMPTY_TRANSLATIONS: TranslationDraft = { en: '', pl: '' };
+
+/** Zestaw z API do pól formularza; brak tłumaczenia to puste pole. */
+export function translationDraft(translations: Translations | null): TranslationDraft {
+  const draft = { ...EMPTY_TRANSLATIONS };
+  for (const language of LANGUAGES) draft[language] = translations?.[language] ?? '';
+  return draft;
+}
+
+/**
+ * Pola formularza z powrotem do zestawu. `null`, gdy nie wpisano ani jednej
+ * nazwy — kolumna trzyma wtedy `NULL`, żeby „nie ma tłumaczeń" wyglądało
+ * w bazie zawsze tak samo.
+ */
+export function translationsOf(draft: TranslationDraft): Translations | null {
+  const translations: Translations = {};
+  for (const language of LANGUAGES) {
+    const name = draft[language].trim();
+    if (name.length > 0) translations[language] = name;
+  }
+  return Object.keys(translations).length > 0 ? translations : null;
 }
 
 const NAME_MAX = 80;
@@ -54,6 +90,11 @@ export function exerciseProblem(draft: ExerciseDraft, tags: readonly Tag[]): str
   if (draft.additionalTagIds.includes(draft.primaryTagId)) {
     return 'The primary tag cannot also be an additional one.';
   }
+  for (const language of LANGUAGES) {
+    if (draft.translations[language].trim().length > NAME_MAX) {
+      return `Each name can be at most ${NAME_MAX} characters.`;
+    }
+  }
   if (draft.gym.trim().length > GYM_MAX) return `The gym can be at most ${GYM_MAX} characters.`;
   if (draft.note.trim().length > NOTE_MAX) return `The note can be at most ${NOTE_MAX} characters.`;
 
@@ -74,6 +115,7 @@ export function exerciseInput(draft: ExerciseDraft): CreateExerciseInput {
     additionalTagIds: [...draft.additionalTagIds],
     note: orNull(draft.note),
     gym: orNull(draft.gym),
+    translations: translationsOf(draft.translations),
   };
 }
 
@@ -92,6 +134,13 @@ export function exercisePatch(draft: ExerciseDraft, current: Exercise): UpdateEx
   const patch: UpdateExerciseInput = {};
 
   if (next.name !== current.name) patch.name = next.name;
+  // Zestawy porównujemy funkcją z rdzenia, a nie po `JSON.stringify`: liczy się
+  // nazwa po przycięciu, a nie kolejność kluczy w obiekcie. Bez tego samo
+  // otwarcie i zamknięcie formularza wysyłałoby łatkę i podbijało `updatedAt`
+  // na wszystkich urządzeniach.
+  if (!sameTranslations(next.translations, current.translations)) {
+    patch.translations = next.translations;
+  }
   if (next.primaryTagId !== current.primaryTagId) patch.primaryTagId = next.primaryTagId;
   if (next.note !== current.note) patch.note = next.note;
   if (next.gym !== current.gym) patch.gym = next.gym;

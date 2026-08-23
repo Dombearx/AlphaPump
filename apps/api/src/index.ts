@@ -31,6 +31,7 @@ import { normalizeTagColors } from './domain/tags.js';
 import { createEmbeddingBacklog, createOpenRouterLayers } from './duplicates/index.js';
 import { logger } from './logger.js';
 import { createTriageClient } from './triage.js';
+import { createOpenRouterTranslator, createTranslationBacklog } from './translation/index.js';
 
 export { createApp, type App } from './app.js';
 export { createAuth, type Auth } from './auth.js';
@@ -75,12 +76,27 @@ export async function main(): Promise<void> {
   // duplikatów: liczenie wektorów zeszło ze ścieżki żądania, bo wywołanie
   // u dostawcy modeli trwa dłużej, niż telefon czeka na odpowiedź pushu.
   const embeddings = createEmbeddingBacklog(connection.db, duplicates);
-  const app = createApp({ db: connection.db, auth, duplicates, embeddings, triage }, config);
+  // Tłumaczenie nazw jedzie tym samym kluczem co warstwy wykrywania duplikatów,
+  // ale ma własny wyłącznik i własną kolejkę: nazwy dokłada się rzadko, wolno
+  // i **poza** ścieżką żądania, bo zapis nie ma na co czekać.
+  const translator = createOpenRouterTranslator(config.llm);
+  const translations = createTranslationBacklog(connection.db, translator);
+  const app = createApp(
+    { db: connection.db, auth, duplicates, embeddings, translations, triage },
+    config,
+  );
 
   if (config.llm === null) {
     logger.warn('warstwa semantyczna wyłączona', {
       reason: 'brak OPENROUTER_API_KEY albo LLM_ENABLED=false',
       effect: 'ostrzeżenia o duplikatach liczone leksykalnie',
+    });
+  }
+
+  if (translator === null) {
+    logger.warn('tłumaczenie nazw wyłączone', {
+      reason: 'brak OPENROUTER_API_KEY, LLM_ENABLED=false albo TRANSLATION_ENABLED=false',
+      effect: 'nazwy tagów i ćwiczeń zostają w języku, w którym je wpisano',
     });
   }
 

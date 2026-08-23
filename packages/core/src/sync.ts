@@ -32,6 +32,7 @@ import {
   noteSchema,
   setMeasurementsSchema,
   tagSchema,
+  translationsSchema,
   userSchema,
   uuidSchema,
   workoutSetSchema,
@@ -188,6 +189,8 @@ const pushRowFields = {
 export const tagPushSchema = z.object({
   ...pushRowFields,
   name: displayNameSchema,
+  /** Nazwy w pozostałych językach; puste, gdy telefon nie zdążył ich uzupełnić. */
+  translations: translationsSchema.nullable().default(null),
 });
 
 export type TagPush = z.infer<typeof tagPushSchema>;
@@ -202,6 +205,8 @@ export const exercisePushSchema = z.object({
   additionalTagIds: z.array(uuidSchema).default([]),
   note: noteSchema.nullable().default(null),
   gym: gymSchema.nullable().default(null),
+  /** Nazwy w pozostałych językach; puste, gdy telefon nie zdążył ich uzupełnić. */
+  translations: translationsSchema.nullable().default(null),
 });
 
 export type ExercisePush = z.infer<typeof exercisePushSchema>;

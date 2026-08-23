@@ -121,6 +121,7 @@ describe('mutacje', () => {
       id: '22222222-2222-4222-8222-222222222222',
       name: 'Zwis jednoręczny',
       slug: 'zwis-jednoreczny',
+      translations: null,
       authorId: USER.id,
       loggingType: 'bodyweight_time',
       primaryTagId: '33333333-3333-4333-8333-333333333333',
@@ -148,6 +149,7 @@ describe('mutacje', () => {
       id: '22222222-2222-4222-8222-222222222222',
       name: 'Zwis jednoręczny',
       slug: 'zwis-jednoreczny',
+      translations: null,
       authorId: USER.id,
       loggingType: 'bodyweight_time',
       primaryTagId: '33333333-3333-4333-8333-333333333333',
@@ -165,6 +167,7 @@ describe('mutacje', () => {
         loggingType: 'bodyweight_time',
         primaryTagId: '33333333-3333-4333-8333-333333333333',
         additionalTagIds: [],
+        translations: null,
         note: null,
         gym: null,
       },
@@ -183,16 +186,19 @@ describe('mutacje', () => {
       id: '33333333-3333-4333-8333-333333333333',
       name: 'Plecy',
       slug: 'plecy',
+      translations: null,
       color: '#4ade80',
       createdAt: USER.createdAt,
       updatedAt: USER.updatedAt,
       deletedAt: null,
     });
 
-    await createTag('Plecy', fake.impl);
+    await createTag('Plecy', { pl: 'Plecy', en: 'Back' }, fake.impl);
 
     expect(fake.calls[0]?.init.method).toBe('POST');
-    expect(fake.calls[0]?.init.body).toBe(JSON.stringify({ name: 'Plecy' }));
+    expect(fake.calls[0]?.init.body).toBe(
+      JSON.stringify({ name: 'Plecy', translations: { pl: 'Plecy', en: 'Back' } }),
+    );
   });
 
   it('porządkowanie tombstone’ów nie narzuca okna retencji — to wie serwer', async () => {
@@ -209,6 +215,7 @@ describe('porządkowanie biblioteki', () => {
     id: '22222222-2222-4222-8222-222222222222',
     name: 'Wyciskanie hantli',
     slug: 'wyciskanie-hantli',
+    translations: null,
     authorId: USER.id,
     loggingType: 'weight_reps',
     primaryTagId: '33333333-3333-4333-8333-333333333333',

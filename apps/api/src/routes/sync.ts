@@ -26,6 +26,7 @@ import type { RouteSpec } from '../openapi.js';
 import { recomputeDerived } from '../sync/derived.js';
 import { pullChanges } from '../sync/pull.js';
 import { applyPush } from '../sync/push/index.js';
+import { NO_TRANSLATIONS } from '../translation/index.js';
 import {
   DEFAULT_TOMBSTONE_RETENTION_DAYS,
   pruneTombstones,
@@ -110,6 +111,7 @@ export function createSyncRouter(dependencies: AppDependencies) {
   const { db } = dependencies;
   const recomputations = dependencies.derived ?? [];
   const embeddings = dependencies.embeddings ?? NO_BACKLOG;
+  const translations = dependencies.translations ?? NO_TRANSLATIONS;
 
   router.post('/sync/push', validateJson(syncPushRequestSchema), async (context) => {
     const principal = context.get('principal');
@@ -129,6 +131,20 @@ export function createSyncRouter(dependencies: AppDependencies) {
         .filter((exercise) => exercise.deletedAt === null)
         .map((exercise) => exercise.id),
     );
+
+    // Ta sama droga i ten sam powód dotyczy tłumaczeń: tag i ćwiczenie
+    // utworzone offline przyjeżdżają z nazwą w jednym języku, a telefon nie ma
+    // czym dołożyć reszty. Kolejka jest jedna na proces, więc paczka z pięcioma
+    // nowymi ćwiczeniami to pięć wywołań po kolei, a nie pięć naraz — i żadne
+    // z nich nie wisi na żądaniu, które te wiersze przywiozło.
+    translations.enqueue([
+      ...outcome.changes.tags
+        .filter((tag) => tag.deletedAt === null)
+        .map((tag) => ({ entity: 'tag' as const, id: tag.id })),
+      ...outcome.changes.exercises
+        .filter((exercise) => exercise.deletedAt === null)
+        .map((exercise) => ({ entity: 'exercise' as const, id: exercise.id })),
+    ]);
 
     return context.json({
       serverTime: now.toISOString(),

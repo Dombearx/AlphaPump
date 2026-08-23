@@ -16,6 +16,7 @@ import {
   createCycleInputSchema,
   createSetInputSchema,
   createTagInputSchema,
+  updateTagInputSchema,
   cycleGoalInputSchema,
   displayNameSchema,
   isoDateSchema,
@@ -30,7 +31,7 @@ import { z } from 'zod';
 
 export const createTagBodySchema = createTagInputSchema;
 
-export const updateTagBodySchema = createTagInputSchema;
+export const updateTagBodySchema = updateTagInputSchema;
 
 /* ----------------------------------------------------------------- ćwiczenie */
 

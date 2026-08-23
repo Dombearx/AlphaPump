@@ -16,7 +16,7 @@
  */
 
 import { canonicalArchive, tagId, type Archive } from '@alphapump/core';
-import { cycles, exercises, outbox, users, workoutSets } from '@alphapump/db/sqlite';
+import { cycles, exercises, outbox, tags, users, workoutSets } from '@alphapump/db/sqlite';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createCycle } from '../src/db/cycles';
@@ -170,6 +170,39 @@ describe('import do czystej bazy lokalnej', () => {
 
     const restored = await exportLocalArchive(target.db, TEST_USER.id, NOW);
     expect(canonicalArchive(restored)).toEqual(canonicalArchive(archive));
+  });
+
+  it('niesie nazwy w pozostałych językach', async () => {
+    // Eksport niósł tłumaczenia od początku, ale import ich nie zapisywał —
+    // więc przeniesienie danych na nowy telefon po cichu kasowało nazwy, które
+    // archiwum przecież wiozło.
+    await createExercise(source.db, {
+      ...AUTHOR,
+      name: 'Kettlebell swing',
+      translations: { pl: 'Wymach odważnikiem' },
+      loggingType: 'weight_reps',
+      primaryTagId: tagId('back'),
+      additionalTagIds: [],
+      note: null,
+      gym: null,
+    });
+    const withTranslations = await exportLocalArchive(source.db, TEST_USER.id, NOW);
+
+    await importLocalArchive(target.db, withTranslations, owner);
+
+    const [restored] = await target.db
+      .select()
+      .from(exercises)
+      .where(eq(exercises.name, 'Kettlebell swing'));
+    expect(restored?.translations).toEqual({ pl: 'Wymach odważnikiem' });
+
+    // Tag wbudowany też — jego polskie nazwy pochodzą z seeda, a import nie ma
+    // prawa ich zgubić po drodze.
+    const [tag] = await target.db
+      .select()
+      .from(tags)
+      .where(eq(tags.id, tagId('back')));
+    expect(tag?.translations).toEqual({ en: 'back', pl: 'plecy' });
   });
 
   it('kolejkuje wysyłkę, bo inaczej serwer nigdy by o tych danych nie usłyszał', async () => {

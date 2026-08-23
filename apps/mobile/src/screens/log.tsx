@@ -46,6 +46,7 @@ import {
 } from '../db/queries';
 import { createSet, deleteSet, updateSet, type SetAuthor } from '../db/sets';
 import { useDeviceId } from '../hooks';
+import { useLocalizedName } from '../language/provider';
 import {
   fieldsFor,
   formatSet,
@@ -95,6 +96,7 @@ export function LogScreen({ day, exerciseId }: { day: IsoDate; exerciseId: strin
   const router = useRouter();
   const deviceId = useDeviceId();
   const requestSync = useRequestSync();
+  const named = useLocalizedName();
   const userId = session?.user.id ?? '';
 
   const details = useLiveQuery(exerciseDetails(db, exerciseId));
@@ -135,7 +137,12 @@ export function LogScreen({ day, exerciseId }: { day: IsoDate; exerciseId: strin
 
   const loggingType: LoggingType = exercise.loggingType;
   const tagList = exerciseTagList(
-    { id: exercise.tagId, name: exercise.tagName, color: exercise.tagColor },
+    {
+      id: exercise.tagId,
+      name: exercise.tagName,
+      translations: exercise.tagTranslations,
+      color: exercise.tagColor,
+    },
     extraTags.data,
   );
   const current: SetDraft = draft ?? suggestion ?? { values: {}, note: '' };
@@ -273,7 +280,7 @@ export function LogScreen({ day, exerciseId }: { day: IsoDate; exerciseId: strin
     <SafeAreaView className="flex-1" edges={['bottom']}>
       <Stack.Screen
         options={{
-          title: exercise.name,
+          title: named(exercise),
           headerRight: () => (
             <Pressable
               accessibilityRole="button"
@@ -309,7 +316,7 @@ export function LogScreen({ day, exerciseId }: { day: IsoDate; exerciseId: strin
             <View className="gap-2">
               <ChipRow wrap>
                 {tagList.map((tag) => (
-                  <Chip key={tag.id} label={tag.name} color={tag.color} selected={tag.primary} />
+                  <Chip key={tag.id} label={named(tag)} color={tag.color} selected={tag.primary} />
                 ))}
               </ChipRow>
 

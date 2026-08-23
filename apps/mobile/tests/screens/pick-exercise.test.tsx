@@ -44,7 +44,7 @@ describe('wybór ćwiczenia', () => {
       endsOn: null,
       goals: [{ metric: 'sets', target, ...goal }],
     });
-    mount(<PickExerciseScreen day={DAY} />);
+    await mount(<PickExerciseScreen day={DAY} />);
   };
 
   /** Seria wyciskania — ćwiczenia o tagu głównym „chest". */

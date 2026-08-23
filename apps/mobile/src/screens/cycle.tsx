@@ -31,7 +31,9 @@ import { db } from '../db/client';
 import { deleteCycle, resetCycle, setCycleArchived } from '../db/cycles';
 import { cycleGoalList, cycleList, setsForCycles } from '../db/queries';
 import { formatDate, today as currentDay } from '../day-labels';
+import { goalName } from '../goal-labels';
 import { useLocalAuthor } from '../hooks';
+import { useLocalizedName } from '../language/provider';
 import { formatMetric } from '../measurements';
 import { useRequestSync } from '../sync/provider';
 import { Button, Card, EmptyState, Loading, ProgressBar, Row } from '../ui/primitives';
@@ -41,6 +43,7 @@ export function CycleScreen({ cycleId }: { cycleId: string }) {
   const router = useRouter();
   const author = useLocalAuthor();
   const requestSync = useRequestSync();
+  const named = useLocalizedName();
   const today = currentDay();
   const userId = author?.userId ?? '';
 
@@ -145,9 +148,7 @@ export function CycleScreen({ cycleId }: { cycleId: string }) {
             return (
               <Card key={goal.goalId} className="gap-2">
                 <View className="flex-row items-baseline justify-between">
-                  <Text className="flex-1 text-base text-text">
-                    {row?.exerciseName ?? row?.tagName ?? 'Goal item'}
-                  </Text>
+                  <Text className="flex-1 text-base text-text">{goalName(row ?? null, named)}</Text>
                   <Text className={goal.completed ? 'text-success' : 'text-muted'}>
                     {formatMetric(goal.metric, goal.current)} /{' '}
                     {formatMetric(goal.metric, goal.target)}

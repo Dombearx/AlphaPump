@@ -16,6 +16,7 @@ import { deleteExercise } from '../db/library';
 import { additionalTagsOf, exerciseDetails, exerciseHistory } from '../db/queries';
 import { today as currentDay } from '../day-labels';
 import { useLocalAuthor } from '../hooks';
+import { useLocalizedName } from '../language/provider';
 import { LOGGING_TYPE_LABELS } from '../measurements';
 import { useRequestSync } from '../sync/provider';
 import { GlobalRecordsCard } from '../ui/global-records';
@@ -25,6 +26,7 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
   const router = useRouter();
   const author = useLocalAuthor();
   const requestSync = useRequestSync();
+  const named = useLocalizedName();
 
   const details = useLiveQuery(exerciseDetails(db, exerciseId), [exerciseId]);
   const extraTags = useLiveQuery(additionalTagsOf(db, exerciseId), [exerciseId]);
@@ -86,17 +88,18 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
 
   return (
     <SafeAreaView className="flex-1" edges={['bottom']}>
-      <Stack.Screen options={{ title: exercise.name }} />
+      <Stack.Screen options={{ title: named(exercise) }} />
 
       <ScrollView contentContainerClassName="gap-4 p-4 pb-10">
         <Card className="gap-3">
           <View className="flex-row items-center gap-3">
             <TagDot color={exercise.tagColor} />
-            <Text className="flex-1 text-xl font-semibold text-text">{exercise.name}</Text>
+            <Text className="flex-1 text-xl font-semibold text-text">{named(exercise)}</Text>
           </View>
 
           <Text className="text-muted">
-            {exercise.tagName} · {LOGGING_TYPE_LABELS[exercise.loggingType]}
+            {named({ name: exercise.tagName, translations: exercise.tagTranslations })} ·{' '}
+            {LOGGING_TYPE_LABELS[exercise.loggingType]}
           </Text>
           <Text className="text-xs text-muted">Added by: {exercise.authorNickname}</Text>
 
@@ -115,7 +118,7 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
               {extraTags.data.map((tag) => (
                 <Chip
                   key={tag.id}
-                  label={tag.name}
+                  label={named(tag)}
                   color={tag.color}
                   onPress={() => router.push('/library')}
                 />

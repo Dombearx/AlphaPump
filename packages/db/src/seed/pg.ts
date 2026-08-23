@@ -8,6 +8,7 @@
  * użytkownika.
  */
 
+import { and, eq, isNull } from 'drizzle-orm';
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import {
   cycleGoals,
@@ -46,6 +47,7 @@ export async function seedPostgres(db: PostgresDatabase): Promise<SeedSummary> {
         name: tag.name,
         slug: tag.slug,
         color: tag.color,
+        translations: tag.translations,
         createdAt: SEED_TIMESTAMP,
         updatedAt: SEED_TIMESTAMP,
       })),
@@ -62,6 +64,7 @@ export async function seedPostgres(db: PostgresDatabase): Promise<SeedSummary> {
         authorId: exercise.authorId,
         loggingType: exercise.loggingType,
         primaryTagId: exercise.primaryTagId,
+        translations: exercise.translations,
         createdAt: SEED_TIMESTAMP,
         updatedAt: SEED_TIMESTAMP,
       })),
@@ -79,7 +82,36 @@ export async function seedPostgres(db: PostgresDatabase): Promise<SeedSummary> {
     await db.insert(exerciseTags).values(links).onConflictDoNothing();
   }
 
+  await backfillTranslations(db);
+
   return { tags: SEED_TAGS.length, exercises: SEED_EXERCISES.length };
+}
+
+/**
+ * Uzupełnienie tłumaczeń wierszy, które są w bazie **od wcześniej**.
+ *
+ * Seed wstawia wyłącznie brakujące wiersze, więc biblioteka wbudowana istniejąca
+ * przed dodaniem pola `translations` zostałaby bez nazw polskich na zawsze.
+ * Uzupełniamy wyłącznie `NULL` — nazwa wpisana ręcznie przez administratora ma
+ * pierwszeństwo przed tą z seeda, tak samo jak przy reszcie wsadu.
+ *
+ * `updated_at` zostaje nietknięte celowo: podbicie go przy każdym starcie
+ * kazałoby wierszowi wbudowanemu wygrywać LWW z edycją użytkownika.
+ */
+async function backfillTranslations(db: PostgresDatabase): Promise<void> {
+  for (const tag of SEED_TAGS) {
+    await db
+      .update(tags)
+      .set({ translations: tag.translations })
+      .where(and(eq(tags.id, tag.id), isNull(tags.translations)));
+  }
+
+  for (const exercise of SEED_EXERCISES) {
+    await db
+      .update(exercises)
+      .set({ translations: exercise.translations })
+      .where(and(eq(exercises.id, exercise.id), isNull(exercises.translations)));
+  }
 }
 
 /**

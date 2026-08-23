@@ -5,7 +5,14 @@
  * przy `PATCH /tags/:id`. Synchronizacja nie jest tylnym wejściem.
  */
 
-import { clampRevision, resolveSyncConflict, slug, tagColor, tagId } from '@alphapump/core';
+import {
+  clampRevision,
+  mergeTranslations,
+  resolveSyncConflict,
+  slug,
+  tagColor,
+  tagId,
+} from '@alphapump/core';
 import type { SyncRejection, TagPush } from '@alphapump/core';
 import { eq, inArray } from 'drizzle-orm';
 import {
@@ -94,7 +101,14 @@ export async function applyTags(context: PushContext, incoming: readonly TagPush
     // Koloru nie ma w tym zestawie i nie jest to przeoczenie: kolor jest
     // **przydzielony**, a nie policzony z nazwy, więc przeliczanie go przy
     // każdej zmianie pisowni wpychałoby tag na kolor sąsiada.
-    const values = { name, slug: newSlug };
+    // Tłumaczenia są **domykane**, a nie podmieniane: telefon zna tylko to, co
+    // przywiózł mu pull, a serwer mógł w międzyczasie dołożyć nazwę w języku,
+    // którego tamta paczka jeszcze nie widziała. Nadpisanie gubiłoby ją cicho.
+    const values = {
+      name,
+      slug: newSlug,
+      translations: mergeTranslations(row.translations, existing?.translations ?? null),
+    };
 
     /**
      * Kolor wolny **w tej chwili**. Telefon policzył swój, nie znając cudzych

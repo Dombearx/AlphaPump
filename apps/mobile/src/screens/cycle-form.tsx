@@ -20,6 +20,7 @@ import {
   type CycleGoalInput,
   type GoalMetric,
   type IsoDate,
+  type Translations,
 } from '@alphapump/core';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { Stack, useRouter } from 'expo-router';
@@ -28,10 +29,18 @@ import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, View } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../db/client';
 import { createCycle, updateCycle } from '../db/cycles';
-import { cycleGoalList, cycleList, exerciseLibrary, tagLibrary } from '../db/queries';
+import {
+  cycleGoalList,
+  cycleList,
+  exerciseLibrary,
+  tagLibrary,
+  type NamedTag,
+} from '../db/queries';
 import { today as currentDay } from '../day-labels';
 import { filterExercises } from '../exercise-search';
+import { goalName } from '../goal-labels';
 import { useLocalAuthor } from '../hooks';
+import { useLocalizedName } from '../language/provider';
 import {
   GOAL_METRIC_LABELS,
   formatMetric,
@@ -66,6 +75,7 @@ export type CycleFormMode = { kind: 'create' } | { kind: 'edit'; id: string };
 export function CycleFormScreen({ mode }: { mode: CycleFormMode }) {
   const router = useRouter();
   const author = useLocalAuthor();
+  const named = useLocalizedName();
   const requestSync = useRequestSync();
   const today = currentDay();
   const userId = author?.userId ?? '';
@@ -115,7 +125,7 @@ export function CycleFormScreen({ mode }: { mode: CycleFormMode }) {
           target: goal.target,
           exerciseId: goal.exerciseId,
           tagId: goal.tagId,
-          label: goal.exerciseName ?? goal.tagName ?? 'Goal item',
+          label: goalName(goal, named),
           color: goal.tagColor,
         })),
     );
@@ -337,12 +347,20 @@ function GoalComposer({
   onAdd,
   onFocusTarget,
 }: {
-  tags: { id: string; name: string; color: string }[];
-  exercises: { id: string; name: string; tagName: string; tagColor: string }[];
+  tags: NamedTag[];
+  exercises: {
+    id: string;
+    name: string;
+    translations: Translations | null;
+    tagName: string;
+    tagTranslations: Translations | null;
+    tagColor: string;
+  }[];
   onAdd: (goal: GoalDraft) => void;
   /** Klawiatura zasłania przyciski pod polem „Cel" — przewiń je w widok przy fokusie. */
   onFocusTarget: () => void;
 }) {
+  const named = useLocalizedName();
   const [metric, setMetric] = useState<GoalMetric>('sets');
   const [scope, setScope] = useState<'tag' | 'exercise'>('tag');
   const [tagId, setTagId] = useState<string | null>(null);
@@ -364,7 +382,7 @@ function GoalComposer({
         target: value,
         exerciseId: null,
         tagId: tag.id,
-        label: tag.name,
+        label: named(tag),
         color: tag.color,
       });
     } else {
@@ -375,7 +393,7 @@ function GoalComposer({
         target: value,
         exerciseId: exercise.id,
         tagId: null,
-        label: exercise.name,
+        label: named(exercise),
         color: exercise.tagColor,
       });
     }
@@ -429,7 +447,7 @@ function GoalComposer({
           {tags.map((tag) => (
             <Chip
               key={tag.id}
-              label={tag.name}
+              label={named(tag)}
               color={tag.color}
               selected={tagId === tag.id}
               onPress={() => setTagId(tag.id)}
@@ -452,7 +470,7 @@ function GoalComposer({
               onPress={() => setExerciseId(exercise.id)}
             >
               <TagDot color={exercise.tagColor} />
-              <Text className="flex-1 text-text">{exercise.name}</Text>
+              <Text className="flex-1 text-text">{named(exercise)}</Text>
             </Row>
           ))}
         </View>

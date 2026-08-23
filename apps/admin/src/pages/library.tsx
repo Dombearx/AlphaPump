@@ -19,7 +19,7 @@
  * wisi, a przycisk „Usuń" jest wygaszony razem z powodem.
  */
 
-import type { LibraryExercise } from '@alphapump/core';
+import { LANGUAGES, LANGUAGE_LABELS, type LibraryExercise } from '@alphapump/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { ExerciseForm } from '../components/exercise-form';
@@ -36,12 +36,20 @@ import {
   mergeExercises,
   mergeTags,
   refreshEmbeddings,
+  refreshTranslations,
   renameTag,
   restoreExercise,
   restoreTag,
   updateExercise,
 } from '../lib/api';
-import { exerciseInput, exercisePatch, type ExerciseDraft } from '../lib/exercise-draft';
+import {
+  EMPTY_TRANSLATIONS,
+  exerciseInput,
+  exercisePatch,
+  translationsOf,
+  type ExerciseDraft,
+  type TranslationDraft,
+} from '../lib/exercise-draft';
 import {
   EMPTY_FILTER,
   filterExercises,
@@ -68,11 +76,15 @@ export function LibraryPage() {
   const [filter, setFilter] = useState(EMPTY_FILTER);
   const [form, setForm] = useState<ExerciseFormState>(null);
   const [newTag, setNewTag] = useState('');
+  const [newTagTranslations, setNewTagTranslations] = useState<TranslationDraft>({
+    ...EMPTY_TRANSLATIONS,
+  });
   const [note, setNote] = useState<string | null>(null);
 
   const refresh = () => {
     setForm(null);
     setNewTag('');
+    setNewTagTranslations({ ...EMPTY_TRANSLATIONS });
     void queryClient.invalidateQueries({ queryKey: ['library-exercises'] });
     void queryClient.invalidateQueries({ queryKey: ['library-tags'] });
     void queryClient.invalidateQueries({ queryKey: ['similar'] });
@@ -164,6 +176,29 @@ export function LibraryPage() {
               }}
             >
               Recompute vectors
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={mutate.isPending}
+              title="Fills in missing names in the other languages — for rows added before automatic translation existed"
+              onClick={() => {
+                mutate.mutate(async () => {
+                  const report = await refreshTranslations();
+                  // Jak przy wektorach: odpowiedź jest potwierdzeniem przyjęcia
+                  // zlecenia, a nie wynikiem — tłumaczenie idzie poza żądaniem,
+                  // bo przy większej bibliotece nie zmieściłoby się w limicie
+                  // czasu warstwy wejściowej.
+                  if (!report.enabled) {
+                    return 'Automatic translation is off — names stay in the language they were typed in.';
+                  }
+                  return report.status === 'busy'
+                    ? `A pass is already running — ${String(report.pending)} rows queued.`
+                    : `Queued ${String(report.queued)} rows without a full set of names.`;
+                });
+              }}
+            >
+              Fill in translations
             </Button>
             <Button
               size="sm"
@@ -291,7 +326,7 @@ export function LibraryPage() {
             const name = newTag.trim();
             if (name.length > 0) {
               mutate.mutate(async () => {
-                await createTag(name);
+                await createTag(name, translationsOf(newTagTranslations));
               });
             }
           }}
@@ -304,6 +339,23 @@ export function LibraryPage() {
               setNewTag(event.target.value);
             }}
           />
+          {/* Nazwy w pozostałych językach są opcjonalne — puste pole znaczy
+              „niech dołoży model", a wpisane nie zostanie przez niego ruszone. */}
+          {LANGUAGES.map((language) => (
+            <Input
+              key={language}
+              className="max-w-56"
+              placeholder={`${LANGUAGE_LABELS[language]} — optional`}
+              value={newTagTranslations[language]}
+              maxLength={80}
+              onChange={(event) => {
+                setNewTagTranslations({
+                  ...newTagTranslations,
+                  [language]: event.target.value,
+                });
+              }}
+            />
+          ))}
           <Button type="submit" size="sm" disabled={mutate.isPending || newTag.trim().length === 0}>
             Add tag
           </Button>
@@ -315,9 +367,9 @@ export function LibraryPage() {
           <TagLibrary
             rows={tags.data ?? []}
             busy={mutate.isPending}
-            onRename={(entry, name) => {
+            onRename={(entry, name, translations) => {
               mutate.mutate(async () => {
-                await renameTag(entry.tag.id, name);
+                await renameTag(entry.tag.id, name, translations);
               });
             }}
             onDelete={(entry) => {

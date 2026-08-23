@@ -16,12 +16,28 @@
  * renderowania ekranu.
  */
 
-import { slug } from '@alphapump/core';
+import { LANGUAGES, slug, type Translations } from '@alphapump/core';
 
 export interface SearchableExercise {
   name: string;
   /** Tag główny — po nim też szukamy, bo „plecy" to naturalne zapytanie. */
   tagName: string;
+  /** Nazwy w pozostałych językach; brak jest normalnym stanem. */
+  translations?: Translations | null;
+  tagTranslations?: Translations | null;
+}
+
+/**
+ * Wszystkie nazwy encji naraz: kanoniczna i każde tłumaczenie.
+ *
+ * Szukamy po **wszystkich**, a nie po tej w wybranym języku, i to jest decyzja.
+ * Kto przełączył aplikację na polski, dalej pamięta „deadlift" — a kto wpisze
+ * „martwy ciąg" przy angielskim interfejsie, też ma prawo je znaleźć. Zapytanie
+ * bez wyniku jest tu gorsze niż wynik z nazwą w innym języku, bo drugi
+ * przypadek widać na ekranie od razu.
+ */
+function allNames(name: string, translations: Translations | null | undefined): string[] {
+  return [name, ...LANGUAGES.map((language) => translations?.[language] ?? '')];
 }
 
 /** Słowa zapytania; pusta tablica znaczy „pokaż wszystko". */
@@ -37,7 +53,14 @@ export function filterExercises<T extends SearchableExercise>(
   if (tokens.length === 0) return [...exercises];
 
   return exercises.filter((exercise) => {
-    const haystack = `${slug(exercise.name)}-${slug(exercise.tagName)}`;
+    const haystack = [
+      ...allNames(exercise.name, exercise.translations),
+      ...allNames(exercise.tagName, exercise.tagTranslations),
+    ]
+      .map((value) => slug(value))
+      .filter(Boolean)
+      .join('-');
+
     return tokens.every((token) => haystack.includes(token));
   });
 }

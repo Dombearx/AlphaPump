@@ -6,9 +6,12 @@
  * dokładnie taką, jaką zobaczy po pierwszym uruchomieniu aplikacji.
  */
 
-import { render } from '@testing-library/react';
+import { DEFAULT_LANGUAGE, type Language } from '@alphapump/core';
+import { act, render } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactElement } from 'react';
+import { LanguageProvider } from '../../src/language/provider';
+import type { LanguageStore } from '../../src/language/state';
 import { createLocalDatabase, insertTestUser } from '../local-database';
 import { setLiveDatabase } from './live-database';
 import type { SqliteDatabase } from '@alphapump/db/sqlite';
@@ -33,9 +36,35 @@ export async function openLocalDatabase(): Promise<MountedScreen> {
   };
 }
 
-/** Renderuje ekran i zwraca tekst, który widzi użytkownik — bez znaczników. */
-export function mount(element: ReactElement): void {
-  render(element);
+/** Magazyn języka w pamięci — telefon trzyma go w pliku, test w zmiennej. */
+function memoryLanguageStore(language: Language): LanguageStore {
+  let current = language;
+  return {
+    read: () => Promise.resolve(current),
+    write: (next) => {
+      current = next;
+      return Promise.resolve();
+    },
+  };
+}
+
+/**
+ * Renderuje ekran w takim opakowaniu, w jakim stoi on w aplikacji.
+ *
+ * `LanguageProvider` jest tu, a nie w każdym teście z osobna, bo w aplikacji
+ * jest w korzeniu — ekran bez niego nie renderuje się w ogóle, więc pominięcie
+ * go w teście znaczyłoby, że test sprawdza inne drzewo niż telefon.
+ */
+export async function mount(
+  element: ReactElement,
+  language: Language = DEFAULT_LANGUAGE,
+): Promise<void> {
+  render(<LanguageProvider store={memoryLanguageStore(language)}>{element}</LanguageProvider>);
+  // Zapisany wybór doczytuje się z magazynu **po** pierwszym renderze — tak samo
+  // na telefonie, gdzie jest to odczyt z dysku. Bez przepuszczenia tej jednej
+  // kolejki mikrozadań test oglądałby ekran sprzed wczytania ustawienia, czyli
+  // zawsze w języku domyślnym.
+  await act(async () => undefined);
 }
 
 /**

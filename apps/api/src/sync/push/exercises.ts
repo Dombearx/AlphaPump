@@ -24,6 +24,7 @@
 import {
   clampRevision,
   exerciseId as deterministicExerciseId,
+  mergeTranslations,
   resolveSyncConflict,
   slug,
   SYSTEM_USER_ID,
@@ -165,6 +166,8 @@ export async function applyExercises(
       primaryTagId: row.primaryTagId,
       note: row.note,
       gym: row.gym,
+      // Domknięcie, nie podmiana — patrz ten sam zabieg przy tagach.
+      translations: mergeTranslations(row.translations, existing?.translations ?? null),
     };
 
     const [written] =

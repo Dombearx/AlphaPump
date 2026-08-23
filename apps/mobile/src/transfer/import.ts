@@ -168,6 +168,9 @@ export async function importLocalArchive(
           name: tag.name,
           slug: tag.slug,
           color: tag.color,
+          // Nazwy w pozostałych językach jadą razem z wierszem — inaczej import
+          // własnego eksportu kasowałby tłumaczenia, które ten eksport niesie.
+          translations: tag.translations,
           createdAt: instant(tag.createdAt),
           updatedAt: instant(tag.updatedAt),
           deletedAt: null,
@@ -215,6 +218,7 @@ export async function importLocalArchive(
           loggingType: local?.loggingType ?? exercise.loggingType,
           primaryTagId: exercise.primaryTagId,
           note: exercise.note,
+          translations: exercise.translations,
           createdAt: instant(exercise.createdAt),
           updatedAt: instant(exercise.updatedAt),
           deletedAt: null,

@@ -86,6 +86,12 @@ services:
       RERANKER_MODEL: ${RERANKER_MODEL:-google/gemini-2.5-flash}
       RERANKER_ENABLED: ${RERANKER_ENABLED:-true}
       LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-8000}
+      # Tłumaczenie nazw tagów i ćwiczeń — ten sam klucz OpenRoutera, własny
+      # wyłącznik. Wyłączone znaczy „nazwy zostają w języku, w którym je
+      # wpisano"; zapis działa bez zmian.
+      TRANSLATION_ENABLED: ${TRANSLATION_ENABLED:-true}
+      TRANSLATION_MODEL: ${TRANSLATION_MODEL:-anthropic/claude-haiku-4.5}
+      TRANSLATION_TIMEOUT_MS: ${TRANSLATION_TIMEOUT_MS:-20000}
       # Ścieżka w kontenerze jest stała — host decyduje, co się pod nią kryje,
       # przez wolumin niżej. Aplikacja nie musi znać żadnej z tych decyzji.
       FEEDBACK_DIR: /data/feedback
