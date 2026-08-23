@@ -490,6 +490,10 @@ export type CycleListRow = Awaited<ReturnType<typeof cycleList>>[number];
  * Nazwy ćwiczenia i tagu są dołączane tutaj, bo pozycja celu bez nich jest
  * nieczytelna („12 czego?"), a doczytywanie ich osobno na ekranie oznaczałoby
  * drugie zapytanie na każdą pozycję.
+ *
+ * Razem z nimi jedzie tag główny ćwiczenia z pozycji. To po nim ekran wyboru
+ * ćwiczenia oznacza gwiazdką filtr tagów: pozycja wskazująca „Ławkę" zostawia
+ * robotę w tagu „chest", choć sama żadnego tagu nie wskazuje.
  */
 export function cycleGoalList(db: SqliteDatabase, userId: string) {
   const goalTag = aliasedTable(tags, 'goal_tag');
@@ -504,6 +508,7 @@ export function cycleGoalList(db: SqliteDatabase, userId: string) {
       tagId: cycleGoals.tagId,
       position: cycleGoals.position,
       exerciseName: exercises.name,
+      exercisePrimaryTagId: exercises.primaryTagId,
       tagName: goalTag.name,
       tagColor: goalTag.color,
     })

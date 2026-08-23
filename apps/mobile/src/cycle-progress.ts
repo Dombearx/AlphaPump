@@ -119,12 +119,13 @@ export function earliestRelevantDay(cycles: readonly CycleWithGoals[], fallback:
   return earliest ?? fallback;
 }
 
-/* ---------------------------------------------------- skrót wyboru ćwiczenia */
+/* --------------------------------------------------- podpowiedź z cyklu w UI */
 
 /**
- * Pozycja pozostała do wykonania — element skrótu na ekranie wyboru ćwiczenia.
+ * Pozycja pozostała do wykonania — źródło podpowiedzi na ekranie wyboru
+ * ćwiczenia, gdzie tag z niedokończoną robotą dostaje gwiazdkę na przycisku.
  *
- * Wybór z tej listy jest **wyłącznie wygodą przy wskazywaniu ćwiczenia**, a nie
+ * Podpowiedź jest **wyłącznie wygodą przy wskazywaniu ćwiczenia**, a nie
  * przypisaniem serii do cyklu. Przypisania nie ma w ogóle: seria zalicza się
  * sama do wszystkich pasujących cykli, także wtedy, gdy użytkownik zapisał ją
  * zwykłą drogą i o żadnym cyklu nie myślał.
@@ -140,6 +141,8 @@ export interface RemainingTarget {
   /** Wskazanie ćwiczenia; puste dla celu tagowego, który zawęża bibliotekę. */
   exerciseId: string | null;
   tagId: string | null;
+  /** Tag główny wskazanego ćwiczenia — ten, w którym pozycja się zalicza. */
+  exerciseTagId: string | null;
   remaining: number;
 }
 
@@ -174,12 +177,32 @@ export function remainingTargets(
         color: row.tagColor ?? DEFAULT_COLOR,
         exerciseId: row.exerciseId,
         tagId: row.tagId,
+        exerciseTagId: row.exercisePrimaryTagId,
         remaining: goal.remaining,
       });
     }
   }
 
   return targets.sort((a, b) => a.remaining - b.remaining || a.label.localeCompare(b.label));
+}
+
+/**
+ * Tagi, w których została jeszcze robota z cyklu — do oznaczenia filtra tagów.
+ *
+ * Pozycja tagowa wskazuje swój tag wprost, pozycja z ćwiczeniem — tag główny
+ * tego ćwiczenia, bo to on rozstrzyga, gdzie ćwiczenie stoi na liście. Pozycja,
+ * której nie da się przypisać do żadnego tagu (usunięte ćwiczenie), gwiazdki
+ * nigdzie nie zapala, zamiast zapalać ją wszędzie.
+ */
+export function tagsWithRemaining(targets: readonly RemainingTarget[]): ReadonlySet<string> {
+  const tagIds = new Set<string>();
+
+  for (const target of targets) {
+    const tagId = target.tagId ?? target.exerciseTagId;
+    if (tagId !== null) tagIds.add(tagId);
+  }
+
+  return tagIds;
 }
 
 /** Ile z pozycji zostało — do podpisu pod skrótem i pod paskiem postępu. */
