@@ -23,6 +23,7 @@ import { db } from '../db/client';
 import { exerciseDetails, exerciseHistory } from '../db/queries';
 import { formatDate, formatShortDate, today as currentDay } from '../day-labels';
 import { useLocalAuthor } from '../hooks';
+import { useLocalizedName } from '../language/provider';
 import { formatDistance, formatDuration, formatWeight, LOGGING_TYPE_LABELS } from '../measurements';
 import { BarChart } from '../ui/chart';
 import { Button, Card, Chip, ChipRow, EmptyState, Loading, SectionTitle } from '../ui/primitives';
@@ -33,6 +34,7 @@ const POINTS_SHOWN = 14;
 export function ExerciseChartScreen({ exerciseId }: { exerciseId: string }) {
   const router = useRouter();
   const author = useLocalAuthor();
+  const named = useLocalizedName();
   const today = currentDay();
 
   const details = useLiveQuery(exerciseDetails(db, exerciseId), [exerciseId]);
@@ -77,7 +79,7 @@ export function ExerciseChartScreen({ exerciseId }: { exerciseId: string }) {
 
   return (
     <SafeAreaView className="flex-1" edges={['bottom']}>
-      <Stack.Screen options={{ title: exercise.name }} />
+      <Stack.Screen options={{ title: named(exercise) }} />
 
       <ScrollView contentContainerClassName="gap-4 p-4 pb-10">
         <Text className="text-muted">{LOGGING_TYPE_LABELS[exercise.loggingType]}</Text>

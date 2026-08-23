@@ -28,6 +28,11 @@ import { createEmbeddingBacklog, type EmbeddingBacklog } from '../src/duplicates
 import type { DuplicateLayers } from '../src/duplicates/layers.js';
 import type { DerivedRecomputation } from '../src/sync/derived.js';
 import type { TriageClient } from '../src/triage.js';
+import {
+  createTranslationBacklog,
+  type TranslationBacklog,
+  type Translator,
+} from '../src/translation/index.js';
 import { users } from '../src/schema.js';
 
 export const TEST_CONFIG: AppConfig = {
@@ -82,6 +87,11 @@ export interface HarnessOptions {
   backupDir?: string;
   /** Klient usługi triage — pominięcie znaczy „panel nie wyzwoli przeglądu ręcznie". */
   triage?: TriageClient;
+  /**
+   * Tłumacz nazw. Pominięcie znaczy „nie ma czym tłumaczyć" — czyli dokładnie
+   * stan, w którym zapis tagu i ćwiczenia musi działać bez zmian.
+   */
+  translator?: Translator;
 }
 
 export interface Harness {
@@ -109,6 +119,12 @@ export interface Harness {
    * nigdy na nią nie czeka.
    */
   drainEmbeddings: () => Promise<void>;
+  /**
+   * Czeka, aż kolejka tłumaczeń opróżni się do końca. Ten sam powód co przy
+   * wektorach: nazwy dokładają się **poza** żądaniem, więc test sprawdzający je
+   * zaraz po zapisie sprawdzałby wyścig.
+   */
+  drainTranslations: () => Promise<void>;
   promoteToAdmin: (user: TestUser) => Promise<void>;
   close: () => Promise<void>;
 }
@@ -132,6 +148,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
     db,
     options.duplicates ?? { embedder: null, reranker: null },
   );
+  const translations: TranslationBacklog = createTranslationBacklog(db, options.translator ?? null);
   const app = createApp(
     {
       db,
@@ -139,6 +156,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
       derived: options.derived,
       duplicates: options.duplicates,
       embeddings,
+      translations,
       triage: options.triage,
     },
     config,
@@ -227,10 +245,12 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
     createApiKey,
     promoteToAdmin,
     drainEmbeddings: () => embeddings.drain(),
+    drainTranslations: () => translations.drain(),
     close: async () => {
-      // Najpierw kolejka, potem baza: wykonawca w połowie przebiegu pisałby do
+      // Najpierw kolejki, potem baza: wykonawca w połowie przebiegu pisałby do
       // połączenia, którego już nie ma.
       await embeddings.drain();
+      await translations.drain();
       await rm(feedbackDir, { recursive: true, force: true });
       await rm(otaDir, { recursive: true, force: true });
       await client.close();

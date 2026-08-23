@@ -125,6 +125,33 @@ const environmentSchema = z.object({
    * niż kazać użytkownikowi czekać.
    */
   LLM_TIMEOUT_MS: z.coerce.number().int().min(500).max(60_000).default(8000),
+
+  /* ------------------------------------------------ tłumaczenie automatyczne */
+
+  /**
+   * Model tłumaczący nazwy tagów i ćwiczeń na pozostałe języki. Haiku, bo
+   * zgłoszenie wskazało go wprost, a zadanie jest krótkie: jedna nazwa i lista
+   * kodów języków na wejściu, kilka słów na wyjściu.
+   */
+  TRANSLATION_MODEL: nonEmpty.default('anthropic/claude-haiku-4.5'),
+  /**
+   * Osobny wyłącznik tłumaczenia, obok `RERANKER_ENABLED`. Obie rzeczy jadą tym
+   * samym kluczem OpenRoutera, ale są niezależne: tłumaczenie ma sens także
+   * tam, gdzie re-ranker wyłączono dla kosztów, a wyłączone tłumaczenie nie
+   * rusza wykrywania duplikatów.
+   *
+   * Wyłączone znaczy „nazwy zostają kanoniczne" — nie znaczy „zapis nie
+   * działa". Tak samo wygląda błąd modelu, patrz `translation/fill.ts`.
+   */
+  TRANSLATION_ENABLED: z.stringbool().default(true),
+  /**
+   * Limit czasu na wywołanie tłumaczenia — osobny od `LLM_TIMEOUT_MS`, bo
+   * osobny jest powód jego długości. Tam krótki, bo podpowiedź o duplikacie
+   * pokazuje się w trakcie pisania; tutaj tłumaczenie idzie kolejką **poza**
+   * żądaniem, więc nikt na nie nie czeka i nie ma po co ciąć go na ośmiu
+   * sekundach.
+   */
+  TRANSLATION_TIMEOUT_MS: z.coerce.number().int().min(500).max(120_000).default(20_000),
 });
 
 export interface GoogleCredentials {
@@ -148,6 +175,12 @@ export interface LlmConfig {
   /** `false` — działają warstwy 1 i 2, bez oceny i uzasadnienia od modelu. */
   rerankerEnabled: boolean;
   timeoutMs: number;
+  /** Model tłumaczący nazwy na pozostałe języki. */
+  translationModel: string;
+  /** `false` — nazwy zostają w jednym języku, zapis działa bez zmian. */
+  translationEnabled: boolean;
+  /** Limit czasu tłumaczenia; dłuższy niż `timeoutMs`, bo nikt na nie nie czeka. */
+  translationTimeoutMs: number;
 }
 
 export interface AppConfig {
@@ -218,6 +251,9 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
           rerankerModel: environmentVariables.RERANKER_MODEL,
           rerankerEnabled: environmentVariables.RERANKER_ENABLED,
           timeoutMs: environmentVariables.LLM_TIMEOUT_MS,
+          translationModel: environmentVariables.TRANSLATION_MODEL,
+          translationEnabled: environmentVariables.TRANSLATION_ENABLED,
+          translationTimeoutMs: environmentVariables.TRANSLATION_TIMEOUT_MS,
         }
       : null;
 

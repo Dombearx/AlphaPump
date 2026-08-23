@@ -130,6 +130,63 @@ trafić do binarki aplikacji, bo ta jest w praktyce publiczna. Testy integracyjn
 podstawiają atrapy warstw (`apps/api/tests/duplicates.test.ts`), więc CI nie
 zależy ani od cudzego serwisu, ani od klucza w sekretach.
 
+## Język aplikacji i wielojęzyczne nazwy
+
+Nazwy tagów i ćwiczeń mają dwa poziomy: **nazwę kanoniczną** (kolumna `name`)
+i mapę tłumaczeń (`translations`, „kod języka → nazwa"). Kanoniczna jest ta,
+z której liczy się slug i identyfikator, więc tłumaczenie nie ma prawa jej
+ruszyć — gdyby id zależało od języka, ten sam tag utworzony po polsku i po
+angielsku byłby dwoma wierszami, a cała deduplikacja offline przestałaby
+działać.
+
+| Warstwa | Co robi |
+| ------- | ------- |
+| `packages/core/src/languages.ts` | lista języków, `localizedName`, `missingLanguages`, `mergeTranslations` |
+| `apps/api/src/translation/` | tłumacz na Haiku, kolejka poza żądaniem, uzupełnianie wierszy |
+| `apps/mobile/src/language/` | wybór języka **per urządzenie** i `useLocalizedName` |
+
+**Wybór języka jest per urządzenie**, a nie per konto. Zgłoszenie tego nie
+ustaliło; wybór działa dzięki temu także przed zalogowaniem (ekran logowania jest
+pierwszym, który ktoś widzi), a zapis per konto oznaczałby kolumnę w tabeli
+użytkowników i pole w protokole synchronizacji — dla ustawienia, które dotyczy
+wyłącznie tego, co widać na ekranie. Cena: kto ma dwa telefony, wybiera język na
+obu. Rejestr leży w pliku obok tapety, a nie w bazie lokalnej, bo nigdzie nie
+jedzie.
+
+**Tłumaczenie dzieje się po zapisie i poza żądaniem.** `POST /tags`,
+`POST /exercises` i `POST /sync/push` zapisują wiersz z nazwą, którą ktoś
+wpisał, i dopiero zgłaszają go do kolejki (`TranslationBacklog` — jeden wykonawca
+na proces, tak jak przy wektorach). Paczka pushu potrafi nieść pięćset ćwiczeń
+utworzonych offline; tłumaczenie ich w środku żądania przekroczyłoby limit czasu
+telefonu i wyglądałoby na utratę łączności.
+
+**Błąd modelu nie blokuje zapisu.** Zgłoszenie nie ustaliło zachowania przy
+awarii dostawcy, więc obowiązuje ta sama reguła co przy warstwie 3 wykrywania
+duplikatów: wiersz zostaje z nazwą kanoniczną, a w logu ląduje ostrzeżenie.
+Na ekranie wygląda to dokładnie tak, jak wyglądało przed dodaniem języków, bo
+`localizedName` cofa się do nazwy kanonicznej. To samo dotyczy wyłączonego
+tłumaczenia (`TRANSLATION_ENABLED=false`) i stosu bez klucza OpenRoutera.
+
+**Nazwa wpisana ręcznie ma pierwszeństwo.** Formularze aplikacji i panelu mają
+pole na nazwę w każdym języku; model uzupełnia wyłącznie luki
+(`mergeTranslations`), więc powtórzony przebieg niczego nie nadpisze. Wyjątkiem
+jest edycja z panelu i z aplikacji, gdzie komplet nazw **podmienia** poprzedni —
+inaczej złego tłumaczenia nie dałoby się usunąć.
+
+Wiersze utworzone, zanim tłumaczenie w ogóle istniało, uzupełnia jednorazowy
+przebieg — przyciskiem „Fill in translations" w panelu
+(`POST /admin/library/translations/refresh`) albo z wiersza poleceń:
+
+| Polecenie | Co robi |
+| --------- | ------- |
+| `pnpm --filter @alphapump/api run translate` | uzupełnia brakujące nazwy i **czeka** na koniec przebiegu |
+
+Biblioteka wbudowana tego nie potrzebuje: ma komplet nazw polskich i angielskich
+wpisany ręcznie w seedzie (seed nie ma prawa wołać sieci), a kolejka pomija
+wiersze, którym niczego nie brakuje. Uzupełnienie podbija `updated_at`, bo
+inaczej nie dojechałoby na telefony — dlatego jest to przebieg jednorazowy,
+a nie zadanie cron.
+
 ## Eksport, import i kopie zapasowe
 
 Jeden format i jeden zestaw reguł (`packages/core/src/transfer.ts`), trzy miejsca
@@ -325,6 +382,10 @@ razy, a serie leżą w obu wierszach. Reguła jest jedna i obowiązuje wszędzie
   jest nazwa istniejącego wiersza. Wektory całej biblioteki przelicza `POST
   /admin/library/embeddings/refresh`; bez tego lista widzi wyłącznie ćwiczenia
   zapisane po włączeniu warstwy semantycznej.
+- **Brakujące tłumaczenia** uzupełnia `POST /admin/library/translations/refresh` —
+  ten sam przebieg co `pnpm --filter @alphapump/api run translate`, dla tagów
+  i ćwiczeń dodanych, zanim tłumaczenie automatyczne istniało. Nazwy wpisane
+  ręcznie zostają nietknięte, a wiersz z kompletem nazw nie trafia do modelu.
 
 Lista ćwiczeń w panelu niesie przy każdym wierszu **co na nim wisi**: serie, ilu
 osób dotyczą, cele cyklu, datę ostatniego treningu i to, czy wiersz ma policzony

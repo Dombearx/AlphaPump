@@ -22,11 +22,13 @@ import {
   createExerciseInputSchema,
   createTagInputSchema,
   exerciseId as computeExerciseId,
+  mergeTranslations,
   slug,
   tagColor,
   tagId as computeTagId,
   updateExerciseInputSchema,
   type LoggingType,
+  type Translations,
   type UserRole,
 } from '@alphapump/core';
 import {
@@ -116,6 +118,12 @@ function assertMayModify(exercise: ExerciseRow, author: LibraryAuthor): void {
 
 export interface CreateTagCommand extends LibraryAuthor {
   name: string;
+  /**
+   * Nazwy w pozostałych językach z formularza. Brak nie jest błędem: puste
+   * języki dokłada model po stronie serwera, przy pierwszej synchronizacji —
+   * telefon nie ma czym tłumaczyć i offline mieć nie będzie.
+   */
+  translations?: Translations | null;
 }
 
 /**
@@ -131,7 +139,10 @@ export async function createTag(
   command: CreateTagCommand,
   now: Date = new Date(),
 ): Promise<SavedRow> {
-  const { name } = createTagInputSchema.parse({ name: command.name });
+  const { name, translations } = createTagInputSchema.parse({
+    name: command.name,
+    translations: command.translations ?? null,
+  });
   const id = computeTagId(name);
 
   const [existing] = await db.select().from(tags).where(eq(tags.id, id)).limit(1);
@@ -146,6 +157,10 @@ export async function createTag(
     id,
     name,
     slug: slug(name),
+    // `mergeTranslations` przycina białe znaki i odsiewa puste pola formularza —
+    // ta sama funkcja domyka zestaw na serwerze, więc pusty napis z pola tekstowego
+    // znaczy „brak nazwy" po obu stronach tak samo.
+    translations: mergeTranslations(translations, null),
     color: tagColor(
       name,
       taken.map((row) => row.color),
@@ -176,6 +191,8 @@ async function assertTagsExist(db: SqliteDatabase, tagIds: readonly string[]): P
 
 export interface ExerciseValues {
   name: string;
+  /** Nazwy w pozostałych językach; puste dokłada model przy synchronizacji. */
+  translations?: Translations | null;
   primaryTagId: string;
   additionalTagIds: string[];
   note: string | null;
@@ -225,6 +242,7 @@ export async function createExercise(
 ): Promise<SavedRow> {
   const input = createExerciseInputSchema.parse({
     name: command.name,
+    translations: command.translations ?? null,
     loggingType: command.loggingType,
     primaryTagId: command.primaryTagId,
     additionalTagIds: command.additionalTagIds,
@@ -243,6 +261,7 @@ export async function createExercise(
     id,
     name: input.name,
     slug: slug(input.name),
+    translations: mergeTranslations(input.translations, null),
     authorId: command.userId,
     loggingType: input.loggingType,
     primaryTagId: input.primaryTagId,
@@ -288,6 +307,7 @@ export async function updateExercise(
 
   const input = updateExerciseInputSchema.parse({
     ...(command.name === undefined ? {} : { name: command.name }),
+    ...(command.translations === undefined ? {} : { translations: command.translations }),
     ...(command.primaryTagId === undefined ? {} : { primaryTagId: command.primaryTagId }),
     ...(command.additionalTagIds === undefined
       ? {}
@@ -332,6 +352,15 @@ export async function updateExercise(
         primaryTagId,
         note: input.note === undefined ? existing.note : input.note,
         gym,
+        // Pominięte pole znaczy „zostaw, jak jest", podane — „taki jest teraz
+        // komplet nazw". Podmiana, a nie domknięcie: użytkownik widzi w formularzu
+        // wszystkie nazwy naraz, więc skasowanie błędnego tłumaczenia musi się
+        // dać zapisać. Domykaniem zajmuje się serwer, tam gdzie po drugiej
+        // stronie jest paczka pushu, a nie człowiek.
+        translations:
+          input.translations === undefined
+            ? existing.translations
+            : mergeTranslations(input.translations, null),
         updatedAt: now,
         deviceId: command.deviceId,
       })

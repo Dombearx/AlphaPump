@@ -24,6 +24,7 @@ import { useSyncEngine, useSyncSnapshot } from '../src/sync/provider';
 import { describeRunningBundle } from '../src/update/running';
 import { useRunningBundle } from '../src/update/use-update';
 import { BackgroundSettings } from '../src/ui/background';
+import { LanguageSettings } from '../src/ui/language';
 import { Button, Card, Loading, SectionTitle } from '../src/ui/primitives';
 
 export default function AccountRoute() {
@@ -78,6 +79,8 @@ export default function AccountRoute() {
             />
           </View>
         </Card>
+
+        <LanguageSettings />
 
         <BackgroundSettings />
 

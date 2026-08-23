@@ -10,7 +10,7 @@
 
 import { z } from 'zod';
 import { isIsoDate } from './dates.js';
-import { LANGUAGES } from './languages.js';
+import { languageSchema } from './languages.js';
 import { LOGGING_TYPES, requiredMeasurements, usesBodyweight } from './logging-type.js';
 import { isSlug, slug } from './slug.js';
 
@@ -45,8 +45,6 @@ export const displayNameSchema = z
   .refine((value) => slug(value).length > 0, {
     message: 'Nazwa musi zawierać przynajmniej jedną literę lub cyfrę',
   });
-
-export const languageSchema = z.enum(LANGUAGES);
 
 /**
  * Nazwy encji w poszczególnych językach. Rekord **częściowy** — komplet nie
@@ -111,6 +109,23 @@ export const createTagInputSchema = z.object({
 });
 
 export type CreateTagInput = z.infer<typeof createTagInputSchema>;
+
+/**
+ * Zmiana tagu (`PATCH /tags/:id`).
+ *
+ * Nazwa jest wymagana — to jest zmiana nazwy i innego powodu nie ma.
+ * Tłumaczenia są **opcjonalne**, i ta różnica jest tu regułą: pominięcie pola
+ * znaczy „zostaw, jak jest", a podanie go — „taki jest teraz komplet nazw",
+ * łącznie z usunięciem tej, którą model wymyślił źle. Gdyby pominięcie znaczyło
+ * `null`, zwykła zmiana nazwy z panelu kasowałaby po cichu wszystkie
+ * tłumaczenia wiersza.
+ */
+export const updateTagInputSchema = z.object({
+  name: displayNameSchema,
+  translations: translationsSchema.nullable().optional(),
+});
+
+export type UpdateTagInput = z.infer<typeof updateTagInputSchema>;
 
 /* ----------------------------------------------------------------- ćwiczenie */
 

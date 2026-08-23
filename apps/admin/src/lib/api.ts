@@ -29,6 +29,7 @@ import {
   systemStatsSchema,
   tagMergeReportSchema,
   tagSchema,
+  translationRefreshReportSchema,
   type AdminUser,
   type Archive,
   type CreateExerciseInput,
@@ -40,6 +41,8 @@ import {
   type ImportReport,
   type LibraryExercise,
   type LibraryTag,
+  type TranslationRefreshReport,
+  type Translations,
   type SystemStats,
   type Tag,
   type TagMergeReport,
@@ -233,11 +236,31 @@ export const deleteExercise = async (id: string, fetchImpl?: typeof fetch): Prom
  * Utworzenie tagu. Koloru nie podajemy — serwer wylicza go z nazwy, żeby tag
  * utworzony offline miał od razu finalny kolor, identyczny na każdym urządzeniu.
  */
-export const createTag = (name: string, fetchImpl?: typeof fetch): Promise<Tag> =>
-  request('/tags', tagSchema, { method: 'POST', body: { name }, fetchImpl });
+export const createTag = (
+  name: string,
+  translations: Translations | null = null,
+  fetchImpl?: typeof fetch,
+): Promise<Tag> =>
+  request('/tags', tagSchema, { method: 'POST', body: { name, translations }, fetchImpl });
 
-export const renameTag = (id: string, name: string, fetchImpl?: typeof fetch): Promise<Tag> =>
-  request(`/tags/${id}`, tagSchema, { method: 'PATCH', body: { name }, fetchImpl });
+/**
+ * Zmiana nazwy tagu, a przy okazji jego nazw w pozostałych językach.
+ *
+ * `translations` pomijamy, gdy formularz ich nie dotykał: pominięte pole znaczy
+ * po stronie API „zostaw, jak jest", a wysłanie `null` — „skasuj wszystkie".
+ * Bez tego rozróżnienia zwykła poprawka literówki kasowałaby tłumaczenia tagu.
+ */
+export const renameTag = (
+  id: string,
+  name: string,
+  translations?: Translations | null,
+  fetchImpl?: typeof fetch,
+): Promise<Tag> =>
+  request(`/tags/${id}`, tagSchema, {
+    method: 'PATCH',
+    body: translations === undefined ? { name } : { name, translations },
+    fetchImpl,
+  });
 
 export const deleteTag = async (id: string, fetchImpl?: typeof fetch): Promise<void> => {
   await request(`/tags/${id}`, z.null(), { method: 'DELETE', fetchImpl });
@@ -324,6 +347,16 @@ export const restoreTag = (id: string, fetchImpl?: typeof fetch): Promise<Tag> =
  */
 export const refreshEmbeddings = (fetchImpl?: typeof fetch): Promise<EmbeddingRefreshReport> =>
   request('/admin/library/embeddings/refresh', embeddingRefreshReportSchema, {
+    method: 'POST',
+    fetchImpl,
+  });
+
+/**
+ * Uzupełnienie brakujących tłumaczeń biblioteki — jednorazowy przebieg dla
+ * tagów i ćwiczeń dodanych, zanim tłumaczenie automatyczne w ogóle istniało.
+ */
+export const refreshTranslations = (fetchImpl?: typeof fetch): Promise<TranslationRefreshReport> =>
+  request('/admin/library/translations/refresh', translationRefreshReportSchema, {
     method: 'POST',
     fetchImpl,
   });

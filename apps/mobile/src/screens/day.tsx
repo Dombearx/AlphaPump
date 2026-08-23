@@ -22,6 +22,7 @@ import { db } from '../db/client';
 import { daySets, groupDaySets, localUser, type DayExerciseGroup } from '../db/queries';
 import { formatDaySubtitle, formatDayTitle, setsPlural, today as currentDay } from '../day-labels';
 import { shouldCaptureSwipe, swipeTargetDay } from '../day-swipe';
+import { useLocalizedName } from '../language/provider';
 import { formatSet } from '../measurements';
 import {
   Avatar,
@@ -201,12 +202,16 @@ export function DayScreen({ day }: { day: IsoDate }) {
 }
 
 function ExerciseGroup({ group, onPress }: { group: DayExerciseGroup; onPress: () => void }) {
+  const named = useLocalizedName();
+
   return (
     <Pressable accessibilityRole="button" onPress={onPress} className="active:opacity-70">
       <Card className="gap-2">
         <Row>
           <TagDot color={group.tagColor} />
-          <Text className="flex-1 text-lg font-semibold text-text">{group.exerciseName}</Text>
+          <Text className="flex-1 text-lg font-semibold text-text">
+            {named({ name: group.exerciseName, translations: group.exerciseTranslations })}
+          </Text>
           <Text className="text-muted">{group.sets.length}</Text>
         </Row>
 

@@ -111,6 +111,32 @@ describe('formularz ćwiczenia', () => {
     expect(document.body.textContent).toContain('Enter an exercise name');
   });
 
+  it('wpisana nazwa w innym języku wychodzi z formularza', async () => {
+    // Pole na nazwę polską jest **obok** nazwy kanonicznej, a nie zamiast niej:
+    // to z kanonicznej liczy się identyfikator ćwiczenia.
+    const onSubmit = renderForm(EXERCISE);
+
+    await userEvent.type(screen.getByLabelText(/^Name — Polski/), 'Wyciskanie sztangi');
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    const draft = onSubmit.mock.calls[0]?.[0] as {
+      name: string;
+      translations: Record<string, string>;
+    };
+    expect(draft.name).toBe('Barbell bench press');
+    expect(draft.translations.pl).toBe('Wyciskanie sztangi');
+  });
+
+  it('samo otwarcie formularza z tłumaczeniami nie jest zmianą', async () => {
+    // Zestaw wraca do pól i z powrotem bez różnicy — inaczej każde otwarcie
+    // i zamknięcie formularza podbijałoby `updated_at` na wszystkich telefonach.
+    const onSubmit = renderForm({ ...EXERCISE, translations: { pl: 'Wyciskanie sztangi' } });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it('nie wysyła zmiany, w której nic się nie zmieniło', async () => {
     // Żądanie bez zmian podbiłoby `updated_at` i pojechałoby na wszystkie
     // telefony jako zmiana, której nie ma.

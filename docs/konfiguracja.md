@@ -29,6 +29,8 @@ wyłączona, a serwer wstaje i mówi o tym w logu.
 | `OPENROUTER_API_KEY` | nie | [openrouter.ai](https://openrouter.ai) → *Keys* |
 | `LLM_ENABLED`, `RERANKER_ENABLED` | nie (`true`) | wyłączniki warstw wykrywania duplikatów |
 | `EMBEDDING_MODEL`, `RERANKER_MODEL`, `LLM_TIMEOUT_MS` | nie | wartości domyślne z `.env.example` |
+| `TRANSLATION_ENABLED` | nie (`true`) | wyłącznik tłumaczenia nazw tagów i ćwiczeń |
+| `TRANSLATION_MODEL`, `TRANSLATION_TIMEOUT_MS` | nie | model tłumaczący (domyślnie Haiku) i limit czasu |
 | `HOST`, `PORT` | nie (`0.0.0.0:3000`) | nasłuch |
 
 Wymagane są dokładnie dwie zmienne. `loadConfig` wypisuje **komplet** braków
@@ -43,6 +45,12 @@ ktoś wkleiłby poświadczenia z powrotem. E-mail z hasłem działa niezależnie
 Brak `OPENROUTER_API_KEY` (albo `LLM_ENABLED=false`) sprowadza
 wykrywanie duplikatów do warstwy leksykalnej — tworzenie ćwiczeń nie zmienia się
 w żaden sposób. Żadne z tych dwóch nie jest błędem konfiguracji.
+
+Tym samym kluczem jedzie **tłumaczenie nazw** tagów i ćwiczeń, ale ma własny
+wyłącznik (`TRANSLATION_ENABLED`). Wyłączone — albo niedostępny dostawca modeli —
+znaczy „nazwy zostają w języku, w którym je wpisano": zapis nigdy nie jest
+blokowany, a `localizedName` cofa się wtedy do nazwy kanonicznej. Nazwy dochodzą
+kolejką **po** zapisie, więc ani REST, ani `POST /sync/push` nie czekają na model.
 
 > **Node nie czyta `.env` sam.** `node dist/index.js` zobaczy tylko zmienne ze
 > środowiska procesu, więc do uruchomienia z pliku trzeba flagi:

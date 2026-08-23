@@ -19,7 +19,12 @@
  * > `apps/api`, gdzie zapytania są w całości budowane funkcjami.
  */
 
-import { SYSTEM_USER_ID, type IsoDate } from '@alphapump/core';
+import {
+  SYSTEM_USER_ID,
+  type IsoDate,
+  type Translatable,
+  type Translations,
+} from '@alphapump/core';
 import {
   cycleGoals,
   cycles,
@@ -65,6 +70,10 @@ export function daySets(db: SqliteDatabase, userId: string, day: IsoDate) {
       id: workoutSets.id,
       exerciseId: workoutSets.exerciseId,
       exerciseName: exercises.name,
+      // Nazwa kanoniczna **i** tłumaczenia: który z nich pokazać, rozstrzyga
+      // ekran, bo zależy to od wyboru języka, a nie od danych (patrz
+      // `language/provider.tsx`).
+      exerciseTranslations: exercises.translations,
       loggingType: exercises.loggingType,
       tagColor: tags.color,
       position: workoutSets.position,
@@ -95,6 +104,7 @@ export type DaySetRow = Awaited<ReturnType<typeof daySets>>[number];
 export interface DayExerciseGroup {
   exerciseId: string;
   exerciseName: string;
+  exerciseTranslations: Translations | null;
   loggingType: DaySetRow['loggingType'];
   tagColor: string;
   sets: DaySetRow[];
@@ -121,6 +131,7 @@ export function groupDaySets(rows: readonly DaySetRow[]): DayExerciseGroup[] {
     groups.set(row.exerciseId, {
       exerciseId: row.exerciseId,
       exerciseName: row.exerciseName,
+      exerciseTranslations: row.exerciseTranslations,
       loggingType: row.loggingType,
       tagColor: row.tagColor,
       sets: [row],
@@ -216,12 +227,14 @@ export function exerciseDetails(db: SqliteDatabase, exerciseId: string) {
     .select({
       id: exercises.id,
       name: exercises.name,
+      translations: exercises.translations,
       loggingType: exercises.loggingType,
       note: exercises.note,
       gym: exercises.gym,
       authorId: exercises.authorId,
       tagId: exercises.primaryTagId,
       tagName: tags.name,
+      tagTranslations: tags.translations,
       tagColor: tags.color,
       authorNickname: users.nickname,
     })
@@ -316,11 +329,13 @@ export function exerciseLibrary(db: SqliteDatabase, userId: string, filter: Libr
     .select({
       id: exercises.id,
       name: exercises.name,
+      translations: exercises.translations,
       loggingType: exercises.loggingType,
       gym: exercises.gym,
       authorId: exercises.authorId,
       tagId: exercises.primaryTagId,
       tagName: tags.name,
+      tagTranslations: tags.translations,
       tagColor: tags.color,
       setCount,
       lastPerformedOn: max(mySets.performedOn),
@@ -370,13 +385,14 @@ export function tagLibrary(db: SqliteDatabase) {
     .select({
       id: tags.id,
       name: tags.name,
+      translations: tags.translations,
       color: tags.color,
       exerciseCount: count(membership.exerciseId).as('exercise_count'),
     })
     .from(tags)
     .leftJoin(membership, eq(membership.tagId, tags.id))
     .where(isNull(tags.deletedAt))
-    .groupBy(tags.id, tags.name, tags.color)
+    .groupBy(tags.id, tags.name, tags.translations, tags.color)
     .orderBy(asc(tags.name));
 }
 
@@ -385,7 +401,7 @@ export type TagLibraryRow = Awaited<ReturnType<typeof tagLibrary>>[number];
 /** Tagi dodatkowe jednego ćwiczenia, w kolejności zapisanej przy edycji. */
 export function additionalTagsOf(db: SqliteDatabase, exerciseId: string) {
   return db
-    .select({ id: tags.id, name: tags.name, color: tags.color })
+    .select({ id: tags.id, name: tags.name, translations: tags.translations, color: tags.color })
     .from(exerciseTags)
     .innerJoin(tags, eq(tags.id, exerciseTags.tagId))
     .where(eq(exerciseTags.exerciseId, exerciseId))
@@ -406,6 +422,7 @@ export function allAdditionalTags(db: SqliteDatabase) {
       exerciseId: exerciseTags.exerciseId,
       tagId: tags.id,
       tagName: tags.name,
+      tagTranslations: tags.translations,
       tagColor: tags.color,
     })
     .from(exerciseTags)
@@ -416,22 +433,30 @@ export function allAdditionalTags(db: SqliteDatabase) {
 export type AdditionalTagRow = Awaited<ReturnType<typeof allAdditionalTags>>[number];
 
 /** Wiersz `allAdditionalTags` pogrupowany po ćwiczeniu, do doklejenia na listach. */
-export function groupAdditionalTags(
-  rows: readonly AdditionalTagRow[],
-): Map<string, { id: string; name: string; color: string }[]> {
-  const byExercise = new Map<string, { id: string; name: string; color: string }[]>();
+export function groupAdditionalTags(rows: readonly AdditionalTagRow[]): Map<string, NamedTag[]> {
+  const byExercise = new Map<string, NamedTag[]>();
   for (const row of rows) {
     const list = byExercise.get(row.exerciseId) ?? [];
-    list.push({ id: row.tagId, name: row.tagName, color: row.tagColor });
+    list.push({
+      id: row.tagId,
+      name: row.tagName,
+      translations: row.tagTranslations,
+      color: row.tagColor,
+    });
     byExercise.set(row.exerciseId, list);
   }
   return byExercise;
 }
 
-export interface ExerciseTag {
+/** Tag w kształcie, w jakim pokazuje go ekran: z nazwą kanoniczną i tłumaczeniami. */
+export interface NamedTag {
   id: string;
   name: string;
+  translations: Translations | null;
   color: string;
+}
+
+export interface ExerciseTag extends NamedTag {
   /** Tylko tag główny liczy się do celów cyklu — reszta jest samą etykietą. */
   primary: boolean;
 }
@@ -445,10 +470,7 @@ export interface ExerciseTag {
  * synchronizacją z innego urządzenia i ze starszych wpisów — a dwa identyczne
  * chipsy obok siebie wyglądałyby jak błąd aplikacji.
  */
-export function exerciseTagList(
-  primary: { id: string; name: string; color: string },
-  additional: readonly { id: string; name: string; color: string }[],
-): ExerciseTag[] {
+export function exerciseTagList(primary: NamedTag, additional: readonly NamedTag[]): ExerciseTag[] {
   return [
     { ...primary, primary: true },
     ...additional.filter((tag) => tag.id !== primary.id).map((tag) => ({ ...tag, primary: false })),
@@ -508,8 +530,10 @@ export function cycleGoalList(db: SqliteDatabase, userId: string) {
       tagId: cycleGoals.tagId,
       position: cycleGoals.position,
       exerciseName: exercises.name,
+      exerciseTranslations: exercises.translations,
       exercisePrimaryTagId: exercises.primaryTagId,
       tagName: goalTag.name,
+      tagTranslations: goalTag.translations,
       tagColor: goalTag.color,
     })
     .from(cycleGoals)
@@ -521,6 +545,29 @@ export function cycleGoalList(db: SqliteDatabase, userId: string) {
 }
 
 export type CycleGoalRow = Awaited<ReturnType<typeof cycleGoalList>>[number];
+
+/**
+ * Nazwa zakresu pozycji celu — ćwiczenia albo tagu — w kształcie gotowym do
+ * przetłumaczenia (`useLocalizedName`).
+ *
+ * Cel wskazuje **albo** ćwiczenie, **albo** tag, więc wybór jest tutaj, a nie na
+ * trzech ekranach z osobna: cykl, lista cykli i formularz pokazują tę samą
+ * pozycję i nie mają prawa nazwać jej różnie. `null` znaczy „ani jedno, ani
+ * drugie" — pozycja wskazująca wiersz, którego lokalna baza jeszcze nie ma.
+ */
+export function goalTarget(
+  row: Pick<
+    CycleGoalRow,
+    'exerciseName' | 'exerciseTranslations' | 'tagName' | 'tagTranslations'
+  > | null,
+): Translatable | null {
+  if (row === null) return null;
+  if (row.exerciseName !== null) {
+    return { name: row.exerciseName, translations: row.exerciseTranslations };
+  }
+  if (row.tagName !== null) return { name: row.tagName, translations: row.tagTranslations };
+  return null;
+}
 
 /**
  * Serie do liczenia postępu cykli — od wskazanego dnia w górę.

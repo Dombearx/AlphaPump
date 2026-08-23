@@ -28,6 +28,8 @@ import { expoBackgroundStore } from '../src/background/expo';
 import { BackgroundProvider, useAppBackground } from '../src/background/provider';
 import { appConfig, isGoogleSignInConfigured } from '../src/config/index';
 import { DatabaseProvider } from '../src/db/provider';
+import { expoLanguageStore } from '../src/language/expo';
+import { LanguageProvider } from '../src/language/provider';
 import { SyncProvider } from '../src/sync/provider';
 import { COLORS } from '../src/theme';
 import { AppBackdrop } from '../src/ui/background';
@@ -52,25 +54,32 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: COLORS.base }}>
       <SafeAreaProvider>
-        <BackgroundProvider store={expoBackgroundStore}>
-          {/* Pierwsza w rodzeństwie, bo rodzeństwo rysuje się po kolei: tapeta
+        {/* Język stoi nad wszystkim, co pokazuje nazwy — czyli nad nawigacją:
+            przełącznik w ustawieniach ma przerysować listy od razu, a nie po
+            wyjściu z ekranu i wejściu z powrotem. Nad bazą i synchronizacją,
+            bo od żadnej z nich nie zależy: wybór języka leży w pliku obok
+            tapety, a nie w replikowanej bazie. */}
+        <LanguageProvider store={expoLanguageStore}>
+          <BackgroundProvider store={expoBackgroundStore}>
+            {/* Pierwsza w rodzeństwie, bo rodzeństwo rysuje się po kolei: tapeta
               ma leżeć pod nawigacją, a nie na niej. */}
-          <AppBackdrop />
-          <StatusBar style="light" />
-          {/* Nad bazą i nad synchronizacją, bo nie zależy od żadnej z nich:
+            <AppBackdrop />
+            <StatusBar style="light" />
+            {/* Nad bazą i nad synchronizacją, bo nie zależy od żadnej z nich:
               aktualizacja ma się proponować także wtedy, gdy migracje padły albo
               nikt nie jest zalogowany — czyli dokładnie wtedy, gdy nowsze wydanie
               bywa lekarstwem. */}
-          <UpdatePrompt />
-          <DatabaseProvider>
-            {/* Silnik synchronizacji stoi **wewnątrz** bazy, a nie obok niej:
+            <UpdatePrompt />
+            <DatabaseProvider>
+              {/* Silnik synchronizacji stoi **wewnątrz** bazy, a nie obok niej:
                 wymiana danych pisze do tych samych tabel, więc nie ma prawa
                 ruszyć, zanim przejdą migracje. */}
-            <SyncProvider>
-              <AppStack />
-            </SyncProvider>
-          </DatabaseProvider>
-        </BackgroundProvider>
+              <SyncProvider>
+                <AppStack />
+              </SyncProvider>
+            </DatabaseProvider>
+          </BackgroundProvider>
+        </LanguageProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

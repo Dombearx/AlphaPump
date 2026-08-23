@@ -161,7 +161,12 @@ describe('zapytania ekranów', () => {
     const extra = await additionalTagsOf(local.db, EXERCISES.dips!.id);
 
     const list = exerciseTagList(
-      { id: details!.tagId, name: details!.tagName, color: details!.tagColor },
+      {
+        id: details!.tagId,
+        name: details!.tagName,
+        translations: details!.tagTranslations,
+        color: details!.tagColor,
+      },
       extra,
     );
 
@@ -175,14 +180,19 @@ describe('zapytania ekranów', () => {
 
     expect(
       exerciseTagList(
-        { id: details!.tagId, name: details!.tagName, color: details!.tagColor },
+        {
+          id: details!.tagId,
+          name: details!.tagName,
+          translations: details!.tagTranslations,
+          color: details!.tagColor,
+        },
         extra,
       ),
     ).toHaveLength(1);
   });
 
   it('tag główny powtórzony wśród dodatkowych nie pokazuje się dwa razy', () => {
-    const chest = { id: tagId('chest'), name: 'chest', color: '#ef4444' };
+    const chest = { id: tagId('chest'), name: 'chest', translations: null, color: '#ef4444' };
 
     expect(exerciseTagList(chest, [chest])).toEqual([{ ...chest, primary: true }]);
   });

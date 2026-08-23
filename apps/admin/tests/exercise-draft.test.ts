@@ -12,6 +12,8 @@ import {
   exerciseInput,
   exercisePatch,
   exerciseProblem,
+  translationDraft,
+  translationsOf,
   type ExerciseDraft,
 } from '../src/lib/exercise-draft';
 
@@ -37,6 +39,7 @@ const DRAFT: ExerciseDraft = {
   additionalTagIds: [BICEPS],
   note: '',
   gym: '',
+  translations: { en: '', pl: '' },
 };
 
 const EXERCISE: Exercise = {
@@ -157,5 +160,39 @@ describe('łatka przy zmianie', () => {
       primaryTagId: NOGI,
       gym: 'Siłka',
     });
+  });
+});
+
+describe('nazwy w pozostałych językach', () => {
+  it('puste pola znaczą brak tłumaczeń, a nie pusty zestaw', () => {
+    expect(translationsOf({ en: '', pl: '   ' })).toBeNull();
+    expect(exerciseInput(DRAFT).translations).toBeNull();
+  });
+
+  it('przycina białe znaki i wysyła to, co wpisano', () => {
+    const draft: ExerciseDraft = { ...DRAFT, translations: { en: '', pl: '  Podciąganie  ' } };
+
+    expect(exerciseInput(draft).translations).toEqual({ pl: 'Podciąganie' });
+  });
+
+  it('zestaw z API wraca do pól bez zmian', () => {
+    expect(translationDraft({ pl: 'Podciąganie' })).toEqual({ en: '', pl: 'Podciąganie' });
+    expect(translationDraft(null)).toEqual({ en: '', pl: '' });
+  });
+
+  it('łatka niesie tłumaczenia dopiero wtedy, gdy naprawdę się zmieniły', () => {
+    const withName: Exercise = { ...EXERCISE, translations: { pl: 'Podciąganie' } };
+    const sameDraft: ExerciseDraft = { ...DRAFT, translations: { en: '', pl: 'Podciąganie' } };
+
+    expect(exercisePatch(sameDraft, withName)).toEqual({});
+    expect(
+      exercisePatch({ ...DRAFT, translations: { en: '', pl: 'Podciągnięcie' } }, withName),
+    ).toEqual({ translations: { pl: 'Podciągnięcie' } });
+  });
+
+  it('wyczyszczone pole kasuje tłumaczenie, zamiast zostawić stare', () => {
+    const withName: Exercise = { ...EXERCISE, translations: { pl: 'Podciąganie' } };
+
+    expect(exercisePatch(DRAFT, withName)).toEqual({ translations: null });
   });
 });

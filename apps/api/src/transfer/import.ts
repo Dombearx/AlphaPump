@@ -352,6 +352,10 @@ export async function importArchive(
                   name: tag.name,
                   slug: tag.slug,
                   color: tag.color,
+                  // Nazwy w pozostałych językach jadą razem z wierszem: bez tego
+                  // odtworzenie z kopii kasowałoby tłumaczenia, które archiwum
+                  // przecież niesie.
+                  translations: tag.translations,
                   createdAt: new Date(tag.createdAt),
                   updatedAt: new Date(tag.updatedAt),
                   deletedAt: null,
@@ -363,6 +367,7 @@ export async function importArchive(
                   name: sql`excluded.name`,
                   slug: sql`excluded.slug`,
                   color: sql`excluded.color`,
+                  translations: sql`excluded.translations`,
                   updatedAt: sql`excluded.updated_at`,
                   deletedAt: sql`excluded.deleted_at`,
                   serverSeq: nextServerSeq(),
@@ -387,6 +392,7 @@ export async function importArchive(
                   loggingType: entry.exercise.loggingType,
                   primaryTagId: entry.exercise.primaryTagId,
                   note: entry.exercise.note,
+                  translations: entry.exercise.translations,
                   createdAt: new Date(entry.exercise.createdAt),
                   updatedAt: new Date(entry.exercise.updatedAt),
                   deletedAt: null,
@@ -402,6 +408,7 @@ export async function importArchive(
                   // serie tego ćwiczenia.
                   primaryTagId: sql`excluded.primary_tag_id`,
                   note: sql`excluded.note`,
+                  translations: sql`excluded.translations`,
                   updatedAt: sql`excluded.updated_at`,
                   deletedAt: sql`excluded.deleted_at`,
                   serverSeq: nextServerSeq(),

@@ -8,6 +8,7 @@ import type { Database } from './db.js';
 import type { EmbeddingBacklog } from './duplicates/backlog.js';
 import type { DuplicateLayers } from './duplicates/layers.js';
 import type { DerivedRecomputation } from './sync/derived.js';
+import type { TranslationBacklog } from './translation/backlog.js';
 import type { TriageClient } from './triage.js';
 
 /** Skąd wzięło się uwierzytelnienie — przydaje się w logach i w testach. */
@@ -56,6 +57,14 @@ export interface AppDependencies {
    * w `index.ts` z tych samych warstw co `duplicates`.
    */
   embeddings?: EmbeddingBacklog;
+  /**
+   * Kolejka tłumaczenia nazw na pozostałe języki, wołana **poza** ścieżką
+   * żądania — z REST-a, z pushu i z panelu. Pominięcie pola znaczy „nie ma czym
+   * tłumaczyć": nazwy zostają kanoniczne, a zapis działa bez zmian. Ta sama
+   * asymetria co przy `duplicates` i z tego samego powodu — włączone przez
+   * przeoczenie tłumaczenie to wychodzące żądania i rachunek u dostawcy.
+   */
+  translations?: TranslationBacklog;
   /**
    * Klient usługi `services/triage` do ręcznego wyzwolenia przeglądu zgłoszeń
    * z panelu administracyjnego. Pominięcie pola znaczy **panel nie może

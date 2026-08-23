@@ -8,7 +8,7 @@
  * serii — nic dalej nie musi się udać, żeby seria istniała.
  */
 
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import { workoutSets } from '@alphapump/db/sqlite';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -30,8 +30,8 @@ describe('ekran zapisywania serii', () => {
   afterEach(() => local.close());
 
   describe('formularz wynika z typu logowania', () => {
-    it('dla ciężaru z powtórzeniami pyta o ciężar i powtórzenia', () => {
-      mount(<LogScreen day={DAY} exerciseId={EXERCISES.bench!.id} />);
+    it('dla ciężaru z powtórzeniami pyta o ciężar i powtórzenia', async () => {
+      await mount(<LogScreen day={DAY} exerciseId={EXERCISES.bench!.id} />);
 
       const text = screenText();
       expect(text).toContain('Weight');
@@ -39,10 +39,10 @@ describe('ekran zapisywania serii', () => {
       expect(text).not.toContain('Duration');
     });
 
-    it('dla masy ciała nie pyta o ciężar', () => {
+    it('dla masy ciała nie pyta o ciężar', async () => {
       // Pole ciężaru byłoby tu polem, którego nie da się sensownie wypełnić,
       // a walidacja pomiarów i tak odrzuciłaby wartość.
-      mount(<LogScreen day={DAY} exerciseId={EXERCISES.crunch!.id} />);
+      await mount(<LogScreen day={DAY} exerciseId={EXERCISES.crunch!.id} />);
 
       const text = screenText();
       expect(text).toContain('Reps');
@@ -51,8 +51,8 @@ describe('ekran zapisywania serii', () => {
   });
 
   describe('pusty dzień', () => {
-    it('tłumaczy, że nic tu jeszcze nie ma', () => {
-      mount(<LogScreen day={DAY} exerciseId={EXERCISES.bench!.id} />);
+    it('tłumaczy, że nic tu jeszcze nie ma', async () => {
+      await mount(<LogScreen day={DAY} exerciseId={EXERCISES.bench!.id} />);
       expect(screenText()).toContain('None yet');
     });
 
@@ -60,7 +60,7 @@ describe('ekran zapisywania serii', () => {
       // Przy pierwszej serii ćwiczenia nie ma z czego zbudować podpowiedzi, więc
       // formularz jest pusty, a naciśnięcie „Add set" ma **nazwać** brakujące
       // pomiary. Cicha odmowa wyglądałaby jak zapisana seria, której nie ma.
-      mount(<LogScreen day={DAY} exerciseId={EXERCISES.bench!.id} />);
+      await mount(<LogScreen day={DAY} exerciseId={EXERCISES.bench!.id} />);
       await user().click(screen.getByRole('button', { name: 'Add set' }));
 
       expect(screenText()).toContain('Fill in: weight, reps');
@@ -69,7 +69,7 @@ describe('ekran zapisywania serii', () => {
   });
 
   it('zapisuje serię wpisaną z palca', async () => {
-    mount(<LogScreen day={DAY} exerciseId={EXERCISES.bench!.id} />);
+    await mount(<LogScreen day={DAY} exerciseId={EXERCISES.bench!.id} />);
 
     await user().type(screen.getByLabelText('Weight'), '80');
     await user().type(screen.getByLabelText('Reps'), '8');
@@ -112,7 +112,7 @@ describe('ekran zapisywania serii', () => {
       // jest już wypełniony podpowiedzią z poprzedniego treningu. To jest
       // wymaganie, a nie wygoda — i jedyne miejsce, w którym da się je sprawdzić
       // w całości, bo składa się z podpowiedzi, formularza i zapisu naraz.
-      mount(<LogScreen day={DAY} exerciseId={EXERCISES.bench!.id} />);
+      await mount(<LogScreen day={DAY} exerciseId={EXERCISES.bench!.id} />);
       await user().click(screen.getByRole('button', { name: 'Add set' }));
 
       const rows = await local.db.select().from(workoutSets).where(eqDay(DAY));
@@ -121,10 +121,14 @@ describe('ekran zapisywania serii', () => {
     });
 
     it('pokazuje zapisaną serię na liście dnia', async () => {
-      mount(<LogScreen day={DAY} exerciseId={EXERCISES.bench!.id} />);
+      await mount(<LogScreen day={DAY} exerciseId={EXERCISES.bench!.id} />);
       await user().click(screen.getByRole('button', { name: 'Add set' }));
 
-      expect(screenText()).not.toContain('None yet');
+      // Lista dnia jedzie z `useLiveQuery`, więc przerysowuje się po zapisie,
+      // a nie w jego trakcie — asercja bez czekania sprawdzałaby wyścig.
+      await waitFor(() => {
+        expect(screenText()).not.toContain('None yet');
+      });
       expect(screenText()).toContain('100');
     });
   });

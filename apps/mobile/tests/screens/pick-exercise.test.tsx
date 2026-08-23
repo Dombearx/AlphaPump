@@ -25,7 +25,7 @@ describe('wybór ćwiczenia', () => {
       endsOn: null,
       goals: [{ metric: 'sets', target: 10, ...goal }],
     });
-    mount(<PickExerciseScreen day={DAY} />);
+    await mount(<PickExerciseScreen day={DAY} />);
   };
 
   beforeEach(async () => {

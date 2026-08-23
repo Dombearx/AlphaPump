@@ -10,6 +10,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_LANGUAGE,
+  sameTranslations,
+  translationsFromModel,
+  type TranslationResult,
   LANGUAGES,
   isLanguage,
   localizedName,
@@ -72,5 +75,64 @@ describe('domykanie zestawu tłumaczeń', () => {
 
   it('oddaje null, gdy nie ma czego zapisać', () => {
     expect(mergeTranslations(null, null)).toBeNull();
+  });
+});
+
+describe('odpowiedź modelu sprowadzona do tłumaczeń', () => {
+  it('bierze nazwy dla języków, o które pytano', () => {
+    expect(
+      translationsFromModel({ names: [{ language: 'pl', name: 'Martwy ciąg' }] }, ['pl']),
+    ).toEqual({ pl: 'Martwy ciąg' });
+  });
+
+  it('pomija język, o który nie pytano — tam stoi nazwa wpisana ręcznie', () => {
+    const result: TranslationResult = {
+      names: [
+        { language: 'pl', name: 'Martwy ciąg' },
+        { language: 'en', name: 'Deadlift' },
+      ],
+    };
+
+    expect(translationsFromModel(result, ['pl'])).toEqual({ pl: 'Martwy ciąg' });
+  });
+
+  it('przycina białe znaki i odrzuca puste nazwy', () => {
+    const result: TranslationResult = {
+      names: [
+        { language: 'pl', name: '  Martwy ciąg  ' },
+        { language: 'en', name: '   ' },
+      ],
+    };
+
+    expect(translationsFromModel(result, ['pl', 'en'])).toEqual({ pl: 'Martwy ciąg' });
+  });
+
+  it('przy powtórzonym języku zostaje pierwsza nazwa', () => {
+    const result: TranslationResult = {
+      names: [
+        { language: 'pl', name: 'Martwy ciąg' },
+        { language: 'pl', name: 'Deadlift' },
+      ],
+    };
+
+    expect(translationsFromModel(result, ['pl'])).toEqual({ pl: 'Martwy ciąg' });
+  });
+
+  it('oddaje pusty zestaw, gdy model nie przysłał niczego użytecznego', () => {
+    expect(translationsFromModel({ names: [] }, ['pl', 'en'])).toEqual({});
+  });
+});
+
+describe('porównanie zestawów tłumaczeń', () => {
+  it('brak i pusty zestaw to to samo', () => {
+    expect(sameTranslations(null, {})).toBe(true);
+  });
+
+  it('białe znaki nie robią różnicy', () => {
+    expect(sameTranslations({ pl: 'klatka' }, { pl: '  klatka  ' })).toBe(true);
+  });
+
+  it('dołożona nazwa jest różnicą', () => {
+    expect(sameTranslations({ pl: 'klatka' }, { pl: 'klatka', en: 'chest' })).toBe(false);
   });
 });

@@ -183,3 +183,27 @@ export const embeddingRefreshReportSchema = z.object({
 });
 
 export type EmbeddingRefreshReport = z.infer<typeof embeddingRefreshReportSchema>;
+
+/**
+ * Odpowiedź na „uzupełnij brakujące tłumaczenia".
+ *
+ * Ten sam kształt co przy wektorach i z tego samego powodu: robota idzie do
+ * kolejki poza żądaniem, więc odpowiedź jest potwierdzeniem przyjęcia zlecenia,
+ * a nie wynikiem. Osobny schemat, a nie wspólny z embeddingami, bo liczy co
+ * innego — tagi **i** ćwiczenia — i wolno mu się od tamtego rozejść.
+ *
+ * `enabled: false` znaczy „nie ma czym tłumaczyć": wyłączony przełącznik albo
+ * brak klucza u dostawcy modeli. To jest konfiguracja, a nie awaria — nazwy
+ * dalej wyświetlają się kanoniczne.
+ */
+export const translationRefreshReportSchema = z.object({
+  enabled: z.boolean(),
+  /** `started` — zlecenie przyjęte, `busy` — przebieg już trwa, `disabled` — nie ma czym. */
+  status: z.enum(['started', 'busy', 'disabled']),
+  /** Ile wierszy (tagów i ćwiczeń razem) trafiło do kolejki. */
+  queued: z.int().min(0),
+  /** Ile czeka w tej chwili — razem z tym, co zgłosiły wcześniejsze zapisy. */
+  pending: z.int().min(0),
+});
+
+export type TranslationRefreshReport = z.infer<typeof translationRefreshReportSchema>;

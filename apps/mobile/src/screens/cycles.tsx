@@ -25,6 +25,8 @@ import {
 import { db } from '../db/client';
 import { cycleGoalList, cycleList, setsForCycles } from '../db/queries';
 import { formatDate, today as currentDay } from '../day-labels';
+import { goalName } from '../goal-labels';
+import { useLocalizedName } from '../language/provider';
 import { formatMetric } from '../measurements';
 import { Button, Card, Chip, ChipRow, EmptyState, Loading, ProgressBar } from '../ui/primitives';
 
@@ -117,6 +119,7 @@ function CycleCard({
   onPress: () => void;
 }) {
   const { cycle, progress } = summary;
+  const named = useLocalizedName();
 
   return (
     <Pressable accessibilityRole="button" onPress={onPress} className="active:opacity-70">
@@ -136,9 +139,7 @@ function CycleCard({
             const row = cycle.goals.find((candidate) => candidate.id === goal.goalId);
             return (
               <View key={goal.goalId} className="flex-row items-baseline justify-between">
-                <Text className="flex-1 text-sm text-text">
-                  {row?.exerciseName ?? row?.tagName ?? 'Goal item'}
-                </Text>
+                <Text className="flex-1 text-sm text-text">{goalName(row ?? null, named)}</Text>
                 <Text className={goal.completed ? 'text-sm text-success' : 'text-sm text-muted'}>
                   {formatMetric(goal.metric, goal.current)} /{' '}
                   {formatMetric(goal.metric, goal.target)}

@@ -12,15 +12,21 @@
  * zestaw tagów jest zbiorem, a nie listą, więc nic tu nie ginie.
  */
 
-import type { LibraryTag } from '@alphapump/core';
+import { LANGUAGES, LANGUAGE_LABELS, type LibraryTag, type Translations } from '@alphapump/core';
 import { useState } from 'react';
 import { Badge, Button, Cell, Empty, Input, Row, Select, Table } from './ui';
 import { tagDeletionProblem, tagMergeTargets } from '../lib/library-view';
+import { translationDraft, translationsOf, type TranslationDraft } from '../lib/exercise-draft';
 
 export interface TagLibraryProps {
   rows: readonly LibraryTag[];
   busy: boolean;
-  onRename: (entry: LibraryTag, name: string) => void;
+  /**
+   * Zmiana nazwy razem z nazwami w pozostałych językach. Tłumaczenia jadą
+   * zawsze, bo formularz pokazuje ich komplet — wyczyszczone pole ma skasować
+   * nazwę, a nie zostawić poprzednią.
+   */
+  onRename: (entry: LibraryTag, name: string, translations: Translations | null) => void;
   onDelete: (entry: LibraryTag) => void;
   onRestore: (entry: LibraryTag) => void;
   onMerge: (source: LibraryTag, targetId: string) => void;
@@ -34,7 +40,11 @@ export function TagLibrary({
   onRestore,
   onMerge,
 }: TagLibraryProps) {
-  const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
+  const [editing, setEditing] = useState<{
+    id: string;
+    name: string;
+    translations: TranslationDraft;
+  } | null>(null);
   /** Tag, przy którym otwarto wybór celu scalenia; `null` — żaden. */
   const [merging, setMerging] = useState<{ id: string; targetId: string } | null>(null);
 
@@ -51,34 +61,57 @@ export function TagLibrary({
           <Row key={tag.id}>
             <Cell>
               {editing?.id === tag.id ? (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col gap-2">
                   <Input
                     value={editing.name}
                     autoFocus
                     maxLength={80}
                     onChange={(event) => {
-                      setEditing({ id: tag.id, name: event.target.value });
+                      setEditing({ ...editing, name: event.target.value });
                     }}
                   />
-                  <Button
-                    size="sm"
-                    disabled={busy || editing.name.trim().length === 0}
-                    onClick={() => {
-                      onRename(entry, editing.name.trim());
-                      setEditing(null);
-                    }}
-                  >
-                    Save
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      setEditing(null);
-                    }}
-                  >
-                    Cancel
-                  </Button>
+                  {/* Nazwa kanoniczna wyżej, tłumaczenia pod nią: to z tej
+                      pierwszej liczy się identyfikator tagu, więc pozostałe są
+                      opcjonalne i nie mają prawa jej zastąpić. Puste pole znaczy
+                      „niech dołoży model". */}
+                  {LANGUAGES.map((language) => (
+                    <Input
+                      key={language}
+                      value={editing.translations[language]}
+                      maxLength={80}
+                      placeholder={`${LANGUAGE_LABELS[language]} — optional`}
+                      onChange={(event) => {
+                        setEditing({
+                          ...editing,
+                          translations: {
+                            ...editing.translations,
+                            [language]: event.target.value,
+                          },
+                        });
+                      }}
+                    />
+                  ))}
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      disabled={busy || editing.name.trim().length === 0}
+                      onClick={() => {
+                        onRename(entry, editing.name.trim(), translationsOf(editing.translations));
+                        setEditing(null);
+                      }}
+                    >
+                      Save
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setEditing(null);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <>
@@ -95,6 +128,14 @@ export function TagLibrary({
                       deleted
                     </Badge>
                   )}
+                  {/* Nazwy w pozostałych językach widać bez wchodzenia w edycję:
+                      to po nich poznaje się wiersz, którego automat jeszcze nie
+                      przetłumaczył. */}
+                  <span className="mt-1 block text-xs text-muted">
+                    {LANGUAGES.filter((language) => (tag.translations?.[language] ?? '').length > 0)
+                      .map((language) => `${language}: ${tag.translations?.[language] ?? ''}`)
+                      .join(' · ') || 'no translations yet'}
+                  </span>
                 </>
               )}
             </Cell>
@@ -134,7 +175,11 @@ export function TagLibrary({
                   size="sm"
                   variant="ghost"
                   onClick={() => {
-                    setEditing({ id: tag.id, name: tag.name });
+                    setEditing({
+                      id: tag.id,
+                      name: tag.name,
+                      translations: translationDraft(tag.translations),
+                    });
                   }}
                 >
                   Rename

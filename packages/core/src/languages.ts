@@ -18,10 +18,25 @@
  * samo jak wcześniej, zamiast pokazywać pustą pozycję.
  */
 
+import { z } from 'zod';
+
 /** Języki obsługiwane na start. Kody dwuliterowe, bo tak wyglądają w ustawieniach. */
 export const LANGUAGES = ['en', 'pl'] as const;
 
 export type Language = (typeof LANGUAGES)[number];
+
+export const languageSchema = z.enum(LANGUAGES);
+
+/**
+ * Nazwy języków **w nich samych**, a nie po polsku ani po angielsku.
+ *
+ * Przełącznik w menu czyta ktoś, kto szuka swojego języka — „Polski" znajdzie
+ * także wtedy, gdy aplikacja stoi akurat po angielsku, a „Polish" już nie.
+ */
+export const LANGUAGE_LABELS: Record<Language, string> = {
+  en: 'English',
+  pl: 'Polski',
+};
 
 /**
  * Język, w którym pisane są nazwy wbudowane i do którego cofa się interfejs bez
@@ -81,4 +96,79 @@ export function mergeTranslations(
   }
 
   return Object.keys(merged).length > 0 ? merged : null;
+}
+
+/**
+ * Czy dwa zestawy tłumaczeń niosą to samo.
+ *
+ * Potrzebne przy zapisie, a nie przy wyświetlaniu: zapis, który niczego nie
+ * zmienia, podbiłby `updated_at` i wysłał wiersz na wszystkie urządzenia — a to
+ * przy synchronizacji nie jest kosmetyką, tylko wygraną w rozstrzyganiu remisów
+ * z wersją, którą telefon ma u siebie.
+ *
+ * Porównanie idzie po języku i po nazwie **przyciętej**, bo tak samo zapisuje je
+ * `mergeTranslations`: „ klatka " i „klatka" to dla bazy ta sama nazwa.
+ */
+export function sameTranslations(left: Translations | null, right: Translations | null): boolean {
+  return LANGUAGES.every((language) => {
+    const a = left?.[language]?.trim() ?? '';
+    const b = right?.[language]?.trim() ?? '';
+    return a === b;
+  });
+}
+
+/* ------------------------------------------------- tłumaczenie automatyczne */
+
+/**
+ * Odpowiedź modelu tłumaczącego nazwę — structured output.
+ *
+ * Lista par „język → nazwa", a nie obiekt z polami `en` i `pl`, i jest to
+ * decyzja: obiekt trzeba by rozszerzać w schemacie przy każdym nowym języku,
+ * a lista opisuje dokładnie to, o co pytamy — komplet brakujących języków
+ * podany w prompcie.
+ *
+ * Schemat celowo **nie** wymusza niepustych nazw ani kompletu języków. Wymuszony
+ * komplet zamieniałby model, który nie zna jednej nazwy, w błąd całego
+ * wywołania; puste i nadmiarowe odsiewa `translationsFromModel`, bo to jest
+ * czyszczenie danych, a nie walidacja protokołu.
+ */
+export const translationResultSchema = z.object({
+  names: z.array(z.object({ language: languageSchema, name: z.string() })),
+});
+
+export type TranslationResult = z.infer<typeof translationResultSchema>;
+
+/**
+ * Odpowiedź modelu sprowadzona do zestawu tłumaczeń.
+ *
+ * Funkcja jest czysta i **odporna na model** — z tego samego powodu, dla
+ * którego odporne jest nakładanie werdyktów re-rankera: odpowiedź LLM-a jest
+ * danymi z zewnątrz także wtedy, gdy przeszła schemat. Model potrafi oddać
+ * pusty napis, powtórzyć język albo dołożyć taki, o który nie pytaliśmy.
+ *
+ * - puste i same białe znaki lecą do kosza — na ekranie wyglądają jak zgubiona
+ *   nazwa, a `localizedName` i tak cofnąłby się wtedy do nazwy kanonicznej,
+ * - przy powtórzonym języku wygrywa **pierwsza** nazwa: druga jest poprawką
+ *   modelu do samego siebie, a nie nową informacją,
+ * - `wanted` przycina odpowiedź do języków, o które pytaliśmy — inaczej model
+ *   dopisałby tłumaczenie tam, gdzie stoi nazwa wpisana ręcznie.
+ */
+export function translationsFromModel(
+  result: TranslationResult,
+  wanted: readonly Language[],
+): Translations {
+  const allowed = new Set(wanted);
+  const translations: Translations = {};
+
+  for (const entry of result.names) {
+    if (!allowed.has(entry.language)) continue;
+    if (translations[entry.language] !== undefined) continue;
+
+    const name = entry.name.trim();
+    if (name.length === 0) continue;
+
+    translations[entry.language] = name;
+  }
+
+  return translations;
 }

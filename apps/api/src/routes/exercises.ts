@@ -22,7 +22,14 @@
  * modeli, łamałaby regułę „utworzenie ćwiczenia nigdy nie jest blokowane".
  */
 
-import { describeRejection, exerciseId, exerciseSchema, slug } from '@alphapump/core';
+import {
+  describeRejection,
+  exerciseId,
+  exerciseSchema,
+  mergeTranslations,
+  sameTranslations,
+  slug,
+} from '@alphapump/core';
 import { and, asc, eq, exists, ilike, isNull, ne, or } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
@@ -50,6 +57,7 @@ import {
 } from '../schemas.js';
 import { exerciseTags, exercises } from '../schema.js';
 import { stampDelete, stampWrite } from '../sync-columns.js';
+import { NO_TRANSLATIONS } from '../translation/index.js';
 
 const exerciseListSchema = z.array(exerciseSchema);
 
@@ -135,6 +143,9 @@ export function createExerciseRouter(dependencies: AppDependencies) {
   const router = new Hono<AppEnvironment>();
   const { db } = dependencies;
   const layers = dependencies.duplicates ?? NO_LAYERS;
+  // Pominięcie zależności znaczy „nie ma czym tłumaczyć" — ćwiczenie zapisuje
+  // się wtedy z samą nazwą kanoniczną, tak jak przed dodaniem języków.
+  const translations = dependencies.translations ?? NO_TRANSLATIONS;
 
   const additionalTagsOf = async (ids: readonly string[]): Promise<Map<string, string[]>> => {
     if (ids.length === 0) return new Map();
@@ -217,6 +228,25 @@ export function createExerciseRouter(dependencies: AppDependencies) {
     const id = exerciseId(principal.id, input.name, input.gym);
     const existing = await loadOne(id);
     if (existing && existing.row.deletedAt === null) {
+      // Ćwiczenie już jest — ale formularz mógł przywieźć nazwę w języku,
+      // którego ten wiersz jeszcze nie zna. Domykamy zestaw zamiast odesłać
+      // wiersz bez zmian; inaczej dopisanie tłumaczenia przez powtórne wysłanie
+      // formularza nie miałoby drogi. Domknięcie, nie podmiana: to jest
+      // tworzenie, a nie edycja, więc nie ma prawa niczego zabrać.
+      const merged = mergeTranslations(existing.row.translations, input.translations);
+      if (!sameTranslations(existing.row.translations, merged)) {
+        const [updated] = await db
+          .update(exercises)
+          .set({ translations: merged, ...stampWrite() })
+          .where(eq(exercises.id, id))
+          .returning();
+        translations.enqueue([{ entity: 'exercise', id }]);
+        return context.json(toExerciseDto(updated!, existing.additionalTagIds), 200);
+      }
+
+      // Zestaw niedomknięty trafia do kolejki także przy powtórzonym zapisie:
+      // wcześniejsze wywołanie mogło skończyć się błędem modelu.
+      translations.enqueue([{ entity: 'exercise', id }]);
       return context.json(toExerciseDto(existing.row, existing.additionalTagIds), 200);
     }
 
@@ -230,6 +260,10 @@ export function createExerciseRouter(dependencies: AppDependencies) {
       primaryTagId: input.primaryTagId,
       note: input.note,
       gym: input.gym,
+      // Nazwy z formularza wchodzą od razu, a nie kolejką: wpisane ręcznie mają
+      // pierwszeństwo przed tym, co poda model, więc muszą być w wierszu, zanim
+      // model zostanie o cokolwiek zapytany.
+      translations: mergeTranslations(input.translations, null),
       ...stamp,
     };
 
@@ -244,6 +278,9 @@ export function createExerciseRouter(dependencies: AppDependencies) {
 
     await replaceAdditionalTags(id, input.additionalTagIds);
     await refreshEmbedding(db, layers.embedder, id);
+    // Brakujące języki dokłada model — poza żądaniem, bo zapis nie ma na co
+    // czekać, i bez prawa wywrócenia go, gdy dostawca nie odpowie.
+    translations.enqueue([{ entity: 'exercise', id }]);
     return context.json(toExerciseDto(row!, input.additionalTagIds), 201);
   });
 
@@ -277,6 +314,15 @@ export function createExerciseRouter(dependencies: AppDependencies) {
       // Identyfikator zostaje niezmieniony, choć nazwa się zmieniła. Wylicza się
       // z nazwy wyłącznie **przy tworzeniu** — inaczej poprawienie literówki
       // osierociłoby wszystkie serie wskazujące na stare id.
+      // Tłumaczenia: pominięte pole znaczy „zostaw, jak jest", a podane —
+      // „taki jest teraz komplet nazw". Podmiana, a nie domknięcie, bo po tej
+      // stronie siedzi człowiek z formularzem, w którym widzi wszystkie nazwy
+      // naraz; domknięcie znaczyłoby, że złego tłumaczenia nie da się usunąć.
+      const suppliedTranslations =
+        input.translations === undefined
+          ? existing.row.translations
+          : mergeTranslations(input.translations, null);
+
       const [row] = await db
         .update(exercises)
         .set({
@@ -285,6 +331,7 @@ export function createExerciseRouter(dependencies: AppDependencies) {
           primaryTagId,
           note: input.note === undefined ? existing.row.note : input.note,
           gym,
+          translations: suppliedTranslations,
           ...stampWrite(),
         })
         .where(eq(exercises.id, id))
@@ -295,6 +342,9 @@ export function createExerciseRouter(dependencies: AppDependencies) {
       // `refreshEmbedding` sam rozpozna, że tekst źródłowy jest ten sam, i nie
       // pojedzie po niego do dostawcy modeli.
       await refreshEmbedding(db, layers.embedder, id);
+      // Zmieniona nazwa znaczy nieaktualne tłumaczenia — te, których nikt nie
+      // wpisał ręcznie, dokłada model z nazwy aktualnej.
+      translations.enqueue([{ entity: 'exercise', id }]);
       return context.json(toExerciseDto(row!, additionalTagIds));
     },
   );

@@ -43,6 +43,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../db/client';
+import { useLocalizedName } from '../language/provider';
 import { createExercise, createTag, updateExercise } from '../db/library';
 import { describeHint, mergeDuplicateHints } from '../duplicate-hint';
 import { remoteReader } from '../remote/reader';
@@ -61,6 +62,13 @@ import {
   Loading,
   SectionTitle,
 } from '../ui/primitives';
+import {
+  EMPTY_TRANSLATIONS,
+  TranslationFields,
+  draftFromTranslations,
+  translationsFromDraft,
+  type TranslationDraft,
+} from '../ui/translation-fields';
 
 export type ExerciseFormMode = { kind: 'create'; tagId?: string } | { kind: 'edit'; id: string };
 
@@ -68,6 +76,7 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
   const router = useRouter();
   const author = useLocalAuthor();
   const requestSync = useRequestSync();
+  const named = useLocalizedName();
 
   const tags = useLiveQuery(tagLibrary(db));
   const library = useLiveQuery(exerciseLibrary(db, author?.userId ?? ''));
@@ -76,6 +85,7 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
   const editedTags = useLiveQuery(additionalTagsOf(db, editedId), [editedId]);
 
   const [name, setName] = useState('');
+  const [translations, setTranslations] = useState<TranslationDraft>(EMPTY_TRANSLATIONS);
   const [loggingType, setLoggingType] = useState<LoggingType>('weight_reps');
   const [primaryTagId, setPrimaryTagId] = useState<string | null>(
     mode.kind === 'create' ? (mode.tagId ?? null) : null,
@@ -84,6 +94,8 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
   const [note, setNote] = useState('');
   const [gym, setGym] = useState('');
   const [newTag, setNewTag] = useState('');
+  const [newTagTranslations, setNewTagTranslations] =
+    useState<TranslationDraft>(EMPTY_TRANSLATIONS);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(mode.kind === 'create');
@@ -97,6 +109,7 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
     if (mode.kind !== 'edit' || loaded || existing === undefined) return;
 
     setName(existing.name);
+    setTranslations(draftFromTranslations(existing.translations));
     setLoggingType(existing.loggingType);
     setPrimaryTagId(existing.tagId);
     setAdditionalTagIds(editedTags.data.map((tag) => tag.id));
@@ -149,8 +162,13 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
 
   const addTag = () =>
     run(async () => {
-      const saved = await createTag(db, { name: newTag, ...author });
+      const saved = await createTag(db, {
+        name: newTag,
+        translations: translationsFromDraft(newTagTranslations),
+        ...author,
+      });
       setNewTag('');
+      setNewTagTranslations(EMPTY_TRANSLATIONS);
       // Nowy tag zwykle powstaje po to, żeby od razu go użyć.
       if (primaryTagId === null) setPrimaryTagId(saved.id);
       requestSync();
@@ -167,6 +185,7 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
         const saved = await createExercise(db, {
           ...author,
           name,
+          translations: translationsFromDraft(translations),
           loggingType,
           primaryTagId,
           additionalTagIds,
@@ -183,6 +202,7 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
         ...author,
         exerciseId: mode.id,
         name,
+        translations: translationsFromDraft(translations),
         primaryTagId,
         additionalTagIds,
         note: note.trim().length === 0 ? null : note.trim(),
@@ -219,9 +239,11 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
               autoFocus={mode.kind === 'create'}
             />
 
+            <TranslationFields draft={translations} onChange={setTranslations} />
+
             {identical !== undefined && (
               <Text className="text-xs text-muted">
-                This name matches an existing exercise "{identical.exercise.name}" — saving will
+                This name matches an existing exercise "{named(identical.exercise)}" — saving will
                 update it instead of creating a second one.
               </Text>
             )}
@@ -274,7 +296,7 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
               {(tags.data ?? []).map((tag) => (
                 <Chip
                   key={tag.id}
-                  label={tag.name}
+                  label={named(tag)}
                   color={tag.color}
                   selected={primaryTagId === tag.id}
                   onPress={() => {
@@ -294,7 +316,7 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
                 .map((tag) => (
                   <Chip
                     key={tag.id}
-                    label={tag.name}
+                    label={named(tag)}
                     color={tag.color}
                     selected={additionalTagIds.includes(tag.id)}
                     onPress={() => toggleAdditional(tag.id)}
@@ -311,6 +333,7 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
               placeholder="e.g. Forearms"
               hint="The color is assigned by the system — derived from the name, so it's the same on every device."
             />
+            <TranslationFields draft={newTagTranslations} onChange={setNewTagTranslations} />
             <Button
               variant="secondary"
               label="Add tag"

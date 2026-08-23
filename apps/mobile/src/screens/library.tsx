@@ -17,6 +17,7 @@ import { Redirect, Stack, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import type { Translatable } from '@alphapump/core';
 import { useSession } from '../auth/client';
 import { db } from '../db/client';
 import {
@@ -28,6 +29,7 @@ import {
   type LibrarySource,
 } from '../db/queries';
 import { filterExercises } from '../exercise-search';
+import { useLocalizedName } from '../language/provider';
 import { Button, Chip, ChipRow, EmptyState, Field, Loading, Row, TagDot } from '../ui/primitives';
 
 const SOURCES: { value: LibrarySource; label: string }[] = [
@@ -39,6 +41,9 @@ const SOURCES: { value: LibrarySource; label: string }[] = [
 export function LibraryScreen() {
   const { data: session, isPending } = useSession();
   const router = useRouter();
+  // Nazwa do pokazania powstaje tutaj, a nie w zapytaniu: zależy od wyboru
+  // języka, a `useLiveQuery` subskrybuje tabele, nie ustawienia.
+  const named = useLocalizedName();
 
   const [query, setQuery] = useState('');
   const [tagId, setTagId] = useState<string | null>(null);
@@ -105,7 +110,7 @@ export function LibraryScreen() {
           {(tags.data ?? []).map((tag) => (
             <Chip
               key={tag.id}
-              label={`${tag.name} · ${String(tag.exerciseCount)}`}
+              label={`${named(tag)} · ${String(tag.exerciseCount)}`}
               color={tag.color}
               selected={tagId === tag.id}
               onPress={() => setTagId(tagId === tag.id ? null : tag.id)}
@@ -133,15 +138,15 @@ export function LibraryScreen() {
               <Row key={exercise.id} onPress={() => router.push(`/library/${exercise.id}`)}>
                 <TagDot color={exercise.tagColor} />
                 <View className="flex-1">
-                  <Text className="text-base text-text">{exercise.name}</Text>
-                  <Text className="text-xs text-muted">{describe(exercise)}</Text>
+                  <Text className="text-base text-text">{named(exercise)}</Text>
+                  <Text className="text-xs text-muted">{describe(exercise, named)}</Text>
                   {/* Tag główny liczy się do cykli, dodatkowe są tylko etykietą —
                       bez tej linii dopasowanie po tagu dodatkowym (np. „Triceps"
                       dla dipów, których głównym tagiem jest „Chest") było
                       niewytłumaczalne: wiersz pokazywał wyłącznie „Chest". */}
                   {extra.length > 0 && (
                     <Text className="text-xs text-muted">
-                      Also: {extra.map((tag) => tag.name).join(', ')}
+                      Also: {extra.map((tag) => named(tag)).join(', ')}
                     </Text>
                   )}
                 </View>
@@ -154,9 +159,12 @@ export function LibraryScreen() {
   );
 }
 
-function describe(exercise: LibraryRow): string {
+function describe(exercise: LibraryRow, named: (entity: Translatable) => string): string {
   const gym = exercise.gym === null ? '' : ` · ${exercise.gym}`;
-  if (exercise.setCount === 0) return `${exercise.tagName}${gym}`;
+  // Tag główny w wybranym języku, tak samo jak nazwa ćwiczenia wyżej — wiersz
+  // z jedną nazwą po polsku i drugą po angielsku wyglądałby jak błąd danych.
+  const tag = named({ name: exercise.tagName, translations: exercise.tagTranslations });
+  if (exercise.setCount === 0) return `${tag}${gym}`;
   const sets = exercise.setCount === 1 ? 'set' : 'sets';
-  return `${exercise.tagName} · ${String(exercise.setCount)} ${sets}${gym}`;
+  return `${tag} · ${String(exercise.setCount)} ${sets}${gym}`;
 }

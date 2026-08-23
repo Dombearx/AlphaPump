@@ -44,6 +44,7 @@ import {
   libraryTagListSchema,
   tagMergeReportSchema,
   tagSchema,
+  translationRefreshReportSchema,
 } from '@alphapump/core';
 import { Hono } from 'hono';
 import type { AppDependencies, AppEnvironment } from '../../context.js';
@@ -59,6 +60,7 @@ import {
   similarQuerySchema,
 } from './shared.js';
 import { createLibraryTagRouter } from './tags.js';
+import { createLibraryTranslationRouter } from './translations.js';
 
 export const adminLibraryRoutes: RouteSpec[] = [
   {
@@ -187,6 +189,26 @@ export const adminLibraryRoutes: RouteSpec[] = [
       },
     ],
   },
+  {
+    method: 'post',
+    path: '/admin/library/translations/refresh',
+    summary: 'Uzupełnienie brakujących tłumaczeń',
+    description:
+      'Zgłasza wszystkie żywe tagi i ćwiczenia bez kompletu nazw do przetłumaczenia ' +
+      'i odpowiada od razu — praca dzieje się poza żądaniem. Nazwy wpisane ręcznie ' +
+      'zostają nietknięte, a wiersz z kompletem nazw nie trafia do modelu w ogóle. ' +
+      '`enabled: false` znaczy, że tłumaczenie jest wyłączone — i nie jest to błąd.',
+    tag: 'administracja',
+    security: 'admin',
+    responses: [
+      { status: 202, description: 'Zlecenie przyjęte', schema: translationRefreshReportSchema },
+      {
+        status: 200,
+        description: 'Tłumaczenie wyłączone — nie ma czym tłumaczyć',
+        schema: translationRefreshReportSchema,
+      },
+    ],
+  },
 ];
 
 export function createAdminLibraryRouter(dependencies: AppDependencies) {
@@ -200,6 +222,7 @@ export function createAdminLibraryRouter(dependencies: AppDependencies) {
   router.route('/', createLibraryExerciseRouter(dependencies));
   router.route('/', createLibraryTagRouter(dependencies));
   router.route('/', createLibraryEmbeddingRouter(dependencies));
+  router.route('/', createLibraryTranslationRouter(dependencies));
 
   return router;
 }

@@ -193,10 +193,12 @@ describe('mutacje', () => {
       deletedAt: null,
     });
 
-    await createTag('Plecy', fake.impl);
+    await createTag('Plecy', { pl: 'Plecy', en: 'Back' }, fake.impl);
 
     expect(fake.calls[0]?.init.method).toBe('POST');
-    expect(fake.calls[0]?.init.body).toBe(JSON.stringify({ name: 'Plecy' }));
+    expect(fake.calls[0]?.init.body).toBe(
+      JSON.stringify({ name: 'Plecy', translations: { pl: 'Plecy', en: 'Back' } }),
+    );
   });
 
   it('porządkowanie tombstone’ów nie narzuca okna retencji — to wie serwer', async () => {
