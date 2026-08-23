@@ -141,7 +141,7 @@ export function PickExerciseScreen({ day }: { day: IsoDate }) {
           ))}
         </ChipRow>
 
-        {targets.length > 0 && (
+        {query.trim().length === 0 && targets.length > 0 && (
           <View className="gap-2 pb-2">
             <SectionTitle>Left in cycles</SectionTitle>
             {targets.map((target) => (
