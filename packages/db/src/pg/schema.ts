@@ -124,7 +124,7 @@ export const tags = pgTable(
     id: text('id').primaryKey(),
     name: text('name').notNull(),
     slug: text('slug').notNull(),
-    /** Wyliczany z hasha sluga — serwer nigdy go nie koryguje. */
+    /** Z dwudziestoelementowej palety, przydzielony przy tworzeniu — patrz `tag-color.ts`. */
     color: text('color').notNull(),
     ...syncColumns(),
   },

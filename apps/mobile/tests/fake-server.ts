@@ -164,11 +164,18 @@ export class FakeSyncServer implements SyncTransport {
       const decision = resolveSyncConflict(existing(this.tags.get(incoming.id)), revision);
 
       if (isWrite(decision)) {
+        // Kolor przydziela serwer, tak jak prawdziwy: nowy tag dostaje wolny
+        // z palety, znany zatrzymuje ten, który już ma.
+        const known = this.tags.get(incoming.id);
+        const taken = [...this.tags.values()]
+          .filter((tag) => tag.deletedAt === null && tag.id !== incoming.id)
+          .map((tag) => tag.color);
+
         this.tags.set(incoming.id, {
           id: incoming.id,
           name: incoming.name,
           slug: slug(incoming.name),
-          color: tagColor(incoming.name),
+          color: known && known.deletedAt === null ? known.color : tagColor(incoming.name, taken),
           ...revision,
           serverSeq: this.next(),
         });

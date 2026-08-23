@@ -99,7 +99,7 @@ Każdy tag posiada:
 - nazwę,
 - kolor globalny.
 
-Kolor nowego tagu jest przydzielany automatycznie przez system i powinien różnić się od już użytych kolorów w możliwie praktycznym stopniu. Użytkownik nie ustawia koloru ręcznie. 
+Kolor nowego tagu jest przydzielany automatycznie przez system z listy 20 kolorów wyraźnie różniących się od siebie. Dopóki tagów jest najwyżej 20, żaden kolor nie powtarza się między tagami; powyżej 20 tagów powtórzenia są dopuszczalne. Przydzielony kolor jest stabilny — nie zmienia się przy odświeżeniu widoku ani przy zmianie nazwy tagu. Użytkownik nie ustawia koloru ręcznie. 
 
 Tagi mogą być używane jako:
 - główny tag ćwiczenia,

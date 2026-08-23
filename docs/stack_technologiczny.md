@@ -216,12 +216,20 @@ opisana w specyfikacji. Tagi, jako byt globalny, deduplikują się same:
 > zmienić** — zmiana normalizacji zmieniłaby id istniejących wierszy. Mieszka w
 > `packages/core` i jest objęta testami traktowanymi jak kontrakt.
 
-Kolor tagu wyliczany jest deterministycznie z hasha sluga na paletę ok. 20
-kolorów. Tag utworzony offline ma więc od razu finalny kolor i nigdy go nie
-zmienia — serwer nie koryguje kolorów. Przy kilkudziesięciu tagach kolizje się
-zdarzą i dwa tagi dostaną ten sam kolor; specyfikacja wymaga odróżnialności „w
-możliwie praktycznym stopniu", więc to akceptowalne, a w zamian kolor jest
-stabilny i identyczny na każdym urządzeniu bez rundy do serwera.
+Kolor tagu pochodzi z **dwudziestoelementowej palety** barw wyraźnie różnych
+od siebie (najbliższa para dzieli ΔE2000 ≈ 16, pilnuje tego test). Slug wskazuje
+tylko slot startowy — przy zajętym szukamy pierwszego wolnego w przód, więc
+dopóki tagów jest najwyżej dwadzieścia, żaden kolor nie powtarza się między
+nimi. Powyżej dwudziestu powtórki są dopuszczalne; szersza paleta znaczyłaby
+tylko tyle, że część par i tak byłaby nieodróżnialna.
+
+Unikalność jest własnością **zbioru**, więc kolor nie jest czystą funkcją nazwy:
+przydziela go ten, kto zna resztę tagów. Telefon przydziela offline z tego, co
+zna lokalnie, a serwer poprawia przydział przy pushu — kolor jest wartością
+zapisaną w `tags.color`, więc telefon dostaje poprawkę w odpowiedzi i nie zmienia
+jej już nigdy potem. Zmiana nazwy koloru nie rusza, bo przeliczenie wepchnęłoby
+tag na kolor sąsiada. Wiersze sprzed palety (kolor z hasha na pełne koło barw)
+sprowadza do palety `normalizeTagColors` przy starcie serwera.
 
 Ćwiczenia wbudowane potrzebują autora, bo `author_id` wchodzi w klucz
 identyfikatora. Przypisujemy je do stałego konta systemowego o zafiksowanym

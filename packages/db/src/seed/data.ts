@@ -17,9 +17,9 @@
 
 import {
   SYSTEM_USER_ID,
+  assignTagColors,
   builtInExerciseId,
   slug,
-  tagColor,
   tagId,
   type LoggingType,
 } from '@alphapump/core';
@@ -83,11 +83,19 @@ const TAG_NAMES = [
 
 export type SeedTagName = (typeof TAG_NAMES)[number];
 
-function makeTag(name: string): SeedTag {
-  return { id: tagId(name), name, slug: slug(name), color: tagColor(name) };
-}
+/**
+ * Kolory idą przez `assignTagColors`, a nie po jednym z nazwy: unikalność jest
+ * własnością zbioru, więc dziesięć tagów startowych trzeba przydzielić naraz.
+ * Wynik jest deterministyczny, więc telefon i serwer dostają to samo.
+ */
+const SEED_TAG_COLORS = assignTagColors(TAG_NAMES.map((name) => ({ slug: slug(name) })));
 
-export const SEED_TAGS: readonly SeedTag[] = TAG_NAMES.map(makeTag);
+export const SEED_TAGS: readonly SeedTag[] = TAG_NAMES.map((name, index) => ({
+  id: tagId(name),
+  name,
+  slug: slug(name),
+  color: SEED_TAG_COLORS[index]!,
+}));
 
 interface ExerciseDefinition {
   name: string;

@@ -41,6 +41,7 @@ import { createAuth } from '../auth.js';
 import { loadConfig } from '../config.js';
 import { createDatabase, runMigrations } from '../db.js';
 import { seedPostgres } from '@alphapump/db/pg';
+import { takenTagColors } from '../domain/tags.js';
 import { accounts, cycleGoals, cycles, exercises, tags, users, workoutSets } from '../schema.js';
 
 /**
@@ -145,7 +146,7 @@ export async function runSample(): Promise<void> {
         id: grip,
         name: 'Chwyt szczypcowy',
         slug: slug('Chwyt szczypcowy'),
-        color: tagColor('Chwyt szczypcowy'),
+        color: tagColor('Chwyt szczypcowy', await takenTagColors(db, grip)),
         createdAt: AT,
         updatedAt: AT,
       })

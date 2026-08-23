@@ -21,10 +21,11 @@
  * docelowy, a dopiero pusty źródłowy znika.
  */
 
-import type { SyncRejection } from '@alphapump/core';
-import { and, eq, inArray, isNull, ne } from 'drizzle-orm';
+import { assignTagColors, type SyncRejection } from '@alphapump/core';
+import { and, asc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import type { Database } from '../db.js';
 import { cycleGoals, cycles, exerciseTags, exercises, tags } from '../schema.js';
+import { stampWrite } from '../sync-columns.js';
 
 /** Czy jakiekolwiek nieusunięte ćwiczenie używa tagu — jako główny albo dodatkowy. */
 export async function isTagOnExercise(db: Database, tagId: string): Promise<boolean> {
@@ -100,6 +101,64 @@ export async function findTagBySlug(
     .limit(1);
 
   return collision ?? null;
+}
+
+/* --------------------------------------------------------------------- kolory */
+
+/**
+ * Kolory zajęte przez żywe tagi — wejście dla przydziału koloru nowemu tagowi.
+ *
+ * Żywe, bo tag z tombstonem jest dla użytkownika nieistniejący i blokowanie
+ * przez niego slotu w dwudziestoelementowej palecie byłoby marnotrawstwem.
+ * `exceptId` pomija tag, dla którego akurat liczymy kolor — inaczej wskrzeszenie
+ * albo ponowny zapis tego samego wiersza zderzałby się sam ze sobą.
+ */
+export async function takenTagColors(db: Database, exceptId?: string): Promise<string[]> {
+  const rows = await db
+    .select({ id: tags.id, color: tags.color })
+    .from(tags)
+    .where(isNull(tags.deletedAt));
+
+  return rows.filter((row) => row.id !== exceptId).map((row) => row.color);
+}
+
+/**
+ * Sprowadza kolory żywych tagów do palety — raz, przy starcie serwera.
+ *
+ * Bez tego kroku zmiana formuły koloru dotyczyłaby wyłącznie tagów tworzonych
+ * od tej chwili, a użytkownik dalej patrzyłby na bibliotekę, w której dwa tagi
+ * mają ten sam kolor: kolor jest **zapisany** w wierszu, więc stare tagi noszą
+ * to, co policzyła stara formuła.
+ *
+ * Przydział jest zachowawczy i idempotentny (patrz `assignTagColors`), więc
+ * drugi start nie rusza już niczego. Zapis idzie przez `stampWrite`, bo inaczej
+ * nowy kolor nie dojechałby do telefonów: pull chodzi po `server_seq`, a decyzję
+ * o nadpisaniu lokalnego wiersza podejmuje LWW po `updated_at`.
+ */
+export async function normalizeTagColors(db: Database): Promise<number> {
+  const rows = await db
+    .select({ id: tags.id, slug: tags.slug, color: tags.color })
+    .from(tags)
+    .where(isNull(tags.deletedAt))
+    // Kolejność musi być stabilna, inaczej ten sam zbiór tagów dostawałby przy
+    // każdym starcie inny przydział.
+    .orderBy(asc(tags.createdAt), asc(tags.id));
+
+  const colors = assignTagColors(rows);
+  let recolored = 0;
+
+  for (const [index, row] of rows.entries()) {
+    const color = colors[index]!;
+    if (color === row.color) continue;
+
+    await db
+      .update(tags)
+      .set({ color, ...stampWrite() })
+      .where(eq(tags.id, row.id));
+    recolored += 1;
+  }
+
+  return recolored;
 }
 
 /**
