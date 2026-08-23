@@ -151,6 +151,23 @@ export interface RemainingTarget {
 const DEFAULT_COLOR = null;
 
 /**
+ * Cykle aktywne w danym dniu — nieprzarchiwizowane i obejmujące go zakresem.
+ * Dzielą go `remainingTargets` i `tagCycleProgress`, żeby ten sam dzień dawał
+ * ten sam zestaw cykli obu liczeniom.
+ */
+function activeCycleSummaries(
+  summaries: readonly CycleSummary[],
+  day: IsoDate,
+): readonly CycleSummary[] {
+  return summaries.filter(
+    ({ cycle }) =>
+      cycle.archivedAt === null &&
+      day >= cycle.startsOn &&
+      (cycle.endsOn === null || day <= cycle.endsOn),
+  );
+}
+
+/**
  * Pozostałe pozycje aktywnych cykli, po jednej na cel, w kolejności „najbliżej
  * ukończenia najpierw". Cykl, który nie obejmuje wskazanego dnia, w ogóle się tu
  * nie pojawia — dopisanie serii wstecz nie ma jak zasilić dzisiejszego celu.
@@ -161,11 +178,7 @@ export function remainingTargets(
 ): RemainingTarget[] {
   const targets: RemainingTarget[] = [];
 
-  for (const { cycle, progress } of summaries) {
-    if (cycle.archivedAt !== null) continue;
-    if (day < cycle.startsOn) continue;
-    if (cycle.endsOn !== null && day > cycle.endsOn) continue;
-
+  for (const { cycle, progress } of activeCycleSummaries(summaries, day)) {
     for (const goal of remainingGoals(progress)) {
       const row = cycle.goals.find((candidate) => candidate.id === goal.goalId);
       if (row === undefined) continue;
@@ -201,17 +214,37 @@ export function remainingTargets(
  * Gdy w jeden tag celuje kilka pozycji, udziałem tagu jest ich średnia — ta sama
  * reguła, którą rdzeń liczy postęp całego cyklu. Sumowanie nie wchodzi w grę:
  * „12 serii" i „30 minut" nie dodają się do żadnej sensownej liczby.
+ *
+ * Średnia liczy się ze **wszystkich** pozycji celujących w tag, nie tylko
+ * z niedokończonych: pozycja już zrobiona wnosi do niej pełny udział (1), a nie
+ * znika z niej całkiem. `remainingTargets` filtruje dokończone pozycje, bo służy
+ * podpowiedzi „gdzie jeszcze coś zostało" — licząc udział tagu z samego jego
+ * wyniku, gotowa pozycja wypadałaby ze średniej zamiast wnosić do niej swoją
+ * jedynkę, a chips pokazywałby mniej wypełnienia, niż faktycznie zrobiono.
  */
-export function tagCycleProgress(targets: readonly RemainingTarget[]): ReadonlyMap<string, number> {
-  const ratios = new Map<string, number[]>();
-
-  for (const target of targets) {
+export function tagCycleProgress(
+  summaries: readonly CycleSummary[],
+  day: IsoDate,
+): ReadonlyMap<string, number> {
+  const eligible = new Set<string>();
+  for (const target of remainingTargets(summaries, day)) {
     const tagId = target.tagId ?? target.exerciseTagId;
-    if (tagId === null) continue;
+    if (tagId !== null) eligible.add(tagId);
+  }
 
-    const forTag = ratios.get(tagId);
-    if (forTag === undefined) ratios.set(tagId, [target.ratio]);
-    else forTag.push(target.ratio);
+  const ratios = new Map<string, number[]>();
+  for (const { cycle, progress } of activeCycleSummaries(summaries, day)) {
+    for (const goal of progress.goals) {
+      const row = cycle.goals.find((candidate) => candidate.id === goal.goalId);
+      if (row === undefined) continue;
+
+      const tagId = row.tagId ?? row.exercisePrimaryTagId;
+      if (tagId === null || !eligible.has(tagId)) continue;
+
+      const forTag = ratios.get(tagId);
+      if (forTag === undefined) ratios.set(tagId, [goal.ratio]);
+      else forTag.push(goal.ratio);
+    }
   }
 
   return new Map(

@@ -402,7 +402,7 @@ describe('cykle w bazie lokalnej', () => {
       ]);
 
       const { summaries } = await load();
-      const marked = tagCycleProgress(remainingTargets(summaries, DAY));
+      const marked = tagCycleProgress(summaries, DAY);
 
       expect([...marked.keys()].sort()).toEqual([TAGS.chest, tagId('abs')].sort());
     });
@@ -412,7 +412,7 @@ describe('cykle w bazie lokalnej', () => {
       await addBench();
 
       const { summaries } = await load();
-      expect(tagCycleProgress(remainingTargets(summaries, DAY)).size).toBe(0);
+      expect(tagCycleProgress(summaries, DAY).size).toBe(0);
     });
 
     it('podaje udział wykonania tagu — jedna seria z czterech to ćwierć', async () => {
@@ -420,7 +420,7 @@ describe('cykle w bazie lokalnej', () => {
       await addBench();
 
       const { summaries } = await load();
-      expect(tagCycleProgress(remainingTargets(summaries, DAY)).get(TAGS.chest)).toBe(0.25);
+      expect(tagCycleProgress(summaries, DAY).get(TAGS.chest)).toBe(0.25);
     });
 
     it('uśrednia udział, gdy w jeden tag celuje kilka pozycji', async () => {
@@ -433,7 +433,25 @@ describe('cykle w bazie lokalnej', () => {
       await addBench();
 
       const { summaries } = await load();
-      expect(tagCycleProgress(remainingTargets(summaries, DAY)).get(TAGS.chest)).toBe(0.375);
+      expect(tagCycleProgress(summaries, DAY).get(TAGS.chest)).toBe(0.375);
+    });
+
+    it('liczy do średniej też pozycję już gotową, zamiast ją pomijać', async () => {
+      await create([
+        // Gotowa jedną serią — reszta cyklu jest w tagu „chest" dalej otwarta,
+        // więc gwiazdka zostaje, a ta pozycja ma wnieść do średniej swoją jedynkę.
+        { metric: 'sets', target: 1, exerciseId: EXERCISES.bench!.id, tagId: null },
+        { metric: 'sets', target: 8, exerciseId: null, tagId: TAGS.chest },
+      ]);
+      await addBench();
+      await addBench();
+      await addBench();
+      await addBench();
+
+      const { summaries } = await load();
+      // Gotowa pozycja (1) i otwarta (4/8 = 0.5) uśrednione dają 0.75 — a nie 0.5,
+      // jak wychodziło, gdy gotowa pozycja znikała ze średniej zamiast ją podbić.
+      expect(tagCycleProgress(summaries, DAY).get(TAGS.chest)).toBe(0.75);
     });
   });
 });

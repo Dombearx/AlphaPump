@@ -40,7 +40,6 @@ import { useSession } from '../auth/client';
 import {
   cycleSummaries,
   earliestRelevantDay,
-  remainingTargets,
   tagCycleProgress,
   withGoals,
 } from '../cycle-progress';
@@ -85,7 +84,7 @@ export function PickExerciseScreen({ day }: { day: IsoDate }) {
   const sets = useLiveQuery(setsForCycles(db, userId, from), [userId, from]);
 
   const cycleProgress = useMemo(
-    () => tagCycleProgress(remainingTargets(cycleSummaries(cycles, sets.data ?? []), day)),
+    () => tagCycleProgress(cycleSummaries(cycles, sets.data ?? []), day),
     [cycles, sets.data, day],
   );
 
