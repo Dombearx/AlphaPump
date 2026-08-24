@@ -1,11 +1,14 @@
 /**
  * Ręczny przegląd zgłoszeń zwrotnych.
  *
- * Usługa `services/triage` sama przegląda zgłoszenia raz na dobę — ten ekran
- * daje ten sam przebieg na żądanie: sprawdzenie nowych zgłoszeń, klasyfikacja,
- * założenie issue na GitHubie albo otwarcie dyskusji na Discordzie. Wynik jest
- * podsumowaniem liczb, nie listą zgłoszeń — treść i tak trafia na Discorda
- * i do GitHuba, więc drugie miejsce do jej czytania tylko by się rozjeżdżało.
+ * Usługa `services/triage` czyta zgłoszenia sama, w kilkanaście sekund po tym,
+ * jak wpadną — ten ekran daje ten sam przebieg na żądanie: sprawdzenie nowych
+ * zgłoszeń, klasyfikacja, założenie issue na GitHubie albo otwarcie dyskusji na
+ * Discordzie. Odkąd przebieg chodzi sam tak często, przycisk służy głównie temu,
+ * żeby zobaczyć liczby, i temu, żeby ruszyć zgłoszenie odłożone po nieudanych
+ * podejściach, nie czekając na koniec karencji. Wynik jest podsumowaniem liczb,
+ * nie listą zgłoszeń — treść i tak trafia na Discorda i do GitHuba, więc drugie
+ * miejsce do jej czytania tylko by się rozjeżdżało.
  */
 
 import { useMutation } from '@tanstack/react-query';
@@ -22,8 +25,8 @@ export function FeedbackPage() {
         <CardTitle>Feedback triage</CardTitle>
         <p className="text-sm text-muted">
           Reads new in-app feedback, classifies it, and either opens a GitHub issue (a bug) or
-          starts a Discord thread (a change request). The same pass also runs daily at a set hour —
-          the button below starts it right now.
+          starts a Discord thread (a change request). The same pass runs by itself within seconds of
+          a report arriving — the button below starts it right now and shows the numbers.
         </p>
         <div>
           <Button disabled={run.isPending} onClick={() => run.mutate()}>

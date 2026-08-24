@@ -628,8 +628,9 @@ do poprawienia — to sygnał, że zmiana wymaga świadomej decyzji i migracji.
 ## Segregacja zgłoszeń zwrotnych
 
 Osobna usługa w Pythonie (`services/triage`), poza workspace pnpm i poza logiką
-produktu. Raz na dobę czyta zgłoszenia zapisane przez `POST /feedback`,
-klasyfikuje je modelem językowym i prowadzi dalej dwiema różnymi ścieżkami:
+produktu. Czyta zgłoszenia zapisane przez `POST /feedback` w kilkanaście sekund
+po tym, jak wpadną, klasyfikuje je modelem językowym i prowadzi dalej dwiema
+różnymi ścieżkami:
 
 ```
 zgłoszenie z aplikacji  →  klasyfikacja (OpenRouter)
@@ -677,6 +678,28 @@ otwarte zgłoszenia z etykietą `ai-triage` i pyta, czy to ta sama sprawa. Dupli
 błędu ląduje jako komentarz do istniejącego issue, duplikat prośby o zmianę —
 jako wpis w trwającym wątku. Przy wątpliwości model ma odpowiadać „nie":
 dwa issue scala się jednym kliknięciem, a zgubione zgłoszenie nie wraca.
+
+**Zgłoszenie idzie do segregacji od razu.** Usługa zagląda do katalogu co
+`TRIAGE_FEEDBACK_POLL_SECONDS` (domyślnie 15). Wcześniej robiła to raz na dobę
+o umówionej godzinie i zgłoszenie napisane rano czekało do nocy — a razem z nim
+czekał użytkownik, który je napisał, i osoba, która miała je przeczytać. Pusty
+przebieg kosztuje `glob` po zamontowanym katalogu i jedno zapytanie do SQLite'a;
+modelu językowego dotyka dopiero wtedy, gdy w katalogu naprawdę leży nowy plik,
+więc częstość nie przekłada się na rachunek za OpenRoutera.
+
+Odpytywanie, a nie powiadomienie z API — mimo że oba kontenery stoją w tej samej
+sieci Compose i API ma już klienta do usługi. Powód jest ten sam, co przy pull
+requestach: katalog jest źródłem prawdy, więc nic nie ginie, gdy któryś
+z kontenerów akurat wstaje, a zgłoszenie podłożone ręcznie zostanie zauważone
+tak samo jak to z aplikacji. Cena — kilkanaście sekund opóźnienia — jest przy
+zgłoszeniu, na które i tak odpowiada człowiek, nie do zauważenia.
+
+**Zgłoszenie, które padło, wraca po karencji.** `TRIAGE_RETRY_AFTER_SECONDS`
+(domyślnie kwadrans) trzyma je z dala od kolejnego przebiegu. Przy odstępie
+kilkunastu sekund trzy podejścia z `TRIAGE_MAX_ATTEMPTS` wypaliłyby się w minutę
+i pierwsza lepsza czkawka OpenRoutera odkładałaby zgłoszenie na bok bezpowrotnie
+— a to jest dokładnie ten rodzaj awarii, który mija sam. Kwadrans rozkłada trzy
+podejścia na pół godziny.
 
 **Skąd bot wie o pull requeście.** Odpytuje GitHuba co dwie minuty, zamiast
 czekać na webhooka. Minipc stoi za VPN-em i GitHub nie ma jak się do niego dobić.
@@ -750,12 +773,14 @@ zmiennej. Objawem jest kontener `triage` w pętli restartów, z powodem
 w `docker compose logs triage`.
 
 ```bash
-# Podgląd pracy
+# Podgląd pracy. Pusty przebieg nie zostawia śladu na INFO — przy odpytywaniu
+# co kilkanaście sekund zalałby log. Widać go po `TRIAGE_LOG_LEVEL=DEBUG`.
 docker compose logs -f triage
 
-# Przegląd na żądanie, bez czekania na 3:17. Na czas tego polecenia do Discorda
-# zalogowane są dwie sesje tego samego bota (usługa i to wywołanie), więc nie
-# oznaczaj go w wątku, dopóki polecenie nie skończy pracy.
+# Przegląd na żądanie — przydatny głównie po to, żeby ruszyć zgłoszenie odłożone
+# na czas karencji. Na czas tego polecenia do Discorda zalogowane są dwie sesje
+# tego samego bota (usługa i to wywołanie), więc nie oznaczaj go w wątku, dopóki
+# polecenie nie skończy pracy.
 docker compose exec triage python -m alphapump_triage once
 
 # Próba na sucho: klasyfikacja i duplikaty liczą się naprawdę, ale nic nie
@@ -764,9 +789,9 @@ TRIAGE_DRY_RUN=true docker compose up triage
 ```
 
 Zgłoszenie, którego nie udało się przetworzyć (awaria OpenRoutera, GitHuba),
-wraca w kolejnym przebiegu — do trzech podejść, potem zostaje odłożone na bok
-z powodem zapisanym w bazie stanu. Uszkodzony plik JSON odpada od razu: jutro
-nie będzie bardziej poprawny.
+wraca po karencji — do trzech podejść, potem zostaje odłożone na bok z powodem
+zapisanym w bazie stanu. Uszkodzony plik JSON odpada od razu: za kwadrans nie
+będzie bardziej poprawny.
 
 ### Rozwój
 

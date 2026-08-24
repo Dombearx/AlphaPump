@@ -1,9 +1,11 @@
 /**
  * Klient usługi `services/triage` — jedyne miejsce, w którym API woła po sieci
  * drugi kontener zamiast bazy albo OpenRoutera. Usługa segregacji zgłoszeń
- * przegląda je i tak codziennie o umówionej godzinie (`TRIAGE_DAILY_AT`); ten
- * klient wystawia dokładnie ten sam przebieg panelowi administracyjnemu, jako
- * przycisk „uruchom teraz" — patrz `routes/admin.ts`.
+ * zagląda do katalogu sama, co kilkanaście sekund
+ * (`TRIAGE_FEEDBACK_POLL_SECONDS`), więc zgłoszenie i tak zostanie przeczytane
+ * bez niczyjego udziału; ten klient wystawia dokładnie ten sam przebieg
+ * panelowi administracyjnemu, jako przycisk „uruchom teraz" wraz
+ * z podsumowaniem liczb — patrz `routes/admin.ts`.
  */
 
 import { feedbackTriageReportSchema, type FeedbackTriageReport } from '@alphapump/core';
@@ -11,7 +13,7 @@ import type { TriageConfig } from './config.js';
 import { conflict, internal } from './errors.js';
 
 export interface TriageClient {
-  runDaily(): Promise<FeedbackTriageReport>;
+  runNow(): Promise<FeedbackTriageReport>;
 }
 
 /**
@@ -27,10 +29,10 @@ export function createTriageClient(
   fetchImpl: typeof fetch = fetch,
 ): TriageClient {
   return {
-    async runDaily() {
+    async runNow() {
       let response: Response;
       try {
-        response = await fetchImpl(`${config.url}/run-daily`, {
+        response = await fetchImpl(`${config.url}/run`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${config.token}` },
           signal: AbortSignal.timeout(TIMEOUT_MS),

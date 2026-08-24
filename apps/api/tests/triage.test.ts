@@ -35,13 +35,13 @@ const CONFIG = { url: 'http://triage:8090', token: 'sekret-tokenu' };
 const REPORT = { scanned: 2, bugs: 1, changeRequests: 1, duplicates: 0, failures: [] };
 
 describe('klient triage', () => {
-  it('woła /run-daily z tokenem w nagłówku', async () => {
+  it('woła /run z tokenem w nagłówku', async () => {
     const { calls, impl } = fakeFetch(200, REPORT);
-    const report = await createTriageClient(CONFIG, impl).runDaily();
+    const report = await createTriageClient(CONFIG, impl).runNow();
 
     expect(report).toEqual(REPORT);
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.url).toBe('http://triage:8090/run-daily');
+    expect(calls[0]?.url).toBe('http://triage:8090/run');
     expect(calls[0]?.init.method).toBe('POST');
     expect((calls[0]?.init.headers as Record<string, string>).Authorization).toBe(
       'Bearer sekret-tokenu',
@@ -51,7 +51,7 @@ describe('klient triage', () => {
   it('zamienia 409 z usługi na konflikt', async () => {
     const { impl } = fakeFetch(409, { error: 'już trwa' });
 
-    await expect(createTriageClient(CONFIG, impl).runDaily()).rejects.toMatchObject({
+    await expect(createTriageClient(CONFIG, impl).runNow()).rejects.toMatchObject({
       code: 'conflict',
     } satisfies Partial<ApiError>);
   });
@@ -59,7 +59,7 @@ describe('klient triage', () => {
   it('zamienia inny błędny status na błąd wewnętrzny', async () => {
     const { impl } = fakeFetch(500, { error: 'awaria' });
 
-    await expect(createTriageClient(CONFIG, impl).runDaily()).rejects.toMatchObject({
+    await expect(createTriageClient(CONFIG, impl).runNow()).rejects.toMatchObject({
       code: 'internal',
     } satisfies Partial<ApiError>);
   });
@@ -67,7 +67,7 @@ describe('klient triage', () => {
   it('odmawia odpowiedzi o nieznanym kształcie', async () => {
     const { impl } = fakeFetch(200, { coś: 'innego' });
 
-    await expect(createTriageClient(CONFIG, impl).runDaily()).rejects.toMatchObject({
+    await expect(createTriageClient(CONFIG, impl).runNow()).rejects.toMatchObject({
       code: 'internal',
     } satisfies Partial<ApiError>);
   });
@@ -76,7 +76,7 @@ describe('klient triage', () => {
     const impl = (() =>
       Promise.reject(new Error('połączenie odrzucone'))) as unknown as typeof fetch;
 
-    await expect(createTriageClient(CONFIG, impl).runDaily()).rejects.toMatchObject({
+    await expect(createTriageClient(CONFIG, impl).runNow()).rejects.toMatchObject({
       code: 'internal',
     } satisfies Partial<ApiError>);
   });

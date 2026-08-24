@@ -135,9 +135,9 @@ export const adminRoutes: RouteSpec[] = [
     path: '/admin/feedback/run',
     summary: 'Ręczny przegląd zgłoszeń zwrotnych',
     description:
-      'Wyzwala u usługi `services/triage` dokładnie ten sam przebieg, który dzieje się ' +
-      'codziennie o umówionej godzinie: sprawdza nowe zgłoszenia, klasyfikuje je i albo ' +
-      'zakłada issue na GitHubie, albo otwiera dyskusję na Discordzie.',
+      'Wyzwala u usługi `services/triage` dokładnie ten sam przebieg, który dzieje się tam ' +
+      'sam, w kilkanaście sekund po wpłynięciu zgłoszenia: sprawdza nowe zgłoszenia, ' +
+      'klasyfikuje je i albo zakłada issue na GitHubie, albo otwiera dyskusję na Discordzie.',
     tag: 'administracja',
     security: 'admin',
     responses: [
@@ -386,7 +386,7 @@ export function createAdminRouter(dependencies: AppDependencies, backupDir: stri
         'The triage service is not configured (missing TRIAGE_URL/TRIAGE_HTTP_TOKEN)',
       );
     }
-    return context.json(await dependencies.triage.runDaily());
+    return context.json(await dependencies.triage.runNow());
   });
 
   return router;

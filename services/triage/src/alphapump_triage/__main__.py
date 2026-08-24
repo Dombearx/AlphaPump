@@ -1,10 +1,10 @@
 """Punkt wejścia usługi.
 
-Jeden proces, trzy role: klient Discorda utrzymuje połączenie, planista odpala
-przegląd zgłoszeń o umówionej godzinie, a pętla odpytywania szuka pull requestów.
-Wszystkie trzy dzielą tę samą pętlę zdarzeń i ten sam plik stanu — rozbicie ich
-na osobne kontenery oznaczałoby dwa procesy piszące do jednego SQLite'a i drugi
-komplet sekretów, bez niczego w zamian.
+Jeden proces, trzy role: klient Discorda utrzymuje połączenie, planista zagląda
+do katalogu zgłoszeń co kilkanaście sekund, a pętla odpytywania szuka pull
+requestów. Wszystkie trzy dzielą tę samą pętlę zdarzeń i ten sam plik stanu —
+rozbicie ich na osobne kontenery oznaczałoby dwa procesy piszące do jednego
+SQLite'a i drugi komplet sekretów, bez niczego w zamian.
 
 Uruchomienie:
 
@@ -18,11 +18,11 @@ import asyncio
 import logging
 import os
 import sys
+from functools import partial
 
 import discord
 from aiohttp import web
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from .config import Config, ConfigError, load_config
@@ -67,34 +67,37 @@ async def _run(config: Config, once: bool) -> None:
     tracker = DryRunIssueTracker(github) if config.dry_run else github
     scheduler = AsyncIOScheduler(timezone=config.timezone)
 
-    # Dzielona między planistę i serwer HTTP: przegląd o umówionej godzinie
-    # i przegląd wywołany ręcznie z panelu administracyjnego nie mogą ruszyć
-    # się naraz — obydwa czytają i oznaczają te same zgłoszenia.
+    # Dzielona między planistę i serwer HTTP: przebieg z odpytywania i przebieg
+    # wywołany ręcznie z panelu administracyjnego nie mogą ruszyć się naraz —
+    # obydwa czytają i oznaczają te same zgłoszenia.
     run_lock = asyncio.Lock()
 
-    async def run_daily_scheduled() -> None:
+    async def run_pass_scheduled() -> None:
         async with run_lock:
-            await service.run_daily()
+            await service.run_pass()
 
     async def handle_mention(thread_id: str) -> None:
         await service.handle_mention(thread_id)
 
     async def on_ready() -> None:
         if once:
-            report = await service.run_daily()
+            # Przebieg z ręki człowieka — karencja po nieudanych podejściach go
+            # nie dotyczy; zwykle po to się go właśnie uruchamia.
+            report = await service.run_pass(ignore_cooldown=True)
             logger.info("przegląd na żądanie zakończony: %s", report)
             await bot.close()
             return
 
+        # Zgłoszenia czytamy zaraz po tym, jak się pojawią. Odpytywanie zamiast
+        # powiadomienia z API jest wyborem tej samej natury co przy pull
+        # requestach: `glob` po zamontowanym katalogu i jedno zapytanie do
+        # SQLite'a kosztują tyle, co nic, a nic nie ginie, gdy któryś z dwóch
+        # kontenerów akurat wstaje. Model językowy rusza dopiero wtedy, gdy
+        # w katalogu naprawdę leży nowy plik.
         scheduler.add_job(
-            _guarded(run_daily_scheduled, "przegląd dzienny"),
-            CronTrigger(
-                hour=config.daily_hour, minute=config.daily_minute, timezone=config.timezone
-            ),
-            id="daily",
-            # Restart kontenera tuż po zaplanowanej godzinie nie może zjeść
-            # przebiegu; godzina tolerancji jest w sam raz na aktualizację stosu.
-            misfire_grace_time=3600,
+            _guarded(run_pass_scheduled, "przegląd zgłoszeń", level=logging.DEBUG),
+            IntervalTrigger(seconds=config.feedback_poll_seconds),
+            id="feedback",
             coalesce=True,
             max_instances=1,
         )
@@ -116,10 +119,8 @@ async def _run(config: Config, once: bool) -> None:
         )
         scheduler.start()
         logger.info(
-            "planista wystartował: przegląd o %02d:%02d (%s), pull requesty co %ds",
-            config.daily_hour,
-            config.daily_minute,
-            config.timezone.key,
+            "planista wystartował: zgłoszenia co %ds, pull requesty co %ds",
+            config.feedback_poll_seconds,
             config.pr_poll_seconds,
         )
 
@@ -137,7 +138,11 @@ async def _run(config: Config, once: bool) -> None:
     # panelu administracyjnego — serwer HTTP nie ma tam czego robić.
     http_runner: web.AppRunner | None = None
     if not once:
-        http_app = create_http_app(config.http_token, service.run_daily, run_lock)
+        # `ignore_cooldown`, bo po drugiej stronie tego portu stoi człowiek przy
+        # przycisku w panelu — patrz `service.run_pass`.
+        http_app = create_http_app(
+            config.http_token, partial(service.run_pass, ignore_cooldown=True), run_lock
+        )
         http_runner = web.AppRunner(http_app)
         await http_runner.setup()
         await web.TCPSite(http_runner, "0.0.0.0", config.http_port).start()
@@ -161,15 +166,20 @@ async def _run(config: Config, once: bool) -> None:
         state.close()
 
 
-def _guarded(job, name: str):
+def _guarded(job, name: str, level: int = logging.INFO):
     """Opakowuje zadanie planisty tak, żeby wyjątek nie ubił harmonogramu.
 
     APScheduler przy nieobsłużonym wyjątku zostawia zadanie w harmonogramie, ale
     cisza w logu wyglądałaby jak „przebieg się nie odbył". Wolimy ślad.
+
+    `level` obniża się dla zadań chodzących co kilkanaście sekund: linia „start"
+    na INFO przy takim odstępie to kilka tysięcy wpisów dziennie, w których
+    ginie wszystko, co naprawdę warto przeczytać. Błąd i tak idzie na ERROR,
+    niezależnie od tego poziomu.
     """
 
     async def run() -> None:
-        logger.info("start: %s", name)
+        logger.log(level, "start: %s", name)
         try:
             await job()
         except Exception:  # noqa: BLE001

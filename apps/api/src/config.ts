@@ -81,9 +81,9 @@ const environmentSchema = z.object({
    * Adres usługi `services/triage` w sieci Compose (np. `http://triage:8090`)
    * i token, którym panel administracyjny wyzwala u niej przegląd na żądanie —
    * patrz `POST /admin/feedback/run`. Bez obu naraz endpoint istnieje, ale
-   * oddaje 503: przegląd i tak dzieje się codziennie o umówionej godzinie
-   * wewnątrz samej usługi `triage`, niezależnie od tego, czy API potrafi go
-   * wyzwolić ręcznie.
+   * oddaje 503: przegląd i tak dzieje się sam, w kilkanaście sekund po
+   * wpłynięciu zgłoszenia, wewnątrz samej usługi `triage` — niezależnie od
+   * tego, czy API potrafi go wyzwolić ręcznie.
    */
   // `z.string()`, nie `z.url()`: Compose przekazuje pusty napis, gdy
   // `TRIAGE_HTTP_TOKEN` nie jest ustawiony (`${TRIAGE_HTTP_TOKEN:+…}` w

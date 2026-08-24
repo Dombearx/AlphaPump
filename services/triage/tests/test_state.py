@@ -1,6 +1,8 @@
-"""Stan decyduje, czy zgłoszenie wróci jutro — najdroższe pomyłki siedzą tutaj."""
+"""Stan decyduje, czy zgłoszenie wróci w kolejnym przebiegu — najdroższe pomyłki siedzą tutaj."""
 
 from __future__ import annotations
+
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -30,6 +32,34 @@ def test_nieudane_zgloszenie_wraca_do_wyczerpania_prob(state: State):
     # Trzecia porażka odkłada zgłoszenie na bok: dalsze próby kosztowałyby
     # zapytania do modelu i nie zmieniłyby wyniku.
     assert state.pending(["a.json"], max_attempts=3) == []
+
+
+def test_karencja_wstrzymuje_ponowne_podejscie(state: State):
+    """Przy przebiegu co kilkanaście sekund trzy podejścia poszłyby w minutę.
+
+    Karencja jest jedyną rzeczą, która trzyma `max_attempts` przy życiu jako
+    licznik podejść rozłożonych w czasie, a nie jako trzy zapytania pod rząd do
+    tej samej niedostępnej usługi.
+    """
+
+    state.mark_failed("a.json", "OpenRouter nie odpowiedział")
+
+    assert state.pending(["a.json"], max_attempts=3, retry_after_seconds=900) == []
+    # Bez karencji (i po jej upływie — patrz test niżej) zgłoszenie wraca.
+    assert state.pending(["a.json"], max_attempts=3) == ["a.json"]
+
+
+def test_po_uplywie_karencji_zgloszenie_wraca(state: State):
+    state.mark_failed("a.json", "chwilowa awaria sieci")
+    _cofnij_ostatnie_podejscie(state, "a.json", minut=30)
+
+    assert state.pending(["a.json"], max_attempts=3, retry_after_seconds=900) == ["a.json"]
+
+
+def test_karencja_nie_dotyczy_zgloszenia_bez_porazek(state: State):
+    """Nowe zgłoszenie idzie do przetworzenia od razu, karencja czy nie."""
+
+    assert state.pending(["a.json"], max_attempts=3, retry_after_seconds=900) == ["a.json"]
 
 
 def test_udane_podejscie_kasuje_licznik_porazek(state: State):
@@ -122,3 +152,14 @@ def test_baza_z_kolumna_po_wylaczonym_dopytywaniu_dziala(tmp_path):
     assert state.discussion("w1").title == "Timer"
     state.record_discussion(Discussion("w2", "m2", "Dźwięk", "Dźwięk na koniec.", "domin"))
     assert [d.thread_id for d in state.open_discussions()] == ["w1", "w2"]
+
+
+def _cofnij_ostatnie_podejscie(state: State, file_name: str, minut: int) -> None:
+    """Przesuwa `seen_at` wstecz — zamiast usypiać test na czas karencji."""
+
+    kiedy = (datetime.now(UTC) - timedelta(minutes=minut)).isoformat()
+    # Sięgnięcie po prywatne połączenie jest tu celowe: stan nie ma (i nie
+    # potrzebuje) publicznej metody do cofania zegara.
+    state._connection.execute(
+        "UPDATE feedback_seen SET seen_at = ? WHERE file_name = ?", (kiedy, file_name)
+    )

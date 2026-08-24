@@ -105,8 +105,8 @@ def make_config(**overrides) -> Config:
     defaults = dict(
         feedback_dir="/nieistotne",
         state_db=":memory:",
-        daily_hour=3,
-        daily_minute=17,
+        feedback_poll_seconds=15,
+        retry_after_seconds=900,
         timezone=ZoneInfo("Europe/Warsaw"),
         openrouter_api_key="test",
         openrouter_base_url="https://example.invalid/v1",

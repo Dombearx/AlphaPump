@@ -47,33 +47,13 @@ def _positive_int(name: str, default: int) -> int:
     return value
 
 
-def _daily_time(raw: str) -> tuple[int, int]:
-    """Rozbija `GG:MM` na godzinę i minutę.
-
-    Format jest sprawdzany tutaj, a nie dopiero przez planistę, bo literówka
-    w godzinie objawiłaby się jako „przebieg, który nigdy nie nastąpił" —
-    najgorszy możliwy rodzaj awarii dla zadania uruchamianego raz na dobę.
-    """
-
-    parts = raw.split(":")
-    if len(parts) != 2:
-        raise ConfigError(f"TRIAGE_DAILY_AT ma format GG:MM, jest: {raw!r}")
-    try:
-        hour, minute = int(parts[0]), int(parts[1])
-    except ValueError as error:
-        raise ConfigError(f"TRIAGE_DAILY_AT ma format GG:MM, jest: {raw!r}") from error
-    if not (0 <= hour <= 23 and 0 <= minute <= 59):
-        raise ConfigError(f"TRIAGE_DAILY_AT poza zakresem doby: {raw!r}")
-    return hour, minute
-
-
 @dataclass(frozen=True)
 class Config:
     feedback_dir: str
     state_db: str
 
-    daily_hour: int
-    daily_minute: int
+    feedback_poll_seconds: int
+    retry_after_seconds: int
     timezone: ZoneInfo
 
     openrouter_api_key: str
@@ -121,8 +101,6 @@ def load_config() -> Config:
     except ZoneInfoNotFoundError as error:
         raise ConfigError(f"nieznana strefa czasowa TRIAGE_TIMEZONE={timezone_name!r}") from error
 
-    hour, minute = _daily_time(_optional("TRIAGE_DAILY_AT", "03:17"))
-
     channel_raw = _required("DISCORD_CHANNEL_ID")
     try:
         channel_id = int(channel_raw)
@@ -132,8 +110,18 @@ def load_config() -> Config:
     return Config(
         feedback_dir=_optional("TRIAGE_FEEDBACK_DIR", "/data/feedback"),
         state_db=_optional("TRIAGE_STATE_DB", "/data/state/triage.sqlite3"),
-        daily_hour=hour,
-        daily_minute=minute,
+        # Zgłoszenie ma zostać przeczytane wtedy, kiedy przyszło, a nie o umówionej
+        # godzinie następnej doby. Odpytywanie katalogu jest tanie (`glob` po
+        # lokalnym katalogu plus jedno zapytanie do SQLite'a), a model językowy
+        # rusza dopiero wtedy, gdy naprawdę pojawił się nowy plik — więc częsty
+        # przebieg nie kosztuje ani zapytań do OpenRoutera, ani do GitHuba.
+        feedback_poll_seconds=_positive_int("TRIAGE_FEEDBACK_POLL_SECONDS", 15),
+        # Karencja po nieudanym podejściu. Przy przebiegu co kilkanaście sekund
+        # `TRIAGE_MAX_ATTEMPTS` wyczerpałoby się w niecałą minutę i chwilowa
+        # awaria OpenRoutera odkładałaby zgłoszenie na bok na zawsze. Kwadrans
+        # rozkłada trzy podejścia na pół godziny — tyle, ile trwa przeciętna
+        # niedostępność usługi zewnętrznej.
+        retry_after_seconds=_positive_int("TRIAGE_RETRY_AFTER_SECONDS", 900),
         timezone=timezone,
         openrouter_api_key=_required("OPENROUTER_API_KEY"),
         openrouter_base_url=_optional("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
@@ -154,8 +142,8 @@ def load_config() -> Config:
         discord_channel_id=channel_id,
         pr_poll_seconds=_positive_int("TRIAGE_PR_POLL_SECONDS", 120),
         # Po tylu nieudanych podejściach zgłoszenie zostaje odłożone na bok.
-        # Bez tego licznika jeden plik nie do przetworzenia wracałby codziennie
-        # i codziennie kosztował te same zapytania do LLM-a.
+        # Bez tego licznika jeden plik nie do przetworzenia wracałby w każdym
+        # przebiegu i w każdym kosztował te same zapytania do LLM-a.
         max_attempts=_positive_int("TRIAGE_MAX_ATTEMPTS", 3),
         dry_run=_flag("TRIAGE_DRY_RUN"),
         # Port jest wewnętrzny do sieci Compose (usługa nie ma `ports:`), więc

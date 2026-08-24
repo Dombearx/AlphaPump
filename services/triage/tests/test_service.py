@@ -49,7 +49,7 @@ async def test_blad_trafia_na_githuba_i_dostaje_watek(reader, write_feedback):
         [BUG, {"title": "Seria zapisuje się z zerem powtórzeń", "body": "## Objaw\n…"}],
     )
 
-    report = await service.run_daily()
+    report = await service.run_pass()
 
     assert report.bugs == 1
     title, body, labels = tracker.created[0]
@@ -82,7 +82,7 @@ async def test_duplikat_bledu_dopisuje_komentarz_zamiast_nowego_issue(reader, wr
         state=state,
     )
 
-    report = await service.run_daily()
+    report = await service.run_pass()
 
     assert report.duplicates == 1
     assert tracker.created == []
@@ -106,7 +106,7 @@ async def test_odmowa_discorda_nie_gubi_zalozonego_issue(reader, write_feedback)
         chat=ZepsutyChat(),
     )
 
-    report = await service.run_daily()
+    report = await service.run_pass()
 
     assert len(report.failures) == 1
     assert len(tracker.created) == 1
@@ -126,7 +126,7 @@ async def test_numer_duplikatu_spoza_listy_jest_ignorowany(reader, write_feedbac
         tracker=tracker,
     )
 
-    await service.run_daily()
+    await service.run_pass()
 
     assert tracker.comments == []
     assert len(tracker.created) == 1
@@ -139,7 +139,7 @@ async def test_prosba_o_zmiane_nie_zaklada_issue_tylko_dyskusje(reader, write_fe
     write_feedback("Fajnie byłoby mieć timer odliczający przerwy między seriami.")
     service, tracker, chat, state = build(reader, [CHANGE])
 
-    report = await service.run_daily()
+    report = await service.run_pass()
 
     assert report.change_requests == 1
     # Zakres zmiany ustala zespół, nie model — issue powstanie dopiero po dyskusji.
@@ -157,7 +157,7 @@ async def test_druga_prosba_o_to_samo_dolacza_do_watku(reader, write_feedback):
         [CHANGE, CHANGE, {"duplicate_of": 1, "reason": "to samo"}],
     )
 
-    report = await service.run_daily()
+    report = await service.run_pass()
 
     assert report.change_requests == 1
     assert report.duplicates == 1
@@ -370,7 +370,7 @@ async def test_wlasny_komentarz_nie_wraca_do_watku(reader, write_feedback):
         reader, [BUG, {"duplicate_of": 55, "reason": "to samo"}], tracker=tracker, state=state
     )
 
-    await service.run_daily()
+    await service.run_pass()
     wpisow_po_duplikacie = len(chat.thread_posts)
 
     assert await service.poll_issue_comments() == 0
@@ -451,24 +451,73 @@ async def test_awaria_jednego_zgloszenia_nie_konczy_przebiegu(reader, write_feed
 
     service, tracker, chat, state = build(reader, [wybuchowy_klasyfikator, CHANGE])
 
-    report = await service.run_daily()
+    report = await service.run_pass()
 
     assert report.change_requests == 1
     assert len(report.failures) == 1
-    # Zgłoszenie, które padło, wróci jutro; to udane — nie.
+    # Zgłoszenie, które padło, wróci po karencji; to udane — nigdy.
     assert state.pending(
         ["2026-08-14T06-00-00_a_1.json", "2026-08-14T07-00-00_b_2.json"], max_attempts=3
     ) == ["2026-08-14T06-00-00_a_1.json"]
+
+
+async def test_zgloszenie_po_porazce_nie_wraca_w_najblizszym_przebiegu(reader, write_feedback):
+    """Karencja liczy się w przebiegu, a nie dopiero w `state.pending`.
+
+    Planista chodzi co kilkanaście sekund. Gdyby `run_pass` nie podawał dalej
+    `retry_after_seconds`, trzy podejścia z `TRIAGE_MAX_ATTEMPTS` wypaliłyby się
+    w niecałą minutę i pierwsza lepsza czkawka OpenRoutera odkładałaby zgłoszenie
+    na bok bezpowrotnie.
+    """
+
+    write_feedback("pierwsze", file_name="2026-08-14T06-00-00_a_1.json")
+
+    def wybuchowy_klasyfikator(model: str, system: str, user: str) -> dict:
+        raise RuntimeError("OpenRouter padł")
+
+    service, tracker, chat, state = build(
+        reader, [wybuchowy_klasyfikator, wybuchowy_klasyfikator], retry_after_seconds=900
+    )
+
+    pierwszy = await service.run_pass()
+    drugi = await service.run_pass()
+
+    assert len(pierwszy.failures) == 1
+    assert drugi.scanned == 0
+    # Licznik podejść stoi na jednym: drugi przebieg nawet nie sięgnął po model.
+    assert state.pending(["2026-08-14T06-00-00_a_1.json"], max_attempts=3) == [
+        "2026-08-14T06-00-00_a_1.json"
+    ]
+
+
+async def test_reczny_przebieg_nie_czeka_na_koniec_karencji(reader, write_feedback):
+    """Przycisk w panelu ma znaczyć „teraz", także dla zgłoszenia po porażce.
+
+    Karencja broni przed trzema podejściami pod rząd do usługi, która nie
+    odpowiada — a nie przed kimś, kto właśnie poprawił klucz w `.env`.
+    """
+
+    write_feedback("pierwsze", file_name="2026-08-14T06-00-00_a_1.json")
+
+    def raz_wybuchowy(model: str, system: str, user: str) -> dict:
+        raise RuntimeError("OpenRouter padł")
+
+    service, tracker, chat, state = build(reader, [raz_wybuchowy, CHANGE], retry_after_seconds=900)
+
+    await service.run_pass()
+    naprawiony = await service.run_pass(ignore_cooldown=True)
+
+    assert naprawiony.change_requests == 1
 
 
 async def test_uszkodzony_plik_odpada_od_razu(reader, write_feedback, feedback_dir):
     (feedback_dir / "2026-08-14T06-00-00_zepsute.json").write_text("{", encoding="utf-8")
     service, tracker, chat, state = build(reader, [])
 
-    report = await service.run_daily()
+    report = await service.run_pass()
 
     assert len(report.failures) == 1
-    # Uszkodzony plik nie naprawi się jutro — nie ma po co go ponawiać.
+    # Uszkodzony plik nie naprawi się za kwadrans — nie ma po co go ponawiać.
     assert state.pending(["2026-08-14T06-00-00_zepsute.json"], max_attempts=3) == []
 
 
@@ -478,7 +527,7 @@ async def test_nieznana_kategoria_ladu_je_w_dyskusji(reader, write_feedback):
     write_feedback("Super apka!")
     service, tracker, chat, _ = build(reader, [{"kind": "coś_nowego", "title": "Pochwała"}])
 
-    report = await service.run_daily()
+    report = await service.run_pass()
 
     assert report.change_requests == 1
     assert tracker.created == []
@@ -488,7 +537,7 @@ async def test_brak_tytulu_od_modelu_nie_blokuje_zgloszenia(reader, write_feedba
     write_feedback("Nie da się usunąć ćwiczenia z planu.\nDrugi wiersz.")
     service, tracker, chat, _ = build(reader, [{"kind": "change_request"}])
 
-    await service.run_daily()
+    await service.run_pass()
 
     assert "Nie da się usunąć ćwiczenia z planu." in chat.threads[next(iter(chat.threads))]
 
@@ -509,7 +558,7 @@ async def test_rozne_ksztalty_odpowiedzi_o_duplikacie(
         responses.append({"title": "T", "body": "B"})
     service, tracker, chat, _ = build(reader, responses, tracker=tracker)
 
-    await service.run_daily()
+    await service.run_pass()
 
     if oczekiwany_numer is None:
         assert len(tracker.created) == 1

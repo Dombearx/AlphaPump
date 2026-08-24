@@ -70,7 +70,8 @@ export interface AppDependencies {
    * z panelu administracyjnego. Pominięcie pola znaczy **panel nie może
    * wyzwolić przeglądu** — `POST /admin/feedback/run` oddaje wtedy 503, tak
    * jak przy braku `TRIAGE_URL`/`TRIAGE_HTTP_TOKEN` w środowisku. Przegląd
-   * dzieje się mimo to codziennie o umówionej godzinie wewnątrz `triage`.
+   * dzieje się mimo to sam, w kilkanaście sekund po wpłynięciu zgłoszenia,
+   * wewnątrz `triage`.
    */
   triage?: TriageClient;
 }

@@ -213,7 +213,14 @@ services:
       # woluminy niżej — ten sam wzorzec co przy `FEEDBACK_DIR` w `api`.
       TRIAGE_FEEDBACK_DIR: /data/feedback
       TRIAGE_STATE_DB: /data/state/triage.sqlite3
-      TRIAGE_DAILY_AT: ${TRIAGE_DAILY_AT:-03:17}
+      # Co ile sekund usługa zagląda do katalogu zgłoszeń. Kilkanaście, nie
+      # kilkanaście godzin: zgłoszenie ma zostać przeczytane wtedy, kiedy je
+      # napisano. Pusty przebieg to `glob` po katalogu i jedno zapytanie do
+      # SQLite'a — modelu językowego nie dotyka.
+      TRIAGE_FEEDBACK_POLL_SECONDS: ${TRIAGE_FEEDBACK_POLL_SECONDS:-15}
+      # Karencja przed ponownym podejściem do zgłoszenia, które padło. Bez
+      # niej `TRIAGE_MAX_ATTEMPTS` wypaliłoby się w minutę przy takim odstępie.
+      TRIAGE_RETRY_AFTER_SECONDS: ${TRIAGE_RETRY_AFTER_SECONDS:-900}
       TRIAGE_TIMEZONE: ${TRIAGE_TIMEZONE:-Europe/Warsaw}
       TRIAGE_PR_POLL_SECONDS: ${TRIAGE_PR_POLL_SECONDS:-120}
       TRIAGE_LOG_LEVEL: ${TRIAGE_LOG_LEVEL:-INFO}
