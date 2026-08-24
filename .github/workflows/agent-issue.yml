@@ -107,6 +107,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Claude Code
+        id: agent
         if: steps.zadanie.outputs.uruchamiac == 'tak'
         uses: anthropics/claude-code-action@v1
         env:
@@ -253,6 +254,7 @@ jobs:
       # wprost: jest PR-ka albo choć komentarz? Jeśli nie, piszemy o tym w samym
       # zgłoszeniu i kończymy zadanie błędem.
       - name: Sprawdź, czy agent zostawił ślad
+        id: slad
         if: always() && steps.zadanie.outputs.uruchamiac == 'tak'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -276,7 +278,109 @@ jobs:
 
           Log przebiegu: $PRZEBIEG
 
+          Jeśli zdążył cokolwiek zmienić w katalogu roboczym, łatka z tą pracą leży
+          w artefaktach tego przebiegu (\`praca-agenta-issue-$NUMER\`) — jak ją
+          odtworzyć, mówi \`jak-uzyc.txt\` w środku.
+
           Po naprawie: **Actions → „Agent na issue" → Run workflow** i numer tego zgłoszenia.
           TRESC
           echo "::error::agent nie zostawił po sobie ani PR-ki, ani komentarza"
           exit 1
+
+      # Runner znika razem z przebiegiem, a agent wypycha gałąź dopiero na
+      # samym końcu — przebieg przerwany w połowie nie zostawiał więc po sobie
+      # ani linijki. Na zgłoszeniu #77 limit sesji zabrał w ten sposób
+      # dziewięćdziesiąt siedem tur pracy: ani gałęzi, ani PR-ki, ani diffu
+      # w logu, bo akcja chowa wyjście agenta i drukuje samo podsumowanie.
+      #
+      # Łatka w artefaktach jest tanią polisą na to samo jutro: nie wymaga od
+      # agenta niczego w trakcie pracy (a więc nie zadziała gorzej dlatego, że
+      # zabrakło mu tur), zbiera się po fakcie i wraca jednym `git apply`.
+      # Bazą jest `GITHUB_SHA`, czyli commit, na którym stanął checkout —
+      # dzięki temu jedna łatka niesie i commity, które agent zdążył zrobić
+      # lokalnie, i to, czego nie zdążył zacommitować.
+      #
+      # Zbieramy tylko wtedy, kiedy coś poszło nie tak. Po udanym przebiegu ta
+      # sama zmiana leży w PR-ce, więc artefakt byłby jej gorszą kopią.
+      - name: Zbierz niewypchniętą pracę agenta
+        id: ratunek
+        if: >-
+          always() && steps.zadanie.outputs.uruchamiac == 'tak' && (steps.agent.outcome !=
+          'success' || steps.slad.outcome != 'success')
+        env:
+          BAZA: ${{ github.sha }}
+          NUMER: ${{ steps.zadanie.outputs.numer }}
+          # Artefakty publicznego repozytorium pobiera kto chce. Kod z łatki i
+          # tak pojechałby do publicznej PR-ki, więc sam w sobie nie jest
+          # problemem — ale sekret, który agent po drodze przepisał do pliku,
+          # już by nim był. Stąd sprawdzenie przed wgraniem.
+          TOKEN_OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          TOKEN_GH: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          katalog="$RUNNER_TEMP/praca-agenta"
+          mkdir -p "$katalog"
+
+          # Bez `-N` łatka pomija pliki, których agent nie dodał do indeksu,
+          # czyli zwykle całe nowe moduły — najcenniejszą część pracy. `-N`
+          # zapisuje sam zamiar dodania: treść nie idzie do obiektów
+          # repozytorium, a `git diff` już te pliki widzi. Ignorowanych
+          # (`node_modules`, `dist`) `-A` nie rusza, więc łatka zostaje mała.
+          git add -A -N -- . >/dev/null 2>&1 || true
+
+          git diff --binary "$BAZA" > "$katalog/praca.patch" 2>/dev/null || true
+          if [ ! -s "$katalog/praca.patch" ]; then
+            echo "agent nie zostawił zmian w katalogu roboczym — nie ma czego zapisywać"
+            exit 0
+          fi
+
+          # Pusta zmienna dałaby `grep -F ""`, czyli dopasowanie do każdej
+          # linii — dlatego sekret bez wartości pomijamy, zamiast na nim
+          # kasować łatkę.
+          for sekret in "$TOKEN_OAUTH" "$TOKEN_GH"; do
+            [ -n "$sekret" ] || continue
+            if grep -qF -e "$sekret" "$katalog/praca.patch"; then
+              rm -rf "$katalog"
+              echo "::error::łatka zawiera sekret — nie wgrywam jej do publicznych artefaktów"
+              exit 0
+            fi
+          done
+
+          git log --oneline "$BAZA..HEAD" > "$katalog/commity.txt" 2>/dev/null || true
+
+          cat > "$katalog/jak-uzyc.txt" <<TRESC
+          Praca agenta ze zgłoszenia #$NUMER, której nie zdążył wypchnąć.
+
+          Baza łatki: $BAZA — commit, na którym stanął checkout przebiegu.
+
+              git fetch origin
+              git checkout -b ratunek-$NUMER $BAZA
+              git apply --3way praca.patch
+
+          Łatka niesie łącznie commity agenta i zmiany niezacommitowane, więc po
+          \`git apply\` wszystko leży w katalogu roboczym jako jedna zmiana.
+          commity.txt trzyma opisy commitów, które agent zdążył zrobić lokalnie —
+          ich treść jest już w łatce, plik jest po to, żeby nie zgubić uzasadnień.
+          TRESC
+
+          # Zapis wyjścia przed podsumowaniem, nie po nim: krok chodzi pod
+          # `bash -e` z `pipefail`, więc potknięcie `git diff --stat` w potoku
+          # ubiłoby krok tuż przed tą linią — i gotowa łatka przepadłaby przez
+          # samo drukowanie statystyk.
+          echo "jest=tak" >> "$GITHUB_OUTPUT"
+          echo "łatka: $(wc -c < "$katalog/praca.patch") B"
+          git diff --stat "$BAZA" 2>/dev/null | tail -40 || true
+
+      - name: Wgraj pracę agenta do artefaktów
+        if: always() && steps.ratunek.outputs.jest == 'tak'
+        uses: actions/upload-artifact@v4
+        with:
+          name: praca-agenta-issue-${{ steps.zadanie.outputs.numer }}
+          path: ${{ runner.temp }}/praca-agenta
+          # Powtórka zadania w tym samym przebiegu zastanie artefakt z poprzedniej
+          # próby; bez tego upload kończy się błędem na duplikacie nazwy.
+          overwrite: true
+          # Miesiąc: dłużej niż zajmuje zauważenie, że przebieg padł, i krócej
+          # niż domyślne 90 dni, bo po tygodniu i tak sensowniej jest puścić
+          # agenta od nowa na aktualnym `main` niż zszywać starą łatkę.
+          retention-days: 30
