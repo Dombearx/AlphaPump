@@ -155,8 +155,8 @@ class TrackedIssue:
 
 
 @dataclass
-class DailyReport:
-    """Podsumowanie jednego przebiegu dziennego — do logu i do testów."""
+class TriageReport:
+    """Podsumowanie jednego przebiegu segregacji — do logu i do testów."""
 
     scanned: int = 0
     bugs: int = 0

@@ -276,7 +276,7 @@ describe('ręczny przegląd zgłoszeń zwrotnych', () => {
       failures: [],
     };
 
-    async runDaily(): Promise<FeedbackTriageReport> {
+    async runNow(): Promise<FeedbackTriageReport> {
       this.calls += 1;
       if (this.nextError) throw this.nextError;
       return this.report;

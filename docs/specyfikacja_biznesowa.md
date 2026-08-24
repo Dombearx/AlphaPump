@@ -354,8 +354,8 @@ Zakres panelu administracyjnego obejmuje:
 - podstawowe zarządzanie tagami,
 - podstawowy wgląd w dane systemowe,
 - ręczne wyzwolenie przeglądu zgłoszeń zwrotnych (sprawdzenie, klasyfikacja, założenie issue na
-  GitHubie albo otwarcie dyskusji na Discordzie) — ten sam przebieg, który dzieje się codziennie
-  automatycznie.
+  GitHubie albo otwarcie dyskusji na Discordzie) — ten sam przebieg, który dzieje się sam,
+  w kilkanaście sekund po wpłynięciu zgłoszenia.
 
 Nie są wymagane rozbudowane workflow moderacyjne ani zaawansowane narzędzia analityczne dla administratora. 
 

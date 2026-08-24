@@ -80,8 +80,8 @@ const FEEDBACK_RATE_WINDOW_MS = 60 * 60_000;
  *
  * Pliki niosą adres e-mail i przechwycone logi konsoli, więc katalog rósł jako
  * zbiór danych osobowych, którego nic nie kasowało. Pół roku jest z zapasem
- * względem tego, po co się do nich sięga: usługa `triage` czyta je raz na dobę
- * i po przejrzeniu nie wraca.
+ * względem tego, po co się do nich sięga: usługa `triage` czyta je w kilkanaście
+ * sekund po zapisie i po przejrzeniu nie wraca.
  */
 export const FEEDBACK_RETENTION_DAYS = 180;
 const SWEEP_INTERVAL_MS = 60 * 60_000;

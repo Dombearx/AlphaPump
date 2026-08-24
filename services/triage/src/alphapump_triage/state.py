@@ -17,7 +17,7 @@ kupiłoby wyłącznie okazję do wyścigu.
 from __future__ import annotations
 
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from .models import Discussion, Kind, TrackedIssue
@@ -102,23 +102,37 @@ class State:
 
     # ------------------------------------------------------------ zgłoszenia --
 
-    def pending(self, file_names: list[str], max_attempts: int) -> list[str]:
+    def pending(
+        self,
+        file_names: list[str],
+        max_attempts: int,
+        retry_after_seconds: int = 0,
+    ) -> list[str]:
         """Zgłoszenia do przetworzenia: nieprzetworzone i jeszcze nieodpuszczone.
 
         Kolejność wejściowa (chronologiczna) jest zachowana, bo przy dwóch
         zgłoszeniach tego samego błędu duplikatem ma zostać to późniejsze.
+
+        `retry_after_seconds` odsuwa w czasie zgłoszenie, na którym poprzednie
+        podejście poległo. Bez tej karencji przebieg co kilkanaście sekund
+        wypaliłby `max_attempts` w niecałą minutę i chwilowa awaria OpenRoutera
+        albo GitHuba odkładałaby zgłoszenie na bok bezpowrotnie — a to jest
+        dokładnie ten rodzaj awarii, który mija sam.
         """
 
         rows = self._connection.execute(
-            "SELECT file_name, kind, attempts FROM feedback_seen"
+            "SELECT file_name, kind, attempts, seen_at FROM feedback_seen"
         ).fetchall()
-        done = {row["file_name"] for row in rows if row["kind"] is not None}
-        exhausted = {
-            row["file_name"]
-            for row in rows
-            if row["kind"] is None and row["attempts"] >= max_attempts
-        }
-        skip = done | exhausted
+        cooling_off = datetime.now(UTC) - timedelta(seconds=retry_after_seconds)
+
+        skip: set[str] = set()
+        for row in rows:
+            if row["kind"] is not None:
+                skip.add(row["file_name"])
+            elif row["attempts"] >= max_attempts:
+                skip.add(row["file_name"])
+            elif row["attempts"] > 0 and _parsed(row["seen_at"]) > cooling_off:
+                skip.add(row["file_name"])
         return [name for name in file_names if name not in skip]
 
     def mark_processed(
@@ -270,6 +284,23 @@ class State:
             "UPDATE discussions SET issue_number = ? WHERE thread_id = ?",
             (issue_number, thread_id),
         )
+
+
+def _parsed(seen_at: str | None) -> datetime:
+    """Data ostatniego podejścia; nieczytelna znaczy „dawno temu".
+
+    Kolumna trzyma to, co zapisał `_now()`, więc rozjazd formatu jest tu
+    niemożliwy — ale gdyby kiedyś był, karencja ma się otworzyć, a nie zatrzasnąć
+    zgłoszenie na zawsze.
+    """
+
+    if not seen_at:
+        return datetime.min.replace(tzinfo=UTC)
+    try:
+        parsed = datetime.fromisoformat(seen_at)
+    except ValueError:
+        return datetime.min.replace(tzinfo=UTC)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
 def _to_tracked_issue(row: sqlite3.Row) -> TrackedIssue:

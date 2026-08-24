@@ -171,7 +171,7 @@ Dwa ostatnie łatwo pomylić z czymś, czym nie są, więc wprost:
   uzgadniać. Port segregacji nie jest wystawiony na gospodarza, więc token jest
   drugą warstwą, nie jedyną. Bez niego przycisk „Uruchom przegląd zgłoszeń"
   w panelu (ekran „Zgłoszenia") jest niedostępny, a przegląd nadal dzieje się
-  codziennie o umówionej godzinie.
+  sam, w kilkanaście sekund po wpłynięciu zgłoszenia.
 
 Sam token Discorda nie stawia jeszcze bota na serwerze — trzeba go zaprosić:
 *OAuth2 → URL Generator*, zakres `bot`, uprawnienia *Send Messages*, *Create
@@ -193,9 +193,10 @@ powstaną, ale nikt ich nie podejmie.
 Pierwszy przebieg wygodnie zrobić na próbę: `TRIAGE_DRY_RUN=true`
 w `deploy/.env` sprawia, że klasyfikacja i wykrywanie duplikatów działają
 naprawdę, ale nic nie powstaje ani na GitHubie, ani na Discordzie — wynik widać
-wyłącznie w `docker compose logs triage`. Przegląd ruszy sam o `TRIAGE_DAILY_AT`
-(domyślnie 03:17), a po kroku F wywołasz go od ręki przyciskiem w panelu. Po
-udanej próbie wróć do `false` i podnieś stos ponownie.
+wyłącznie w `docker compose logs triage`. Przegląd ruszy sam w kilkanaście
+sekund po pierwszym zgłoszeniu (`TRIAGE_FEEDBACK_POLL_SECONDS`, domyślnie 15),
+a po kroku F wywołasz go od ręki przyciskiem w panelu. Po udanej próbie wróć do
+`false` i podnieś stos ponownie.
 
 Start:
 

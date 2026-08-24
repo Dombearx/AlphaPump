@@ -2,8 +2,12 @@
 
 Trzy przebiegi, każdy uruchamiany przez kogoś innego:
 
-* `run_daily()` — planista, raz na dobę. Czyta nowe zgłoszenia, klasyfikuje je
-  i albo zakłada issue (błąd), albo otwiera dyskusję na Discordzie (zmiana).
+* `run_pass()` — planista, co kilkanaście sekund (`TRIAGE_FEEDBACK_POLL_SECONDS`),
+  a na żądanie także panel administracyjny i `python -m alphapump_triage once`.
+  Czyta nowe zgłoszenia, klasyfikuje je i albo zakłada issue (błąd), albo
+  otwiera dyskusję na Discordzie (zmiana). Zgłoszenie ma trafić do segregacji
+  wtedy, kiedy przyszło — użytkownik, który je pisał, jeszcze trzyma telefon
+  w ręku, a nie dowie się o skutkach dopiero nazajutrz.
 * `handle_mention()` — bot, gdy ktoś oznaczy go w wątku dyskusyjnym. Czyta całą
   rozmowę i zamienia ustalenia w issue.
 * `poll_pull_requests()` — pętla co kilka minut. Dokleja link do PR-ki w wątku
@@ -23,7 +27,7 @@ import logging
 from . import prompts
 from .config import Config
 from .feedback import FeedbackReader, MalformedFeedback
-from .models import Classification, DailyReport, Discussion, Feedback, IssueDraft, Kind
+from .models import Classification, Discussion, Feedback, IssueDraft, Kind, TriageReport
 from .ports import Chat, IssueTracker, Llm
 from .state import State
 
@@ -52,16 +56,30 @@ class TriageService:
         self._tracker = tracker
         self._chat = chat
 
-    # ----------------------------------------------------- przebieg dzienny --
+    # ------------------------------------------------- przebieg segregacji --
 
-    async def run_daily(self) -> DailyReport:
-        """Przetwarza wszystkie zgłoszenia, których jeszcze nie widzieliśmy."""
+    async def run_pass(self, ignore_cooldown: bool = False) -> TriageReport:
+        """Przetwarza wszystkie zgłoszenia, których jeszcze nie widzieliśmy.
 
-        report = DailyReport()
-        pending = self._state.pending(self._reader.file_names(), self._config.max_attempts)
+        `ignore_cooldown` znosi karencję po nieudanym podejściu i jest zarezerwowane
+        dla przebiegu wywołanego przez człowieka (przycisk w panelu, `once` z CLI).
+        Karencja chroni przed trzema podejściami pod rząd do usługi, która akurat
+        nie odpowiada — a nie przed kimś, kto właśnie poprawił klucz w `.env`
+        i chce zobaczyć skutek teraz, a nie za kwadrans.
+        """
+
+        report = TriageReport()
+        pending = self._state.pending(
+            self._reader.file_names(),
+            self._config.max_attempts,
+            0 if ignore_cooldown else self._config.retry_after_seconds,
+        )
         report.scanned = len(pending)
         if not pending:
-            logger.info("brak nowych zgłoszeń")
+            # Przy odpytywaniu co kilkanaście sekund pusty przebieg jest regułą,
+            # nie zdarzeniem — na INFO zalałby log kilkoma tysiącami linii dziennie
+            # i zakrył te przebiegi, w których naprawdę coś się wydarzyło.
+            logger.debug("brak nowych zgłoszeń")
             return report
 
         logger.info("nowych zgłoszeń do przejrzenia: %d", len(pending))
@@ -77,15 +95,16 @@ class TriageService:
                     attempts,
                     self._config.max_attempts,
                 )
-        logger.info("przebieg dzienny zakończony: %s", report)
+        logger.info("przebieg zakończony: %s", report)
         return report
 
-    async def _process_one(self, file_name: str, report: DailyReport) -> None:
+    async def _process_one(self, file_name: str, report: TriageReport) -> None:
         try:
             feedback = self._reader.read(file_name)
         except MalformedFeedback as error:
-            # Uszkodzony plik nie naprawi się jutro. Zapisujemy komplet podejść
-            # od razu, żeby nie wracał codziennie do tej samej ściany.
+            # Uszkodzony plik nie naprawi się za kwadrans. Zapisujemy komplet
+            # podejść od razu, żeby nie wracał do tej samej ściany w każdym
+            # kolejnym obiegu odpytywania.
             for _ in range(self._config.max_attempts):
                 self._state.mark_failed(file_name, str(error))
             report.failures.append((file_name, str(error)))
@@ -135,7 +154,7 @@ class TriageService:
         self,
         feedback: Feedback,
         classification: Classification,
-        report: DailyReport,
+        report: TriageReport,
     ) -> None:
         duplicate = await self._find_duplicate_issue(feedback)
         if duplicate is not None:
@@ -219,7 +238,7 @@ class TriageService:
         self,
         feedback: Feedback,
         classification: Classification,
-        report: DailyReport,
+        report: TriageReport,
     ) -> None:
         duplicate = await self._find_duplicate_discussion(feedback)
         if duplicate is not None:

@@ -1,14 +1,18 @@
-"""Serwer HTTP: ręczne wyzwolenie przebiegu dziennego z panelu administracyjnego.
+"""Serwer HTTP: ręczne wyzwolenie przebiegu segregacji z panelu administracyjnego.
 
 Usługa poza tym nie wystawia żadnego portu na zewnątrz (patrz komentarz przy
 serwisie `triage` w `deploy/docker-compose.yml`) — ten jest wyjątkiem, bo panel
-administracyjny musi mieć jak poprosić o przegląd na żądanie, a nie tylko
-czekać do `TRIAGE_DAILY_AT`. Token w `TRIAGE_HTTP_TOKEN` jest drugą warstwą
-obrony, nie jedyną: pierwszą jest to, że port stoi wyłącznie w sieci Compose.
+administracyjny musi mieć jak poprosić o przebieg wtedy, kiedy sam chce, a nie
+czekać na kolejny obieg odpytywania. Token w `TRIAGE_HTTP_TOKEN` jest drugą
+warstwą obrony, nie jedyną: pierwszą jest to, że port stoi wyłącznie w sieci
+Compose.
 
-Przebieg wywołany stąd robi dokładnie to samo co przebieg dzienny: sprawdza
-nowe zgłoszenia, klasyfikuje je i albo zakłada issue, albo otwiera dyskusję na
-Discordzie — patrz `service.run_daily`.
+Przebieg wywołany stąd robi to samo co ten z planisty — sprawdza nowe zgłoszenia,
+klasyfikuje je i albo zakłada issue, albo otwiera dyskusję na Discordzie (patrz
+`service.run_pass`) — z jedną różnicą: nie obowiązuje go karencja po nieudanych
+podejściach, bo po tej stronie portu stoi człowiek przy przycisku. Odkąd planista
+chodzi co kilkanaście sekund, to jest już główny powód, dla którego ten przycisk
+istnieje; drugim jest podsumowanie przebiegu w liczbach.
 """
 
 from __future__ import annotations
@@ -20,14 +24,14 @@ from collections.abc import Awaitable, Callable
 
 from aiohttp import web
 
-from .models import DailyReport
+from .models import TriageReport
 
 logger = logging.getLogger(__name__)
 
-RunDaily = Callable[[], Awaitable[DailyReport]]
+RunPass = Callable[[], Awaitable[TriageReport]]
 
 
-def _report_to_json(report: DailyReport) -> dict:
+def _report_to_json(report: TriageReport) -> dict:
     return {
         "scanned": report.scanned,
         "bugs": report.bugs,
@@ -37,9 +41,9 @@ def _report_to_json(report: DailyReport) -> dict:
     }
 
 
-def create_http_app(token: str, run_daily: RunDaily, lock: asyncio.Lock) -> web.Application:
+def create_http_app(token: str, run_pass: RunPass, lock: asyncio.Lock) -> web.Application:
     """Składa aplikację aiohttp. `lock` jest dzielony z planistą — patrz `__main__`,
-    żeby ręczne wyzwolenie i przegląd o umówionej godzinie nie ruszyły się naraz."""
+    żeby ręczne wyzwolenie i przebieg z odpytywania nie ruszyły się naraz."""
 
     app = web.Application()
 
@@ -68,10 +72,10 @@ def create_http_app(token: str, run_daily: RunDaily, lock: asyncio.Lock) -> web.
 
         logger.info("przegląd wywołany ręcznie przez panel administracyjny")
         async with lock:
-            report = await run_daily()
+            report = await run_pass()
 
         return web.json_response(_report_to_json(report))
 
     app.router.add_get("/health", health)
-    app.router.add_post("/run-daily", run)
+    app.router.add_post("/run", run)
     return app
