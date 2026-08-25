@@ -11,8 +11,19 @@
 import { sessionCookie } from '../auth/client';
 import { appConfig } from '../config/index';
 import { createRemoteReader } from './read-only';
+import { createVoiceClient } from './voice';
 
 export const remoteReader = createRemoteReader({
+  baseUrl: appConfig.apiUrl,
+  cookie: sessionCookie,
+});
+
+/**
+ * Klient dyktowania — obok czytnika, bo żyje z tych samych dwóch rzeczy: adresu
+ * API i sesji czytanej przy każdym żądaniu. Osobno od `remoteReader`, bo tamten
+ * jest **tylko do odczytu** i ma tak zostać: tu w żądaniu jedzie plik.
+ */
+export const voiceClient = createVoiceClient({
   baseUrl: appConfig.apiUrl,
   cookie: sessionCookie,
 });

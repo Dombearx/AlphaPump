@@ -152,6 +152,53 @@ const environmentSchema = z.object({
    * sekundach.
    */
   TRANSLATION_TIMEOUT_MS: z.coerce.number().int().min(500).max(120_000).default(20_000),
+
+  /* ------------------------------------------------------ dyktowanie serii */
+
+  /**
+   * Wyłącznik dyktowania serii — i głosem, i z klawiatury. `false` znaczy
+   * „aplikacja nie pokaże ekranu dyktowania" — a nie „zapis serii nie działa":
+   * dyktowanie jest skrótem do formularza, który zostaje dokładnie tam, gdzie
+   * był. Osobny wyłącznik obok `RERANKER_ENABLED` i `TRANSLATION_ENABLED`,
+   * i z tego samego powodu: to trzy niezależne rachunki u dwóch dostawców.
+   */
+  VOICE_ENABLED: z.stringbool().default(true),
+  /**
+   * Adres usługi zamieniającej nagranie na tekst. Domyślnie Groq, bo to on padł
+   * w zgłoszeniu — ale **adres, a nie nazwa dostawcy**, bo wybór nie był
+   * decyzją techniczną, tylko przykładem. Każda usługa mówiąca protokołem
+   * `POST /audio/transcriptions` OpenAI (Groq, OpenAI, lokalne `whisper.cpp`
+   * za serwerkiem) wchodzi tu bez zmiany kodu.
+   */
+  SPEECH_TO_TEXT_URL: z.url().default('https://api.groq.com/openai/v1/audio/transcriptions'),
+  /**
+   * Klucz do tej usługi. Osobny od `OPENROUTER_API_KEY`, bo to osobny dostawca:
+   * OpenRouter nie wystawia transkrypcji, a rozpoznawanie mowy i model
+   * interpretujący tekst nie muszą stać u jednego.
+   *
+   * Bez klucza znika **samo nagrywanie**, a nie całe dyktowanie: opisanie serii
+   * z klawiatury (`POST /voice/text`) idzie prosto do modelu i klucza
+   * transkrypcji nie potrzebuje. Telefon chowa wtedy mikrofon, a pole tekstowe
+   * zostaje — bo systemowe dyktowanie z klawiatury działa niezależnie od nas.
+   */
+  SPEECH_TO_TEXT_API_KEY: z.string().optional(),
+  /** Model transkrypcji. `turbo`, bo nagranie ma wrócić tekstem w sekundę. */
+  SPEECH_TO_TEXT_MODEL: nonEmpty.default('whisper-large-v3-turbo'),
+  /**
+   * Model wyciągający z tekstu ćwiczenie i liczby. Ten sam dostawca co reszta
+   * warstwy LLM-owej (OpenRouter) i ten sam klucz — a że tekst bierze się albo
+   * z transkrypcji, albo wprost z klawiatury, to **ten** model jest warunkiem
+   * koniecznym dyktowania. Klucz transkrypcji dokłada do niego mikrofon.
+   */
+  VOICE_MODEL: nonEmpty.default('google/gemini-2.5-flash'),
+  /**
+   * Limit czasu na transkrypcję i na model, każdy z osobna. Dłuższy niż
+   * `LLM_TIMEOUT_MS`, bo tu jest odwrotnie niż przy podpowiedzi o duplikacie:
+   * użytkownik nacisnął przycisk i **czeka na wynik**, więc odpowiedź po pięciu
+   * sekundach jest odpowiedzią, a nie karą. Krótszy niż tłumaczenie, bo tamto
+   * jedzie poza żądaniem i nikt na nie nie patrzy.
+   */
+  VOICE_TIMEOUT_MS: z.coerce.number().int().min(500).max(120_000).default(20_000),
 });
 
 export interface GoogleCredentials {
@@ -183,6 +230,32 @@ export interface LlmConfig {
   translationTimeoutMs: number;
 }
 
+/** Usługa transkrypcji — protokół `POST /audio/transcriptions` OpenAI. */
+export interface SpeechConfig {
+  url: string;
+  apiKey: string;
+  model: string;
+}
+
+/**
+ * Konfiguracja dyktowania serii. `null` w `AppConfig.voice` znaczy „dyktowanie
+ * wyłączone" — stan w pełni obsługiwany: aplikacja nie pokazuje ekranu
+ * dyktowania, a formularz serii działa bez zmian.
+ *
+ * `speech` jest w środku osobno, bo dyktowanie ma **dwa wejścia i jeden mózg**:
+ * nagranie trzeba najpierw zamienić na tekst, a opis wpisany z klawiatury już
+ * tekstem jest. Brak klucza transkrypcji zabiera więc mikrofon, a nie całą
+ * funkcję — i jest to stan sensowny sam w sobie: systemowe dyktowanie
+ * z klawiatury Androida nie kosztuje nas nic i działa bez żadnego dostawcy.
+ */
+export interface VoiceConfig {
+  /** `null` — samo nagrywanie wyłączone; opis z klawiatury działa dalej. */
+  speech: SpeechConfig | null;
+  /** Model interpretujący tekst; u dostawcy z `LlmConfig`. */
+  model: string;
+  timeoutMs: number;
+}
+
 export interface AppConfig {
   nodeEnv: 'development' | 'test' | 'production';
   host: string;
@@ -202,6 +275,14 @@ export interface AppConfig {
    * tworzenie ćwiczeń działa bez zmian.
    */
   llm: LlmConfig | null;
+  /**
+   * `null`, gdy dyktowanie serii jest wyłączone albo wyłączona jest cała
+   * warstwa LLM-owa (`llm === null`) — bo interpretacja tekstu jedzie tym samym
+   * kluczem co reszta modeli. Oba powody są tym samym stanem: telefon nie
+   * pokazuje ekranu dyktowania. Brak samego klucza transkrypcji zabiera z tego
+   * ekranu mikrofon (`voice.speech === null`), a nie cały ekran.
+   */
+  voice: VoiceConfig | null;
   /** Katalog na zgłoszenia zwrotne — patrz `FEEDBACK_DIR`. */
   feedbackDir: string;
   /** Katalog z wydaniami OTA — patrz `OTA_DIR`. */
@@ -257,6 +338,28 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
         }
       : null;
 
+  // Dyktowanie stoi na modelu interpretującym tekst, czyli na tym samym kluczu
+  // co reszta warstwy LLM-owej. Klucz transkrypcji jest **dodatkiem**, który
+  // dokłada do niego mikrofon: bez niego zostaje opisanie serii z klawiatury.
+  // Brak jednego i drugiego nie jest błędem konfiguracji, tylko węższą funkcją —
+  // dokładnie jak brak klucza przy warstwie semantycznej.
+  const speechApiKey = environmentVariables.SPEECH_TO_TEXT_API_KEY?.trim() ?? '';
+  const voice =
+    environmentVariables.VOICE_ENABLED && llm !== null
+      ? {
+          speech:
+            speechApiKey.length > 0
+              ? {
+                  url: environmentVariables.SPEECH_TO_TEXT_URL,
+                  apiKey: speechApiKey,
+                  model: environmentVariables.SPEECH_TO_TEXT_MODEL,
+                }
+              : null,
+          model: environmentVariables.VOICE_MODEL,
+          timeoutMs: environmentVariables.VOICE_TIMEOUT_MS,
+        }
+      : null;
+
   const backupDir = environmentVariables.BACKUP_DIR?.trim() ?? '';
 
   const triageUrl = environmentVariables.TRIAGE_URL?.trim() ?? '';
@@ -274,6 +377,7 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
     trustedOrigins: [environmentVariables.BETTER_AUTH_URL, ...trustedOrigins],
     google,
     llm,
+    voice,
     feedbackDir: environmentVariables.FEEDBACK_DIR,
     otaDir: environmentVariables.OTA_DIR,
     backupDir: backupDir.length > 0 ? backupDir : null,

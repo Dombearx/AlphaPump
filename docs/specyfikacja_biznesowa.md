@@ -154,6 +154,21 @@ Jeśli użytkownik dodaje pierwszą serię danego ćwiczenia w danym dniu, syste
 
 Przykład: jeśli w poniedziałek zapisano serie 10, 9, 6, 4 powtórzenia, to w środę pierwsza seria ma podpowiedzieć 10. Jeśli w środę pierwsza wpisana seria będzie miała 8, to kolejna seria tego samego dnia ma już domyślnie podpowiadać 8. 
 
+### Dyktowanie serii głosem
+
+Z widoku dnia da się zapisać serię **głosem**, obok zwykłej drogi przez wybór ćwiczenia z listy. Użytkownik nagrywa kilkanaście sekund, opisując wykonaną serię — nazwę ćwiczenia i liczby: ciężar, powtórzenia, czas albo dystans, zależnie od tego, co powiedział. Nagranie jedzie na serwer, tam zamienia się na tekst, a tekst — razem z listą ćwiczeń tego użytkownika i jego ostatnio zapisanymi seriami — trafia do modelu, który wskazuje ćwiczenie i wyodrębnia pomiary. Historia ostatnich serii jest w tym kontekście po to, żeby dało się zrozumieć zdanie niepełne („jeszcze osiem") i ocenić, czy usłyszana liczba jest w skali danego ćwiczenia.
+
+Nagranie nie jest jedynym wejściem. To samo da się **napisać** — jednym zdaniem w polu tekstowym na tym samym ekranie — a wtedy przepływ omija rozpoznawanie mowy w całości i idzie prosto do modelu. Nie jest to wariant awaryjny, tylko druga pełnoprawna droga: klawiatura telefonu ma własny mikrofon, więc „podyktuj klawiaturą" działa również tam, gdzie wdrożenie nie ma dostawcy transkrypcji; napisane zdanie da się poprawić przed wysłaniem, czego z nagraniem zrobić się nie da; a mówić do telefonu nie zawsze wypada i nie wszędzie jest na tyle cicho, żeby cokolwiek z tego wyszło.
+
+Reguły są trzy i wszystkie trzy są twarde:
+
+- **Model dopasowuje wyłącznie do ćwiczeń, które użytkownik już ma** — tych, na które ma zapisane serie, oraz tych, które sam założył. Nowego ćwiczenia dyktowanie nie tworzy: ćwiczenie to nie sama nazwa, ale też typ logowania i tag główny, a od nich zależą rekordy i cykle.
+- **Serwer nie zapisuje serii.** Oddaje wypełniony formularz; zapis dzieje się na telefonie i tylko tam. Pomiary spoza typu logowania ćwiczenia są odrzucane, a seria niepełna otwiera formularz z tym, co zrozumiał model, i czeka na resztę.
+- **O tym, czy zatwierdzać każdą serię, decyduje użytkownik.** W ustawieniach stoi przełącznik: domyślnie rozpoznane wartości wchodzą do formularza i czekają na naciśnięcie „Add set", a po jego włączeniu seria zapisuje się od razu, a ekran mówi, co zapisał, i zostaje gotowy na następną. Wartością domyślną jest zatwierdzanie, bo seria zapisana na podstawie źle usłyszanej liczby psuje rekord i wykres, a widać to tygodnie później — kto sprawdzi, że model trafia, przestawi przełącznik sam. Przełącznik nie omija kompletności: serii bez pól wymaganych przez jej typ logowania nie da się zapisać, więc taka trafia do formularza niezależnie od ustawienia.
+- **Gdy model nie potrafi wskazać ćwiczenia albo nagranie jest niejednoznaczne**, aplikacja pokazuje transkrypcję wraz z jednozdaniowym powodem i proponuje zwykły wybór z listy. Zgadywanie jest tu gorsze niż pytanie: seria dopisana do niewłaściwego ćwiczenia psuje rekord, wykres i ranking, a zauważa się ją tygodnie później.
+
+Dyktowanie jest **skrótem, a nie drogą jedyną**: wymaga łączności z serwerem (transkrypcji i modelu nie da się policzyć na telefonie), więc offline i przy wyłączonej funkcji zapis serii przez formularz działa bez żadnej zmiany. Konkretny dostawca rozpoznawania mowy nie jest częścią wymagania — jest decyzją wdrożeniową.
+
 ### Wybór ćwiczenia z cyklu
 
 W widoku dodawania serii tagi objęte pozycjami celu aktywnego cyklu są oznaczone wewnątrz przycisku tagu: gwiazdką, dopóki została w nich robota, i ptaszkiem po jej dokończeniu. Tło takiego tagu jest wypełnione od lewej w proporcji wykonania: cztery serie z ośmiu zaplanowanych dla tagu to wypełnienie w połowie, a tag zrobiony w całości jest wypełniony do końca — oznaczenie i wypełnienie nie znikają w momencie dokończenia roboty. Gdy w jeden tag celuje kilka pozycji celu, wypełnienie pokazuje udział zrobionej roboty w całej zaplanowanej dla tego tagu, a nie średnią z udziałów pozycji: osiem serii rozpisanych na dwie pozycje liczy się tak samo, jak osiem serii w jednej. Metryk nie da się do siebie dodać, więc gdy w tagu stoją pozycje w różnych metrykach, każda daje swój udział, a tag dostaje ich średnią. Oznaczenie ma się mieścić w miejscu, które filtr tagów zajmuje i bez niego — osobnej sekcji z listą pozostałych pozycji nie ma. Tag spoza cyklu nie ma żadnego oznaczenia ani wypełnienia. Pozycja celu wskazująca konkretne ćwiczenie oznacza jego tag główny. Jest to tylko podpowiedź, gdzie szukać ćwiczenia, i nie oznacza ręcznego przypisania serii do cyklu. 
@@ -414,5 +429,8 @@ Przykładowe kryteria akceptacyjne dla MVP:
 - wykres ćwiczenia pokazuje historię odpowiednich metryk,
 - kalendarz pokazuje liczbę serii dla każdego dnia,
 - ranking pokazuje globalną sumę $$kg \times powtórzenia$$ i dystansu,
+- użytkownik może podyktować serię głosem albo opisać ją jednym zdaniem z klawiatury, a rozpoznane wartości trafiają do formularza do zatwierdzenia,
+- po włączeniu przełącznika w ustawieniach rozpoznana kompletna seria zapisuje się od razu; niepełna zawsze trafia do formularza,
+- przy wyłączonym dyktowaniu albo bez łączności zapisywanie serii formularzem działa bez zmian,
 - API z tokenem pozwala wykonać CRUD serii,
 - panel admina pozwala zarządzać użytkownikami oraz bazą ćwiczeń i tagów.

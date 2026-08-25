@@ -37,6 +37,7 @@ import { createSyncRouter, syncRoutes } from './routes/sync.js';
 import { createTagRouter, tagRoutes } from './routes/tags.js';
 import { createTransferRouter, transferRoutes } from './routes/transfer.js';
 import { createUpdateRouter, updateRoutes } from './routes/updates.js';
+import { createVoiceRouter, voiceRoutes } from './routes/voice.js';
 
 /** Wersja wystawiana w OpenAPI i w healthchecku. */
 export const API_VERSION = '0.1.0';
@@ -52,6 +53,7 @@ export const documentedRoutes: RouteSpec[] = [
   ...duplicateRoutes,
   ...exerciseRoutes,
   ...setRoutes,
+  ...voiceRoutes,
   ...cycleRoutes,
   ...recordRoutes,
   ...rankingRoutes,
@@ -205,6 +207,7 @@ export function createApp(dependencies: AppDependencies, config: AppConfig) {
   secured.route('/', createDuplicateRouter(resolved));
   secured.route('/', createExerciseRouter(resolved));
   secured.route('/', createSetRouter(resolved));
+  secured.route('/', createVoiceRouter(resolved));
   secured.route('/', createCycleRouter(resolved));
   secured.route('/', createRecordRouter(resolved));
   secured.route('/', createRankingRouter(resolved));

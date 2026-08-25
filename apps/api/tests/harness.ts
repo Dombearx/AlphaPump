@@ -28,6 +28,7 @@ import { createEmbeddingBacklog, type EmbeddingBacklog } from '../src/duplicates
 import type { DuplicateLayers } from '../src/duplicates/layers.js';
 import type { DerivedRecomputation } from '../src/sync/derived.js';
 import type { TriageClient } from '../src/triage.js';
+import type { VoiceLayers } from '../src/voice/index.js';
 import {
   createTranslationBacklog,
   type TranslationBacklog,
@@ -62,6 +63,10 @@ export const TEST_CONFIG: AppConfig = {
   // Domyślnie wyłączony jak `llm` wyżej — testy podstawiają atrapę klienta
   // przez `HarnessOptions.triage`, kiedy sprawdzają `POST /admin/feedback/run`.
   triage: null,
+  // Dyktowanie wyłączone z tego samego powodu co warstwa semantyczna: CI nie
+  // może zależeć od cudzej usługi transkrypcji ani od klucza w sekretach.
+  // Testy podstawiają warstwy przez `HarnessOptions.voice`.
+  voice: null,
 };
 
 export interface TestUser {
@@ -92,6 +97,12 @@ export interface HarnessOptions {
    * stan, w którym zapis tagu i ćwiczenia musi działać bez zmian.
    */
   translator?: Translator;
+  /**
+   * Warstwy dyktowania serii. Pominięcie znaczy „dyktowanie wyłączone", czyli
+   * stan, w którym `POST /voice/set` musi oddać 503 — a formularz serii działać
+   * bez zmian.
+   */
+  voice?: VoiceLayers;
 }
 
 export interface Harness {
@@ -157,6 +168,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
       duplicates: options.duplicates,
       embeddings,
       translations,
+      voice: options.voice,
       triage: options.triage,
     },
     config,

@@ -61,6 +61,7 @@ Expo SDK 57 (React Native 0.86, React 19.2).
 | Wykresy      | własny wykres słupkowy na `View`  | „proste, minimalistyczne wykresy" bez modułu natywnego    |
 | Gesty        | Gesture Handler                   | wymagany przez Expo Router                                |
 | Auth         | better-auth + `@better-auth/expo` | wspólny mechanizm z backendem                             |
+| Mikrofon     | expo-audio                        | dyktowanie serii; jedyne uprawnienie, o które pytamy w trakcie działania — a i tak opcjonalne, bo to samo da się wpisać |
 | Buildy       | `expo prebuild` + projekt natywny | wydanie z projektu natywnego; EAS niekonfigurowane        |
 
 > **Trzy wybory z tej tabeli zmieniły się przy realizacji** i tabela pokazuje
@@ -387,6 +388,29 @@ endpoint, więc cały pipeline zostaje u jednego dostawcy na jednym kluczu.
 
 Wywołania wychodzą **wyłącznie z backendu**. Klucz OpenRouter nie może trafić do
 binarki aplikacji mobilnej, bo ta jest w praktyce publiczna.
+
+### Rozpoznawanie mowy — drugi dostawca, ale nie druga biblioteka
+
+Dyktowanie serii potrzebuje czegoś, czego OpenRouter nie wystawia: zamiany
+nagrania na tekst. Jest to więc jedyne miejsce, w którym stos wychodzi poza
+jednego dostawcę modeli — ale **nie** poza jeden protokół. Transkrypcja idzie
+zwykłym `fetch`-em na `POST …/audio/transcriptions`, czyli tam, gdzie mówią tym
+samym protokołem Groq (wartość domyślna, bo padł w zgłoszeniu), OpenAI i lokalny
+`whisper.cpp` za cienkim serwerkiem. Adres jest zmienną środowiskową, a nie
+nazwą dostawcy wpisaną w kod, bo wybór dostawcy nigdy nie był tu decyzją
+techniczną — był przykładem.
+
+SDK dostawcy nie wchodzi z tego samego powodu: całe użyte API to jedno pole
+formularza i jedno pole odpowiedzi, a paczka przywiązałaby nas do jednej firmy
+dokładnie w miejscu, w którym chcemy swobody. Interpretacja transkrypcji —
+wskazanie ćwiczenia i wyciągnięcie liczb — jedzie już zwykłym `generateObject`
+u OpenRoutera, jak re-ranker duplikatów i tłumaczenie nazw.
+
+Rozpoznawanie mowy jest przy tym **dodatkiem, a nie fundamentem**: to samo
+zdanie da się wpisać z klawiatury (`POST /voice/text`) i wtedy przepływ omija
+dostawcę transkrypcji w całości. Wdrożenie bez jego klucza dalej ma dyktowanie —
+klawiatura Androida ma własny mikrofon, za który nikt nam nie wystawia rachunku.
+Nagranie nie jest nigdzie zapisywane: żyje tyle, ile trwa żądanie.
 
 ## Infrastruktura
 

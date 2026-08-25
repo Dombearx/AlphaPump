@@ -69,6 +69,7 @@ import {
   Row,
   SectionTitle,
 } from '../ui/primitives';
+import type { DictatedSet } from '../voice-draft';
 
 /** Ile rekordów pokazujemy — front Pareto bywa długi, a ekran ma być spokojny. */
 const RECORDS_SHOWN = 4;
@@ -91,7 +92,22 @@ const SUGGESTION_MESSAGE = {
   'previous-day': 'Suggested from the last day with this exercise.',
 } as const;
 
-export function LogScreen({ day, exerciseId }: { day: IsoDate; exerciseId: string }) {
+const DICTATION_MESSAGE = 'Filled in from your recording — check it and save.';
+
+export function LogScreen({
+  day,
+  exerciseId,
+  dictated = null,
+}: {
+  day: IsoDate;
+  exerciseId: string;
+  /**
+   * Seria wyjęta z nagrania — wchodzi do formularza zamiast podpowiedzi
+   * z poprzedniej serii. `null` przy zwykłym wejściu w ćwiczenie, czyli prawie
+   * zawsze; ekran nie ma z tego powodu drugiego trybu, tylko inny punkt startowy.
+   */
+  dictated?: DictatedSet | null;
+}) {
   const { data: session, isPending } = useSession();
   const router = useRouter();
   const deviceId = useDeviceId();
@@ -104,6 +120,9 @@ export function LogScreen({ day, exerciseId }: { day: IsoDate; exerciseId: strin
   const history = useLiveQuery(exerciseHistory(db, userId, exerciseId));
 
   const [draft, setDraft] = useState<SetDraft | null>(null);
+  // Dyktowanie jest **jednorazowe**: po zapisie formularz wraca do zwykłej
+  // podpowiedzi, a nie do wartości sprzed dwóch minut wypowiedzianych na głos.
+  const [dictation, setDictation] = useState<DictatedSet | null>(dictated);
   const [editing, setEditing] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -116,6 +135,17 @@ export function LogScreen({ day, exerciseId }: { day: IsoDate; exerciseId: strin
   const suggestion = useMemo(
     () => (exercise === undefined ? null : suggestedDraft(exercise.loggingType, sets, day)),
     [exercise, sets, day],
+  );
+
+  // Typ logowania rozstrzyga, które pola formularz w ogóle ma — a znany jest
+  // dopiero po wczytaniu ćwiczenia, więc draft z dyktowania powstaje tutaj,
+  // a nie w stanie początkowym.
+  const dictatedDraft = useMemo(
+    () =>
+      exercise === undefined || dictation === null
+        ? null
+        : draftOf(exercise.loggingType, { ...dictation }),
+    [exercise, dictation],
   );
 
   const records = useMemo(
@@ -145,7 +175,7 @@ export function LogScreen({ day, exerciseId }: { day: IsoDate; exerciseId: strin
     },
     extraTags.data,
   );
-  const current: SetDraft = draft ?? suggestion ?? { values: {}, note: '' };
+  const current: SetDraft = draft ?? dictatedDraft ?? suggestion ?? { values: {}, note: '' };
   const author = deviceId === null ? null : { userId, deviceId };
 
   const change = (key: MeasurementField['key'], value: string) => {
@@ -160,6 +190,7 @@ export function LogScreen({ day, exerciseId }: { day: IsoDate; exerciseId: strin
   /** Po każdej udanej zmianie formularz wraca do podpowiedzi, a nie do pustki. */
   const finish = (record: RecordOutcome | null) => {
     setDraft(null);
+    setDictation(null);
     setEditing(null);
     setProblem(null);
     setOutcome(record);
@@ -230,6 +261,7 @@ export function LogScreen({ day, exerciseId }: { day: IsoDate; exerciseId: strin
     setEditing(set.id);
     setOutcome(null);
     setProblem(null);
+    setDictation(null);
     setDraft(draftOf(loggingType, set));
   };
 
@@ -385,11 +417,18 @@ export function LogScreen({ day, exerciseId }: { day: IsoDate; exerciseId: strin
                   </Text>
                 )}
 
-                {editing === null && draft === null && suggestion?.reason != null && (
-                  <Text className="text-xs text-muted">
-                    {SUGGESTION_MESSAGE[suggestion.reason]}
-                  </Text>
+                {editing === null && draft === null && dictatedDraft !== null && (
+                  <Text className="text-xs text-muted">{DICTATION_MESSAGE}</Text>
                 )}
+
+                {editing === null &&
+                  draft === null &&
+                  dictatedDraft === null &&
+                  suggestion?.reason != null && (
+                    <Text className="text-xs text-muted">
+                      {SUGGESTION_MESSAGE[suggestion.reason]}
+                    </Text>
+                  )}
 
                 <View className="flex-row gap-2">{setFormActions(editing).map(renderAction)}</View>
               </Card>

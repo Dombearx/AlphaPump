@@ -106,6 +106,9 @@ docker compose exec db psql -U alphapump -d alphapump \
   pochodzeniem co API, więc wpisu nie potrzebuje,
 - `OPENROUTER_API_KEY` ustawiony albo **świadomie** pusty — log przy starcie
   mówi wprost, że warstwa semantyczna jest wyłączona,
+- `SPEECH_TO_TEXT_API_KEY` ustawiony albo **świadomie** pusty — log przy starcie
+  rozróżnia dwa stany: bez tego klucza znika samo nagrywanie (zostaje dyktowanie
+  z klawiatury), a bez `OPENROUTER_API_KEY` całe dyktowanie,
 - `deploy/smoke.sh` przechodzi w całości,
 - cron kopii zapasowych działa, a odtworzenie zostało wykonane na sucho —
   pamiętając, że kopia w `BACKUP_DIR` na minipc nie przeżyje utraty minipc.

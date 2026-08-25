@@ -130,6 +130,68 @@ trafić do binarki aplikacji, bo ta jest w praktyce publiczna. Testy integracyjn
 podstawiają atrapy warstw (`apps/api/tests/duplicates.test.ts`), więc CI nie
 zależy ani od cudzego serwisu, ani od klucza w sekretach.
 
+## Dyktowanie serii
+
+Dwa wejścia i jeden mózg (`apps/api/src/voice/`):
+
+| Trasa         | Wejście                   | Czego wymaga              |
+| ------------- | ------------------------- | ------------------------- |
+| `/voice/set`  | nagranie (`multipart`)    | transkrypcji **i** modelu |
+| `/voice/text` | opis z klawiatury (JSON)  | samego modelu             |
+
+Kroki, przez które przechodzą:
+
+| Krok | Gdzie                                 | Czym                                            |
+| ---- | ------------------------------------- | ----------------------------------------------- |
+| 1    | telefon (`src/screens/dictate.tsx`)   | `expo-audio`: 16 kHz mono, najwyżej 30 sekund — **albo** pole tekstowe, które tego kroku nie ma |
+| 2    | serwer (`voice/speech.ts`)            | `POST …/audio/transcriptions`, domyślnie Groq — tylko dla nagrania |
+| 3    | serwer (`voice/interpreter.ts`)       | model przez OpenRoutera, structured output        |
+
+Wejście tekstowe nie jest wariantem awaryjnym: klawiatura Androida ma własny
+mikrofon i własną transkrypcję, za którą nie płacimy, więc „podyktuj
+klawiaturą" jest pełnoprawną drogą — a wpisane zdanie da się poprawić przed
+wysłaniem. Dlatego to **model** jest warunkiem koniecznym dyktowania, a klucz
+transkrypcji tylko dokłada do niego mikrofon: `voiceAvailable` pyta o pierwsze,
+`speechAvailable` o oba.
+
+Model dostaje transkrypcję i **kontekst z bazy** (`voice/context.ts`): do stu
+ćwiczeń użytkownika — tych, na które ma serie, i tych, które sam założył, od
+najczęściej wykonywanego — oraz dwadzieścia ostatnich serii. Historia jest tam
+po to, żeby dało się zrozumieć zdanie niepełne („jeszcze osiem") i ocenić skalę
+usłyszanej liczby.
+
+Odpowiada **numerem pozycji z listy**, nie identyfikatorem — ten sam wzorzec co
+przy re-rankerze duplikatów i z tego samego powodu: UUID przepisany przez model
+z jednym przekręconym znakiem trafiłby w cudze ćwiczenie, a numer spoza zakresu
+odrzuca `applyVoiceVerdict` w rdzeniu. Tam też wycinane są pomiary spoza osi typu
+logowania („dwadzieścia powtórzeń deski") i przeliczane kilogramy na gramy.
+
+**Serwer nie zapisuje serii** — oddaje transkrypcję i wypełniony formularz.
+Zapis dzieje się na telefonie i tylko tam, a co się dzieje po rozpoznaniu,
+rozstrzyga przełącznik w ustawieniach (`src/dictation/`, reguła w
+`dictationOutcome`):
+
+| Tryb            | Co robi ekran dyktowania                                     |
+| --------------- | ------------------------------------------------------------ |
+| `form` (domyślny) | przechodzi do `src/screens/log.tsx` z wartościami w parametrach adresu (`src/voice-draft.ts`) |
+| `save`          | zapisuje serię przez `src/db/sets.ts` — tą samą drogą co z palca — i zostaje na miejscu, gotowy na następną |
+
+Tryb `save` nie omija kompletności: serii bez pól wymaganych przez jej typ
+logowania nie da się zapisać, więc taka trafia do formularza niezależnie od
+ustawienia. Brak dopasowania nie jest awarią: aplikacja pokazuje wtedy
+transkrypcję z powodem i proponuje zwykły wybór ćwiczenia z listy.
+
+Wyłączniki są dwa i znaczą dwie różne rzeczy. `VOICE_ENABLED=false` albo
+wyłączona warstwa LLM zabiera dyktowanie w całości — oba endpointy oddają 503.
+Brak samego `SPEECH_TO_TEXT_API_KEY` zabiera **mikrofon**: `/voice/set` oddaje
+503, a `/voice/text` działa dalej i ekran mówi wprost, żeby napisać albo
+podyktować klawiaturą. W obu przypadkach zapis serii formularzem działa bez
+zmian. Awaria dostawcy w trakcie żądania też kończy się 503, a nie 500: to nie
+jest błąd w naszym kodzie, a ekran ma powiedzieć „spróbuj jeszcze raz". Nagranie
+nie jest nigdzie zapisywane — żyje tyle, ile trwa żądanie. Testy integracyjne
+podstawiają obie warstwy (`apps/api/tests/voice.test.ts`), więc CI nie zależy ani
+od cudzej usługi, ani od klucza w sekretach.
+
 ## Język aplikacji i wielojęzyczne nazwy
 
 Nazwy tagów i ćwiczeń mają dwa poziomy: **nazwę kanoniczną** (kolumna `name`)
@@ -483,6 +545,15 @@ zniknęły z tego widoku, bo pierwsze nie było używane, a drugie dublowało
 tapnięcie w tło. Sam zestaw przycisków wylicza `apps/mobile/src/set-form.ts`
 i ma test bez renderowania ekranu.
 
+Obok „Add set" stoi mikrofon prowadzący do dyktowania (`src/screens/dictate.tsx`) —
+nagraniem albo jednym zdaniem wpisanym z klawiatury.
+Jest **wąskim przyciskiem obok**, a nie zamiast: dyktowanie wymaga serwera, więc
+poza VPN-em jest drogą, która nie działa, a wybór ćwiczenia z listy musi działać
+zawsze. Rozpoznane wartości wracają do tego samego formularza jako wypełnione
+pola — z podpisem, skąd się wzięły — i wygrywają wtedy z podpowiedzią
+z poprzedniej serii. Po zapisie formularz wraca do podpowiedzi: dyktowanie jest
+jednorazowe.
+
 Rekordy indywidualne nie są nigdzie trzymane — liczy je `@alphapump/core` przy
 rysowaniu ekranu, z serii leżących w bazie lokalnej. Tabela pochodna byłaby
 drugim źródłem prawdy o czymś, co i tak liczy się w milisekundach, i wymagałaby
@@ -525,22 +596,25 @@ adresem React Native pokazałby obraz z pamięci podręcznej zamiast nowo wybran
 
 ### Ekrany, które czekają na sieć
 
-Są trzy i każdy z tego samego powodu: pokazują **stan serwera**, którego nie da
-się policzyć ani przechować lokalnie.
+Są cztery i każdy z tego samego powodu: potrzebują czegoś, czego nie da się
+policzyć ani przechować lokalnie.
 
 | Ekran                       | Dlaczego nie działa offline                                    |
 | --------------------------- | -------------------------------------------------------------- |
 | Rekordy globalne, rankingi  | liczą się z serii wszystkich, a cudze serie nigdy nie zjadą na telefon |
 | Tokeny API                  | token weryfikuje serwer i tylko on wie, czy jeszcze żyje         |
+| Dyktowanie serii            | ani transkrypcji, ani modelu nie ma jak policzyć na telefonie, a kluczy nie wolno w nim trzymać — dotyczy tak samo nagrania, jak opisu z klawiatury |
 
 Rekordy i rankingi czyta `src/remote/` — warstwa **wyłącznie do odczytu**, bez
 cache'u i bez outboxu. Tokeny mają własną ścieżkę (`src/screens/api-keys.tsx`),
 bo są jedynym zapisem sieciowym poza synchronizacją, a ich lista trzymana
-lokalnie kłamałaby po unieważnieniu tokenu z innego urządzenia.
+lokalnie kłamałaby po unieważnieniu tokenu z innego urządzenia. Dyktowanie ma
+własnego klienta (`src/remote/voice.ts`), bo jako jedyne wysyła plik.
 
-Wszystkie trzy pokazują brak łączności jako spokojne „offline" z przyciskiem
+Wszystkie cztery pokazują brak łączności jako spokojne „offline" z przyciskiem
 ponowienia — tymi samymi klasami błędów co synchronizacja. Reszta aplikacji,
-łącznie z rekordami indywidualnymi, dalej działa w trybie samolotowym.
+łącznie z rekordami indywidualnymi i zapisem serii, dalej działa w trybie
+samolotowym: dyktowanie jest skrótem do formularza, a nie drogą do niego.
 
 ### Ostrzeżenie o duplikacie i transfer danych
 

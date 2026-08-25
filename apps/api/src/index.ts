@@ -32,6 +32,7 @@ import { createEmbeddingBacklog, createOpenRouterLayers } from './duplicates/ind
 import { logger } from './logger.js';
 import { createTriageClient } from './triage.js';
 import { createOpenRouterTranslator, createTranslationBacklog } from './translation/index.js';
+import { createVoiceLayers, speechAvailable, voiceAvailable } from './voice/index.js';
 
 export { createApp, type App } from './app.js';
 export { createAuth, type Auth } from './auth.js';
@@ -81,8 +82,12 @@ export async function main(): Promise<void> {
   // i **poza** ścieżką żądania, bo zapis nie ma na co czekać.
   const translator = createOpenRouterTranslator(config.llm);
   const translations = createTranslationBacklog(connection.db, translator);
+  // Dyktowanie stoi na modelu interpretującym tekst, a transkrypcja dokłada do
+  // niego mikrofon — dlatego powstaje z dwóch części konfiguracji i dlatego ich
+  // brak znaczy dwie różne rzeczy (patrz log niżej), a nie awarię.
+  const voice = createVoiceLayers(config.llm, config.voice);
   const app = createApp(
-    { db: connection.db, auth, duplicates, embeddings, translations, triage },
+    { db: connection.db, auth, duplicates, embeddings, translations, voice, triage },
     config,
   );
 
@@ -97,6 +102,20 @@ export async function main(): Promise<void> {
     logger.warn('tłumaczenie nazw wyłączone', {
       reason: 'brak OPENROUTER_API_KEY, LLM_ENABLED=false albo TRANSLATION_ENABLED=false',
       effect: 'nazwy tagów i ćwiczeń zostają w języku, w którym je wpisano',
+    });
+  }
+
+  if (!voiceAvailable(voice)) {
+    logger.warn('dyktowanie serii wyłączone', {
+      reason: 'VOICE_ENABLED=false albo wyłączona warstwa LLM',
+      effect: 'serie zapisuje się wyłącznie formularzem',
+    });
+  } else if (!speechAvailable(voice)) {
+    // Węższy stan, a nie awaria: opisanie serii z klawiatury działa dalej —
+    // razem z systemowym dyktowaniem, które ma w sobie sama klawiatura.
+    logger.warn('wysyłanie nagrań wyłączone', {
+      reason: 'brak SPEECH_TO_TEXT_API_KEY',
+      effect: 'zostaje dyktowanie z klawiatury (POST /voice/text)',
     });
   }
 

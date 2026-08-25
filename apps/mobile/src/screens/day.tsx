@@ -36,6 +36,13 @@ import {
 } from '../ui/primitives';
 import { SyncBadge } from '../ui/sync-badge';
 
+/**
+ * Bok przycisku mikrofonu — tyle, ile wysokości ma „Add set" obok
+ * (`py-4` plus wysokość wiersza `text-base`). Równa wysokość, bo dwa przyciski
+ * różnej wysokości w jednym rzędzie wyglądają na pomyłkę.
+ */
+const ADD_BUTTON_HEIGHT = 56;
+
 export function DayScreen({ day }: { day: IsoDate }) {
   const { data: session, isPending } = useSession();
   const router = useRouter();
@@ -192,9 +199,21 @@ export function DayScreen({ day }: { day: IsoDate }) {
         </ScrollView>
       </View>
 
+      {/* Mikrofon stoi **obok** dodawania serii, a nie zamiast niego: dyktowanie
+          wymaga łączności z serwerem, więc poza VPN-em jest drogą, która nie
+          działa — a „Add set" musi działać zawsze. Wąski, bo droga przez listę
+          zostaje tą główną. */}
       <View className="absolute inset-x-0 bottom-0 border-t border-border bg-base p-4">
         <SafeAreaView edges={['bottom']}>
-          <Button label="Add set" onPress={() => router.push(`/day/${day}/pick`)} />
+          <View className="flex-row items-center gap-2">
+            <Button grow label="Add set" onPress={() => router.push(`/day/${day}/pick`)} />
+            <IconButton
+              size={ADD_BUTTON_HEIGHT}
+              label="Dictate a set"
+              glyph="🎤"
+              onPress={() => router.push(`/day/${day}/dictate`)}
+            />
+          </View>
         </SafeAreaView>
       </View>
     </SafeAreaView>

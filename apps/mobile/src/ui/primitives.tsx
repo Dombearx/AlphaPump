@@ -16,6 +16,7 @@ import {
   Image,
   Pressable,
   ScrollView,
+  Switch,
   Text,
   TextInput,
   View,
@@ -68,6 +69,48 @@ export function Button({
         <Text className={`text-center text-base font-semibold ${style.label}`}>{label}</Text>
       )}
     </Pressable>
+  );
+}
+
+/**
+ * Przełącznik dwóch stanów — etykieta po lewej, suwak po prawej.
+ *
+ * Systemowy `Switch`, a nie para chipsów jak przy wyborze języka: chipsy są dla
+ * wyboru **jednej z kilku** wartości, a tu jest jedno zdanie, na które odpowiedź
+ * brzmi „tak" albo „nie". Suwak mówi to bez czytania etykiet obu opcji.
+ *
+ * Podpis pod etykietą jest opcjonalny, ale w ustawieniach prawie zawsze
+ * potrzebny: sam przełącznik mówi, co jest włączone, a nie co się przez to
+ * dzieje.
+ */
+export function Toggle({
+  label,
+  hint,
+  value,
+  onChange,
+  disabled = false,
+}: {
+  label: string;
+  hint?: string;
+  value: boolean;
+  onChange: (value: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <View className={`flex-row items-center gap-3 ${disabled ? 'opacity-40' : ''}`}>
+      <View className="flex-1">
+        <Text className="text-base text-text">{label}</Text>
+        {hint !== undefined && <Text className="mt-0.5 text-xs text-muted">{hint}</Text>}
+      </View>
+      <Switch
+        accessibilityLabel={label}
+        value={value}
+        disabled={disabled}
+        onValueChange={onChange}
+        trackColor={{ false: COLORS.border, true: COLORS.accent }}
+        thumbColor={COLORS.text}
+      />
+    </View>
   );
 }
 

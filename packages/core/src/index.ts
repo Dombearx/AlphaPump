@@ -20,6 +20,7 @@ export * from './rankings.js';
 export * from './similarity.js';
 export * from './rrf.js';
 export * from './duplicates.js';
+export * from './voice.js';
 export * from './cycles.js';
 export * from './suggestions.js';
 export * from './schemas.js';
