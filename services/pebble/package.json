@@ -1,0 +1,40 @@
+{
+  "name": "alphapump-pebble",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Dyktowanie serii z zegarka Pebble.",
+  "keywords": [
+    "pebble-app"
+  ],
+  "author": "AlphaPump",
+  "license": "UNLICENSED",
+  "dependencies": {},
+  "pebble": {
+    "displayName": "AlphaPump",
+    "uuid": "6c1ae3f7-a2e3-42a2-80b8-b2b82ced2300",
+    "sdkVersion": "3",
+    "enableMultiJS": true,
+    "capabilities": [
+      "configurable"
+    ],
+    "watchapp": {
+      "watchface": false
+    },
+    "targetPlatforms": [
+      "basalt",
+      "chalk",
+      "diorite",
+      "emery"
+    ],
+    "messageKeys": [
+      "TRANSCRIPT",
+      "COMMAND",
+      "STATUS",
+      "TITLE",
+      "BODY"
+    ],
+    "resources": {
+      "media": []
+    }
+  }
+}

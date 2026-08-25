@@ -49,6 +49,32 @@ jobs:
           --with httpx2 --with pytest
           pytest deploy/tests -q
 
+  pebble:
+    # Watchappa nie buduje tu nic: `pebble build` wymaga SDK z łańcuchem
+    # narzędzi dla ARM-a, a potwierdziłby wyłącznie to, że kod się kompiluje —
+    # dyktowanie i trasa z telefonu do API dzieją się na sprzęcie, którego CI
+    # nie ma. Sprawdzana jest połowa telefonowa (PebbleKit JS), bo to w niej
+    # siedzi cała decyzyjność: kiedy wolno zapisać serię i który z dwóch
+    # dostawców nie odpowiada.
+    #
+    # `node --test` na gołym Node, bez instalowania czegokolwiek: ta paczka
+    # stoi poza workspace pnpm i nie ma ani jednej zależności.
+    name: Zegarek Pebble (PebbleKit JS)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: services/pebble
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Test
+        run: node --test
+
   triage:
     # Usługa segregacji zgłoszeń stoi poza workspace pnpm i ma własny zestaw
     # narzędzi, więc idzie osobnym zadaniem — równolegle, bo nie zależy od

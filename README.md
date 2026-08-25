@@ -42,13 +42,17 @@ packages/
   db/           jeden schemat w dwóch dialektach: PostgreSQL i SQLite
 services/
   triage/       segregacja zgłoszeń zwrotnych (Python)
+  pebble/       dyktowanie serii z zegarka Pebble (C + PebbleKit JS)
 deploy/         obrazy, Compose, Caddy, serwer wydań
 scripts/        kopie zapasowe i próba odtworzenia
 ```
 
 `services/` stoi celowo poza `apps/`: to, co tam leży, nie jest częścią produktu
 i nie wchodzi do workspace pnpm — ma własny język, własne zależności i własne
-zadanie w CI.
+zadanie w CI. Aplikacja na Pebble jest w tym miejscu wyjątkiem: składa się
+z dwóch połówek o zupełnie różnej sprawdzalności — watchapp w C wymaga SDK
+i zegarka, a jego połowa telefonowa (PebbleKit JS) chodzi w Node i ma testy
+w CI. Co z tego wynika, opisuje [`services/pebble/README.md`](services/pebble/README.md).
 
 `packages/core` jest sercem projektu: front Pareto, cykle, podpowiedzi,
 identyfikatory i schematy Zod. Nie ma tam żadnego I/O, bo dokładnie ten sam kod
@@ -83,7 +87,7 @@ złapać nie może:
 
 | Zadanie | Kiedy | Czego pilnuje |
 | ------- | ----- | ------------- |
-| `ci.yml` | każdy pull request | `verify.yml` plus testy Pythona: serwera wydań i usługi segregacji zgłoszeń |
+| `ci.yml` | każdy pull request | `verify.yml` plus to, czego `pnpm test` nie obejmuje: testy Pythona serwera wydań i segregacji zgłoszeń oraz testy telefonowej połowy aplikacji na Pebble |
 | `backup-restore.yml` | co miesiąc i przy zmianie kodu kopii | że kopia daje się odtworzyć, a dane po odtworzeniu zgadzają się z oryginałem |
 | `deploy-stack.yml` | PR dotykający wdrożenia, backendu lub panelu | że stos z `deploy/` wstaje na czystej bazie i odpowiada przez Caddy'ego |
 | `deploy.yml` | merge do `main` | wdrożenie na minipc — dopiero po `verify.yml` |
