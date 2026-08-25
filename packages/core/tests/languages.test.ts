@@ -107,6 +107,17 @@ describe('odpowiedź modelu sprowadzona do tłumaczeń', () => {
     expect(translationsFromModel(result, ['pl', 'en'])).toEqual({ pl: 'Martwy ciąg' });
   });
 
+  it('odrzuca nazwę bez ani jednej litery lub cyfry — inaczej nie przejdzie przez displayNameSchema przy pullu', () => {
+    const result: TranslationResult = {
+      names: [
+        { language: 'pl', name: '—' },
+        { language: 'en', name: 'Deadlift' },
+      ],
+    };
+
+    expect(translationsFromModel(result, ['pl', 'en'])).toEqual({ en: 'Deadlift' });
+  });
+
   it('przy powtórzonym języku zostaje pierwsza nazwa', () => {
     const result: TranslationResult = {
       names: [

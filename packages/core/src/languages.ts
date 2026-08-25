@@ -19,6 +19,7 @@
  */
 
 import { z } from 'zod';
+import { slug } from './slug.js';
 
 /** Języki obsługiwane na start. Kody dwuliterowe, bo tak wyglądają w ustawieniach. */
 export const LANGUAGES = ['en', 'pl'] as const;
@@ -146,8 +147,12 @@ export type TranslationResult = z.infer<typeof translationResultSchema>;
  * danymi z zewnątrz także wtedy, gdy przeszła schemat. Model potrafi oddać
  * pusty napis, powtórzyć język albo dołożyć taki, o który nie pytaliśmy.
  *
- * - puste i same białe znaki lecą do kosza — na ekranie wyglądają jak zgubiona
- *   nazwa, a `localizedName` i tak cofnąłby się wtedy do nazwy kanonicznej,
+ * - puste, same białe znaki i sama interpunkcja (bez jednej litery lub cyfry)
+ *   lecą do kosza — na ekranie wyglądają jak zgubiona nazwa, a `localizedName`
+ *   i tak cofnąłby się wtedy do nazwy kanonicznej. Ta sama reguła co
+ *   `displayNameSchema`: `translations` wchodzi do `syncPullResponseSchema`
+ *   bez dodatkowej walidacji przy zapisie, więc nazwa, której slug jest pusty,
+ *   nie zepsuje pullu tylko dlatego, że nie przeszła tędy.
  * - przy powtórzonym języku wygrywa **pierwsza** nazwa: druga jest poprawką
  *   modelu do samego siebie, a nie nową informacją,
  * - `wanted` przycina odpowiedź do języków, o które pytaliśmy — inaczej model
@@ -166,6 +171,7 @@ export function translationsFromModel(
 
     const name = entry.name.trim();
     if (name.length === 0) continue;
+    if (slug(name).length === 0) continue;
 
     translations[entry.language] = name;
   }
