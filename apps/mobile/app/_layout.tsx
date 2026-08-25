@@ -23,7 +23,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { installConsoleCapture } from '../src/app-log';
+import { installConsoleCapture, installGlobalErrorCapture } from '../src/app-log';
 import { expoBackgroundStore } from '../src/background/expo';
 import { BackgroundProvider, useAppBackground } from '../src/background/provider';
 import { appConfig, isGoogleSignInConfigured } from '../src/config/index';
@@ -35,9 +35,13 @@ import { COLORS } from '../src/theme';
 import { AppBackdrop } from '../src/ui/background';
 import { UpdatePrompt } from '../src/ui/update-prompt';
 
-// Jak najwcześniej, żeby żaden log wystrzelony podczas startu (importy,
-// pierwszy render) nie ominął bufora zgłoszeń zwrotnych — patrz `app-log.ts`.
+// Jak najwcześniej, żeby żaden log ani wyjątek wystrzelony podczas startu
+// (importy, pierwszy render) nie ominął bufora zgłoszeń zwrotnych — patrz
+// `app-log.ts`. Oba haki razem: konsola łapie to, co aplikacja i biblioteki
+// *wypisują*, `ErrorUtils` to, co *wybucha* — w tym crash, który w ogóle nie
+// przechodzi przez `console.*`.
 installConsoleCapture();
+installGlobalErrorCapture();
 
 export default function RootLayout() {
   useEffect(() => {
