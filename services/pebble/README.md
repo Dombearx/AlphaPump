@@ -77,18 +77,64 @@ dokładnie wtedy, gdy nic jeszcze nie jest ustawione.
 
 ## Budowanie i wgrywanie
 
-Potrzebny jest SDK Pebble (`pebble` w `PATH`) — repozytorium go nie zawiera
-i CI nie buduje watchappa; patrz „Testy".
+### 1. SDK
+
+Repozytorium go nie zawiera i CI nie buduje watchappa (patrz „Testy"), więc raz,
+na swojej maszynie. `pebble-tool` utrzymuje dziś Core Devices i instaluje się
+jak zwykłe narzędzie Pythona — `uv` jest w tym repozytorium i tak potrzebny do
+`services/triage`:
+
+```
+uv tool install pebble-tool      # albo: pip install pebble-tool
+pebble sdk install
+```
+
+Drugie polecenie dociąga to, co kiedyś było osobnym, wielkim archiwum SDK:
+łańcuch narzędzi `arm-none-eabi` i emulator QEMU. Potrzebny jest Python 3.10+.
+
+### 2. Budowa
 
 ```
 cd services/pebble
 pebble build
-pebble install --phone <adres-telefonu>     # albo --emulator basalt
 ```
 
-Adres telefonu bierze się z aplikacji Pebble → *Settings* → *Developer
-Connection*. Emulator nie ma mikrofonu, więc dyktowania na nim nie sprawdzisz —
-ale sprawdzenie połączenia i cały przepływ błędów już tak.
+Wynik to `build/alphapump.pbw` — jeden plik z aplikacją dla wszystkich czterech
+platform naraz.
+
+### 3. Wgranie na zegarek
+
+**Drogą deweloperską** (najwygodniejsza, bo od razu widać logi):
+
+1. W aplikacji Pebble na telefonie: menu → *Settings* → *Developer Mode* →
+   włącz, potem *Developer Connection* → włącz.
+2. Przepisz **Server IP**, które się tam pokaże.
+3. Z katalogu projektu:
+
+```
+pebble install --phone 192.168.1.23
+pebble logs --phone 192.168.1.23      # `APP_LOG` z watchappa i z PebbleKit JS
+```
+
+Telefon i komputer muszą być w tej samej sieci — to połączenie idzie wprost do
+telefonu, a nie przez zegarek.
+
+**Bez SDK i bez komputera**: przerzuć `.pbw` na telefon (dowolnie — chmura,
+kabel, komunikator) i otwórz go menedżerem plików; aplikacja Pebble sama
+zaproponuje instalację. Na nowszych Androidach bywa, że system nie pozwala
+wskazać jej jako celu — wtedy pomaga *Sideload Helper* od Rebble, którego całym
+zadaniem jest podanie pliku `.pbw` do aplikacji Pebble.
+
+**Bez zegarka**: `pebble install --emulator basalt`. Emulator nie ma mikrofonu,
+więc dyktowania na nim nie sprawdzisz — ale sprawdzenie połączenia (UP) i cały
+przepływ błędów już tak, bo one dzieją się po stronie telefonu.
+
+### 4. Konfiguracja i pierwsze uruchomienie
+
+Po instalacji: aplikacja Pebble → lista aplikacji → AlphaPump → **koło zębate**
+(ustawienia). Wklej adres API i token, zapisz. Potem na zegarku naciśnij **UP** —
+zanim cokolwiek podyktujesz, sprawdzenie połączenia powie, czy telefon widzi
+serwer i czy token żyje.
 
 Platformy: `basalt`, `chalk`, `diorite`, `emery` — czyli wszystko z mikrofonem,
 łącznie z nowymi Core 2 Duo i Core Time 2. `aplite` (Pebble Classic i Steel) jest
