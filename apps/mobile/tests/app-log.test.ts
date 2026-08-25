@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   clearLogs,
   installConsoleCapture,
+  installGlobalErrorCapture,
   recentLogs,
   recordLog,
   RECENT_LOG_LIMIT,
@@ -85,5 +86,54 @@ describe('przechwycenie konsoli', () => {
     installConsoleCapture(fakeConsole);
 
     expect(fakeConsole.log).toBe(wrappedOnce);
+  });
+});
+
+describe('przechwycenie globalnych błędów (ErrorUtils)', () => {
+  function fakeErrorUtils() {
+    let handler: (error: unknown, isFatal?: boolean) => void = vi.fn();
+    return {
+      getGlobalHandler: () => handler,
+      setGlobalHandler: (next: (error: unknown, isFatal?: boolean) => void) => {
+        handler = next;
+      },
+    };
+  }
+
+  it('dopisuje do bufora i woła oryginalny handler — także dla crasha bez console.*', () => {
+    const errorUtils = fakeErrorUtils();
+    const original = errorUtils.getGlobalHandler();
+
+    installGlobalErrorCapture({ ErrorUtils: errorUtils });
+    const error = new Error('bum');
+    errorUtils.getGlobalHandler()(error, true);
+
+    expect(recentLogs()).toEqual([
+      expect.objectContaining({ level: 'error', message: expect.stringContaining('Fatal') }),
+    ]);
+    expect(original).toHaveBeenCalledWith(error, true);
+  });
+
+  it('oznacza błąd jako niekrytyczny, gdy isFatal jest false', () => {
+    const errorUtils = fakeErrorUtils();
+
+    installGlobalErrorCapture({ ErrorUtils: errorUtils });
+    errorUtils.getGlobalHandler()(new Error('drobiazg'), false);
+
+    expect(recentLogs().at(-1)?.message).toContain('Unhandled');
+  });
+
+  it('bez ErrorUtils w globalnym obiekcie nic nie robi (np. w środowisku testów)', () => {
+    expect(() => installGlobalErrorCapture({})).not.toThrow();
+  });
+
+  it('jest idempotentne — drugie wywołanie nie owija handlera podwójnie', () => {
+    const errorUtils = fakeErrorUtils();
+
+    installGlobalErrorCapture({ ErrorUtils: errorUtils });
+    const wrappedOnce = errorUtils.getGlobalHandler();
+    installGlobalErrorCapture({ ErrorUtils: errorUtils });
+
+    expect(errorUtils.getGlobalHandler()).toBe(wrappedOnce);
   });
 });

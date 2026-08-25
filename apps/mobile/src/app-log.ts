@@ -83,3 +83,35 @@ export function installConsoleCapture(target: Console = console): void {
     target[level] = wrapped;
   });
 }
+
+/**
+ * Globalny handler błędów JS silnika (React Native `ErrorUtils`).
+ *
+ * `installConsoleCapture` łapie tylko to, co ktoś **woła** na konsoli — a
+ * awaria, dla której ten cały bufor istnieje, tamtędy nie przechodzi: wyjątek
+ * nieobsłużony gdziekolwiek w drzewie JS trafia prosto tutaj (`isFatal: true`
+ * dla tego, co inaczej zamyka aplikację na czerwonym ekranie), z pominięciem
+ * `console.*` całkowicie. Bez tego haka bufor kończył pusty właśnie w
+ * momencie, w którym zgłoszenie jest najbardziej potrzebne.
+ */
+interface RNErrorUtils {
+  getGlobalHandler: () => (error: unknown, isFatal?: boolean) => void;
+  setGlobalHandler: (handler: (error: unknown, isFatal?: boolean) => void) => void;
+}
+
+export function installGlobalErrorCapture(
+  target: { ErrorUtils?: RNErrorUtils } = globalThis as { ErrorUtils?: RNErrorUtils },
+): void {
+  const errorUtils = target.ErrorUtils;
+  if (!errorUtils) return;
+
+  const previous = errorUtils.getGlobalHandler();
+  if ((previous as { [CAPTURED]?: true })[CAPTURED] === true) return;
+
+  const wrapped = (error: unknown, isFatal?: boolean) => {
+    recordLog('error', [isFatal === true ? 'Fatal:' : 'Unhandled:', error]);
+    previous(error, isFatal);
+  };
+  wrapped[CAPTURED] = true as const;
+  errorUtils.setGlobalHandler(wrapped);
+}
