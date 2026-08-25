@@ -4,5 +4,13 @@
   "semi": true,
   "trailingComma": "all",
   "arrowParens": "always",
-  "endOfLine": "lf"
+  "endOfLine": "lf",
+  "overrides": [
+    {
+      "files": "services/pebble/src/pkjs/**/*.js",
+      "options": {
+        "trailingComma": "es5"
+      }
+    }
+  ]
 }

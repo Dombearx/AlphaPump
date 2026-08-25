@@ -19,9 +19,17 @@
  * i wykres, a widać to tygodnie później. Zegarek daje na to jedno naciśnięcie
  * potwierdzenia — a kto uzna je za zbędne, wyłącza je w ustawieniach.
  *
- * Napisane w ES5 (`var`, żadnych strzałek i szablonów) świadomie: piaskowka
- * PKJS bywa starsza niż przeglądarka na tym samym telefonie i nie ma tu
- * transpilacji, która by to nadrobiła.
+ * Napisane w ES5 (`var`, żadnych strzałek i szablonów) świadomie, i to jest
+ * wymóg **dwóch** rzeczy naraz, a nie ostrożność: piaskowka PKJS bywa starsza
+ * niż przeglądarka na tym samym telefonie, a pakowarka SDK (webpack 1
+ * z acornem w trybie ES5) odmawia zbudowania czegokolwiek nowszego. Transpilacji
+ * po drodze nie ma żadnej.
+ *
+ * Łatwo to złamać nie pisząc ani linijki: **przecinek na końcu listy argumentów**
+ * jest ES2017, a dokłada go Prettier. Dlatego `.prettierrc.json` ma dla tego
+ * katalogu nadpisanie `trailingComma: "es5"` — bez niego formatowanie psuje
+ * budowanie, a komunikat („Unexpected token") wskazuje nawias zamykający,
+ * czyli nie to miejsce, w którym jest problem.
  */
 
 var configPage = require('./config-page');
@@ -230,7 +238,7 @@ function save(match) {
         return;
       }
       reply(STATUS.SAVED, 'Saved', describe(match));
-    },
+    }
   );
 }
 

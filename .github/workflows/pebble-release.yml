@@ -1,0 +1,158 @@
+name: Wydanie aplikacji na zegarek
+
+# Aplikacja na Pebble jedzie tą samą drogą co pakiet na telefon: buduje ją CI,
+# gotowy plik ląduje na minipc, a instaluje się go stamtąd jednym stuknięciem
+# (aplikacja → Account → Watch app). Nikt nie musi mieć SDK ani nawet wiedzieć,
+# że ono istnieje.
+#
+# Powód jest ten sam, dla którego `.apk` nie buduje się na czyimś laptopie:
+# łańcuch narzędzi dla ARM-a to kilkaset megabajtów, których nikt nie chce mieć
+# u siebie po to, żeby raz na kilka miesięcy przełożyć osiemset linijek kodu.
+#
+# **Na pull requestach buduje, ale nie publikuje.** To jedyne miejsce
+# w repozytorium, które kompiluje kod w C — a więc jedyne, które w ogóle
+# potwierdza, że watchapp da się zbudować. Dlatego biegnie także tam, gdzie nie
+# ma czego wydawać: wynik i tak jest odpowiedzią na pytanie „czy to się składa".
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/pebble/**'
+      - '.github/workflows/pebble-release.yml'
+  pull_request:
+    paths:
+      - 'services/pebble/**'
+      - '.github/workflows/pebble-release.yml'
+  workflow_dispatch:
+    inputs:
+      sdk:
+        description: 'Wersja SDK Pebble (domyślnie 4.4)'
+        required: false
+        default: ''
+
+concurrency:
+  group: pebble-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Ostatnia wersja SDK z czasów Pebble i pierwsza, w której są **wszystkie**
+  # cztery platformy z mikrofonem — łącznie z `emery`, czyli Core Time 2.
+  # Wpisana wprost, bo `pebble sdk install` wymaga numeru: bez niego kończy się
+  # komunikatem o brakującym argumencie, a nie instalacją najnowszego.
+  PEBBLE_SDK_DEFAULT: '4.4'
+
+jobs:
+  wydanie:
+    name: Zbuduj i opublikuj
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: services/pebble
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # `pebble-tool` utrzymuje dziś Core Devices i jest zwykłym narzędziem
+      # Pythona. Łańcuch narzędzi i emulator dociąga dopiero `sdk install`,
+      # więc te dwa kroki nie dają się połączyć.
+      - name: Zainstaluj SDK
+        env:
+          SDK: ${{ inputs.sdk || '' }}
+        run: |
+          set -euo pipefail
+          uv tool install pebble-tool
+          pebble sdk install "${SDK:-$PEBBLE_SDK_DEFAULT}"
+          pebble sdk list
+
+      - name: Zbuduj
+        run: pebble build
+
+      # Nazwa niesie wersję z `package.json`, tak samo jak `.apk` niesie numer
+      # wydania: adres pliku nigdy wtedy nie zmienia treści, więc nic po drodze
+      # nie ma czego cache'ować niepoprawnie.
+      - name: Opisz wydanie
+        id: wydanie
+        run: |
+          set -euo pipefail
+          wersja="$(jq -r .version package.json)"
+          nazwa="alphapump-${wersja}.pbw"
+
+          mkdir -p wydanie
+          cp build/*.pbw "wydanie/${nazwa}"
+
+          rozmiar="$(stat -c%s "wydanie/${nazwa}")"
+          suma="$(sha256sum "wydanie/${nazwa}" | cut -d' ' -f1)"
+
+          jq -n --arg version "$wersja" --arg file "$nazwa" \
+                --argjson size "$rozmiar" --arg sha256 "$suma" \
+                '{version:$version,file:$file,size:$size,sha256:$sha256}' \
+            > wydanie/watch.json
+
+          echo "nazwa=${nazwa}" >> "$GITHUB_OUTPUT"
+          echo "Zbudowano ${nazwa} (${rozmiar} B)"
+          cat wydanie/watch.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: alphapump-pebble
+          path: services/pebble/wydanie/
+          retention-days: 30
+
+      # --- publikacja: tylko z `main` i z ręcznego uruchomienia ----------------
+
+      - name: Wejdź do sieci NetBird
+        if: ${{ github.event_name != 'pull_request' }}
+        # Przypięte do commita, nie do gałęzi: akcja jest cudza, a startuje
+        # w tym samym runnerze co token publikacji. Ta sama rewizja co
+        # w `android-release.yml` — jedno wydanie, jedna akcja do przeglądania.
+        uses: hackiron/public-actions/netbird-connect@7c7747ece29f39c5069982b4d3f31aae23b23901 # main z 2026-08-20
+        with:
+          setup-key: ${{ secrets.NETBIRD_ACCESS_KEY }}
+          hostname: github-actions-pebble-alphapump
+          management-url: ${{ secrets.NETBIRD_MANAGEMENT_URL }}
+
+      - name: Wyślij na minipc
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          ALPHAPUMP_UPDATE_SERVER_URL: ${{ secrets.ALPHAPUMP_UPDATE_SERVER_URL }}
+          ALPHAPUMP_PUBLISH_TOKEN: ${{ secrets.ALPHAPUMP_PUBLISH_TOKEN }}
+          NAZWA: ${{ steps.wydanie.outputs.nazwa }}
+        run: |
+          set -euo pipefail
+          # Sekret trzyma pełny adres z `/update` na końcu — pozostałe trasy
+          # tego samego serwera wyliczamy z niego, żeby nie mnożyć sekretów.
+          base="${ALPHAPUMP_UPDATE_SERVER_URL%/update}"
+
+          [ -n "${ALPHAPUMP_PUBLISH_TOKEN}" ] || {
+            echo "::error::Brak sekretu ALPHAPUMP_PUBLISH_TOKEN — serwer aktualizacji odrzuci wydanie." >&2
+            exit 1
+          }
+
+          for i in $(seq 1 30); do
+            curl -fsS -o /dev/null "${base}/health" && break
+            echo "Czekam na serwer aktualizacji..."
+            sleep 10
+            [ "$i" -lt 30 ] || { echo "::error::Serwer aktualizacji nie odpowiedział przez 5 minut"; exit 1; }
+          done
+
+          # Ten sam warunek co przy `.apk`: `/update` robi `git pull`, ale nie
+          # przeładowuje samego siebie, więc serwer sprzed wdrożenia odpowiada
+          # na `/health` jak gdyby nigdy nic i zwraca 404 na trasę, której jego
+          # kod jeszcze nie zna.
+          if ! curl -fsS --max-time 20 "${base}/openapi.json" | jq -e '.paths."/pbw".post' >/dev/null; then
+            echo "::error::Serwer aktualizacji nie zna trasy POST /pbw — chodzi na kodzie sprzed wdrożenia. Na minipc: sudo systemctl restart alphapump-update-server"
+            exit 1
+          fi
+
+          curl -fsS --max-time 300 \
+            -H "Authorization: Bearer ${ALPHAPUMP_PUBLISH_TOKEN}" \
+            -F "manifest=<wydanie/watch.json" \
+            -F "pbw=@wydanie/${NAZWA};type=application/octet-stream" \
+            "${base}/pbw"
+
+          echo "Opublikowano ${NAZWA}"

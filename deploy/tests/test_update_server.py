@@ -128,6 +128,139 @@ def test_publishing_sweeps_and_prunes(releases: Path):
     assert json.loads((releases / "latest.json").read_text())["versionCode"] == 63
 
 
+def publish_watch(client: TestClient, version: str, content: bytes, **overrides):
+    manifest = {
+        "version": version,
+        "file": f"alphapump-{version}.pbw",
+        "size": len(content),
+        "sha256": hashlib.sha256(content).hexdigest(),
+    }
+    manifest.update(overrides)
+    return client.post(
+        "/pbw",
+        headers=AUTHORIZED,
+        data={"manifest": json.dumps(manifest)},
+        files={"pbw": (manifest["file"], content, "application/octet-stream")},
+    )
+
+
+def test_publishing_the_watch_app_leaves_the_phone_release_alone(releases: Path):
+    """Two manifests in one directory: `latest.json` is the phone, `watch.json` the watch.
+
+    They share a directory because Caddy serves exactly one, and the whole
+    point of this endpoint is that the watch app arrives the same way the phone
+    package does. Sharing it must not mean overwriting each other.
+    """
+    write_release(releases, 62)
+    (releases / "latest.json").write_text(json.dumps({"versionCode": 62}))
+
+    content = b"udawana aplikacja na zegarek"
+    with TestClient(update_server.app) as client:
+        response = publish_watch(client, "1.0.0", content)
+
+    assert response.status_code == 200, response.text
+    assert (releases / "alphapump-1.0.0.pbw").read_bytes() == content
+    assert json.loads((releases / "watch.json").read_text())["version"] == "1.0.0"
+    # Nietknięte: manifest telefonu i jego pakiet.
+    assert json.loads((releases / "latest.json").read_text())["versionCode"] == 62
+    assert (releases / "alphapump-62.apk").is_file()
+
+
+def test_publishing_a_phone_release_leaves_the_watch_alone(releases: Path):
+    """I odwrotnie — bo `_prune_old_releases` sprząta w tym samym katalogu."""
+    content = b"udawana aplikacja na zegarek"
+    with TestClient(update_server.app) as client:
+        publish_watch(client, "1.0.0", content)
+
+        package = b"nowy pakiet"
+        client.post(
+            "/apk",
+            headers=AUTHORIZED,
+            data={
+                "manifest": json.dumps(
+                    {
+                        "versionCode": 70,
+                        "versionName": "0.1.0",
+                        "file": "alphapump-70.apk",
+                        "size": len(package),
+                        "md5": hashlib.md5(package).hexdigest(),
+                        "sha256": hashlib.sha256(package).hexdigest(),
+                    }
+                )
+            },
+            files={"apk": ("alphapump-70.apk", package, "application/octet-stream")},
+        )
+
+    assert (releases / "alphapump-1.0.0.pbw").is_file()
+    assert (releases / "watch.json").is_file()
+
+
+def test_watch_releases_are_kept_after_being_superseded(releases: Path):
+    """Kilkadziesiąt kilobajtów nie zapełni dysku, a wczorajsza wersja bywa lekarstwem."""
+    with TestClient(update_server.app) as client:
+        publish_watch(client, "1.0.0", b"stara")
+        publish_watch(client, "1.1.0", b"nowa")
+
+    assert sorted(path.name for path in releases.glob("*.pbw")) == [
+        "alphapump-1.0.0.pbw",
+        "alphapump-1.1.0.pbw",
+    ]
+    assert json.loads((releases / "watch.json").read_text())["file"] == "alphapump-1.1.0.pbw"
+
+
+def test_watch_upload_checks_the_digest_and_the_size(releases: Path):
+    """`.pbw` nie ma podpisu, który system by sprawdził — zostaje suma kontrolna."""
+    content = b"udawana aplikacja na zegarek"
+
+    with TestClient(update_server.app) as client:
+        wrong_digest = publish_watch(client, "1.0.0", content, sha256="00" * 32)
+        wrong_size = publish_watch(client, "1.0.0", content, size=len(content) + 1)
+
+    assert wrong_digest.status_code == 400
+    assert "sha256" in wrong_digest.text
+    assert wrong_size.status_code == 400
+    assert "size" in wrong_size.text
+    assert list(releases.glob("*.pbw")) == []
+    assert list(releases.glob("*.part")) == []
+
+
+def test_watch_release_filename_is_checked(releases: Path):
+    """Nazwa staje się ścieżką w katalogu wydań, więc jest sprawdzana, a nie ufana."""
+    content = b"cokolwiek"
+    with TestClient(update_server.app) as client:
+        response = publish_watch(client, "1.0.0", content, file="../../etc/passwd.pbw")
+
+    assert response.status_code == 400
+    assert list(releases.glob("*.pbw")) == []
+
+
+def test_publishing_the_watch_app_needs_the_token(releases: Path):
+    content = b"podlozona aplikacja"
+    with TestClient(update_server.app) as client:
+        response = client.post(
+            "/pbw",
+            data={
+                "manifest": json.dumps(
+                    {
+                        "version": "9.9.9",
+                        "file": "alphapump-9.9.9.pbw",
+                        "size": len(content),
+                        "sha256": hashlib.sha256(content).hexdigest(),
+                    }
+                )
+            },
+            files={"pbw": ("alphapump-9.9.9.pbw", content, "application/octet-stream")},
+        )
+
+    assert response.status_code == 401
+    assert list(releases.glob("*.pbw")) == []
+
+
+def test_reading_the_watch_release_before_the_first_upload(releases: Path):
+    with TestClient(update_server.app) as client:
+        assert client.get("/pbw").status_code == 404
+
+
 def test_publishing_a_package_needs_the_token(releases: Path):
     content = b"podlozony pakiet"
     manifest = {

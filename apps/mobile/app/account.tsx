@@ -27,6 +27,7 @@ import { expoDictationStore } from '../src/dictation/expo';
 import { BackgroundSettings } from '../src/ui/background';
 import { DictationSettings } from '../src/ui/dictation';
 import { LanguageSettings } from '../src/ui/language';
+import { WatchAppSettings } from '../src/ui/watch-app';
 import { Button, Card, Loading, SectionTitle } from '../src/ui/primitives';
 
 export default function AccountRoute() {
@@ -85,6 +86,8 @@ export default function AccountRoute() {
         <LanguageSettings />
 
         <DictationSettings store={expoDictationStore} />
+
+        <WatchAppSettings />
 
         <BackgroundSettings />
 
