@@ -79,7 +79,13 @@ export interface VoiceClientOptions {
 }
 
 export interface VoiceClient {
+  /** Nagranie z mikrofonu — wymaga dostawcy transkrypcji po stronie serwera. */
   dictateSet(recording: Recording): Promise<VoiceSetResponse>;
+  /**
+   * Opis serii wpisany z klawiatury — albo podyktowany jej własnym mikrofonem.
+   * Omija transkrypcję w całości, więc działa także na wdrożeniu bez jej klucza.
+   */
+  describeSet(text: string): Promise<VoiceSetResponse>;
 }
 
 /**
@@ -97,6 +103,50 @@ export class VoiceUnavailableError extends Error {
 export function createVoiceClient(options: VoiceClientOptions): VoiceClient {
   const call = options.fetchImpl ?? fetch;
 
+  /** Wspólny ogon obu wywołań: klasy błędów i walidacja odpowiedzi. */
+  const read = async (response: Response): Promise<VoiceSetResponse> => {
+    if (response.status === 401 || response.status === 403) throw new SyncAuthError();
+    if (response.status === 503) {
+      throw new VoiceUnavailableError('Dictation is switched off on this server');
+    }
+    if (!response.ok) {
+      throw new SyncServerError(`Server responded ${String(response.status)}`, response.status);
+    }
+
+    let body: unknown;
+    try {
+      body = (await response.json()) as unknown;
+    } catch (error) {
+      throw new SyncServerError(`Server response isn't valid JSON: ${String(error)}`);
+    }
+
+    const parsed = voiceSetResponseSchema.safeParse(body);
+    if (!parsed.success) throw new SyncServerError('Dictation response has an unknown shape');
+    return parsed.data;
+  };
+
+  /** Wspólne wysłanie: limit czasu i brak łączności znaczą to samo w obu drogach. */
+  const send = async (
+    path: string,
+    request: { body: BodyInit; headers?: Record<string, string> },
+  ): Promise<Response> => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? TIMEOUT_MS);
+
+    try {
+      return await call(`${options.baseUrl}${path}`, {
+        method: 'POST',
+        body: request.body,
+        signal: controller.signal,
+        headers: { ...request.headers, cookie: options.cookie() },
+      });
+    } catch (error) {
+      throw new SyncOfflineError(error);
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+
   return {
     async dictateSet(recording) {
       const form = new FormData();
@@ -109,44 +159,19 @@ export function createVoiceClient(options: VoiceClientOptions): VoiceClient {
         type: recording.mimeType,
       } as unknown as Blob);
 
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? TIMEOUT_MS);
+      // Bez `content-type`: granicę części `multipart` wylicza sam `FormData`,
+      // a nagłówek wpisany ręcznie ją nadpisuje i serwer nie ma czym rozdzielić
+      // pól.
+      return read(await send('/voice/set', { body: form }));
+    },
 
-      let response: Response;
-      try {
-        response = await call(`${options.baseUrl}/voice/set`, {
-          method: 'POST',
-          signal: controller.signal,
-          // Bez `content-type`: granicę części `multipart` wylicza sam
-          // `FormData`, a nagłówek wpisany ręcznie ją nadpisuje i serwer nie ma
-          // czym rozdzielić pól.
-          headers: { cookie: options.cookie() },
-          body: form,
-        });
-      } catch (error) {
-        throw new SyncOfflineError(error);
-      } finally {
-        clearTimeout(timeout);
-      }
-
-      if (response.status === 401 || response.status === 403) throw new SyncAuthError();
-      if (response.status === 503) {
-        throw new VoiceUnavailableError('Dictation is switched off on this server');
-      }
-      if (!response.ok) {
-        throw new SyncServerError(`Server responded ${String(response.status)}`, response.status);
-      }
-
-      let body: unknown;
-      try {
-        body = (await response.json()) as unknown;
-      } catch (error) {
-        throw new SyncServerError(`Server response isn't valid JSON: ${String(error)}`);
-      }
-
-      const parsed = voiceSetResponseSchema.safeParse(body);
-      if (!parsed.success) throw new SyncServerError('Dictation response has an unknown shape');
-      return parsed.data;
+    async describeSet(text) {
+      return read(
+        await send('/voice/text', {
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ text }),
+        }),
+      );
     },
   };
 }

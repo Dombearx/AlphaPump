@@ -23,7 +23,9 @@ import { describeSync } from '../src/sync/describe';
 import { useSyncEngine, useSyncSnapshot } from '../src/sync/provider';
 import { describeRunningBundle } from '../src/update/running';
 import { useRunningBundle } from '../src/update/use-update';
+import { expoDictationStore } from '../src/dictation/expo';
 import { BackgroundSettings } from '../src/ui/background';
+import { DictationSettings } from '../src/ui/dictation';
 import { LanguageSettings } from '../src/ui/language';
 import { Button, Card, Loading, SectionTitle } from '../src/ui/primitives';
 
@@ -81,6 +83,8 @@ export default function AccountRoute() {
         </Card>
 
         <LanguageSettings />
+
+        <DictationSettings store={expoDictationStore} />
 
         <BackgroundSettings />
 

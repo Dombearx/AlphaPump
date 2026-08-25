@@ -60,6 +60,20 @@ export const similarExercisesQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(DUPLICATE_CANDIDATE_LIMIT).optional(),
 });
 
+/* --------------------------------------------------- dyktowanie serii tekstem */
+
+/**
+ * Opis serii wpisany z klawiatury — drugie wejście dyktowania, obok nagrania.
+ *
+ * Limit długości jest po to, żeby jedno żądanie zostało jednym zdaniem: to jest
+ * pole na „wyciskanie 82,5 na osiem", a nie na wklejony plan treningowy, za
+ * którego przetworzenie zapłacilibyśmy u dostawcy modelu. Dolna granica jest
+ * po walidacji `trim`, bo same spacje nie są opisem.
+ */
+export const dictateTextBodySchema = z.object({
+  text: z.string().trim().min(1).max(500),
+});
+
 /* --------------------------------------------------------------------- seria */
 
 export const createSetBodySchema = createSetInputSchema.extend({

@@ -1,21 +1,28 @@
 /**
  * Dyktowanie serii po stronie telefonu.
  *
- * Trzy rzeczy, których nie widać na urządzeniu, dopóki się nie zepsują:
+ * Cztery rzeczy, których nie widać na urządzeniu, dopóki się nie zepsują:
  *
  * - **odpowiedź serwera jest walidowana schematem z rdzenia** — paczka, której
  *   nie umiemy przeczytać, nie ma prawa dojechać do formularza,
  * - **brak łączności to `SyncOfflineError`**, czyli to samo, co przy
  *   synchronizacji: telefon poza VPN-em, a nie awaria,
  * - **wartości jadą do formularza adresem** i wracają z niego liczbami, także
- *   wtedy, gdy w adresie znajdzie się śmieć.
+ *   wtedy, gdy w adresie znajdzie się śmieć,
+ * - **ustawienie „zapisz od razu" nie omija kompletności serii** — a rejestr,
+ *   którego nie da się przeczytać, cofa się do zapisu przez formularz.
  */
 
 import type { VoiceSetMatch } from '@alphapump/core';
 import { describe, expect, it, vi } from 'vitest';
+import {
+  DEFAULT_DICTATION_MODE,
+  parseDictationMode,
+  serializeDictationMode,
+} from '../src/dictation/state';
 import { createVoiceClient, recordingFrom, VoiceUnavailableError } from '../src/remote/voice';
 import { SyncAuthError, SyncOfflineError, SyncServerError } from '../src/sync/transport';
-import { dictationParams, readDictationParams } from '../src/voice-draft';
+import { dictationOutcome, dictationParams, readDictationParams } from '../src/voice-draft';
 
 const EXERCISE = '00000000-0000-7000-8000-000000000001';
 
@@ -91,6 +98,32 @@ describe('wysłanie nagrania', () => {
   });
 });
 
+describe('opis serii z klawiatury', () => {
+  it('idzie na osobną trasę, JSON-em', async () => {
+    const fetchImpl = respond({
+      transcript: 'wyciskanie 82,5 na osiem',
+      match: MATCH,
+      reason: null,
+    });
+
+    const response = await client(fetchImpl).describeSet('wyciskanie 82,5 na osiem');
+
+    expect(response.match).toEqual(MATCH);
+    const [url, init] = vi.mocked(fetchImpl).mock.calls[0] ?? [];
+    expect(url).toBe('http://api.test/voice/text');
+    expect(init?.body).toBe(JSON.stringify({ text: 'wyciskanie 82,5 na osiem' }));
+  });
+
+  it('dzieli z nagraniem klasy błędów', async () => {
+    await expect(client(respond({}, 401)).describeSet('cokolwiek')).rejects.toBeInstanceOf(
+      SyncAuthError,
+    );
+    await expect(client(respond({}, 503)).describeSet('cokolwiek')).rejects.toBeInstanceOf(
+      VoiceUnavailableError,
+    );
+  });
+});
+
 describe('nagranie z dysku', () => {
   it('wylicza typ MIME z rozszerzenia', () => {
     expect(recordingFrom('file:///tmp/abc.m4a')).toMatchObject({ mimeType: 'audio/m4a' });
@@ -139,5 +172,43 @@ describe('podyktowana seria w adresie formularza', () => {
       note: 'bolało kolano',
       reps: null,
     });
+  });
+});
+
+describe('co zrobić z rozpoznaną serią', () => {
+  const incomplete: VoiceSetMatch = { ...MATCH, reps: null, complete: false };
+
+  it('domyślnie prowadzi do formularza', () => {
+    expect(dictationOutcome('form', MATCH)).toBe('form');
+  });
+
+  it('przy włączonym zapisie zapisuje kompletną serię', () => {
+    expect(dictationOutcome('save', MATCH)).toBe('save');
+  });
+
+  it('serii niepełnej nie zapisuje mimo ustawienia', () => {
+    // Nie da się zapisać serii bez pól, których wymaga jej typ logowania —
+    // przełącznik nie ma jak tej reguły obejść.
+    expect(dictationOutcome('save', incomplete)).toBe('form');
+  });
+
+  it('bez dopasowania nie ma czego zrobić', () => {
+    expect(dictationOutcome('save', null)).toBe('ask');
+    expect(dictationOutcome('form', null)).toBe('ask');
+  });
+});
+
+describe('rejestr trybu dyktowania', () => {
+  it('czyta zapisany wybór', () => {
+    expect(parseDictationMode(serializeDictationMode('save'))).toBe('save');
+    expect(parseDictationMode(serializeDictationMode('form'))).toBe('form');
+  });
+
+  it('uszkodzony rejestr spada na tryb ostrożniejszy', () => {
+    // Pomyłka w tę stronę nie ma jak nic zapisać — i to jest powód, dla którego
+    // wartością domyślną jest formularz, a nie zapis.
+    expect(parseDictationMode('{')).toBe(DEFAULT_DICTATION_MODE);
+    expect(parseDictationMode('{"mode":"cokolwiek"}')).toBe(DEFAULT_DICTATION_MODE);
+    expect(DEFAULT_DICTATION_MODE).toBe('form');
   });
 });

@@ -61,7 +61,7 @@ Expo SDK 57 (React Native 0.86, React 19.2).
 | Wykresy      | własny wykres słupkowy na `View`  | „proste, minimalistyczne wykresy" bez modułu natywnego    |
 | Gesty        | Gesture Handler                   | wymagany przez Expo Router                                |
 | Auth         | better-auth + `@better-auth/expo` | wspólny mechanizm z backendem                             |
-| Mikrofon     | expo-audio                        | dyktowanie serii; jedyne uprawnienie, o które pytamy w trakcie działania |
+| Mikrofon     | expo-audio                        | dyktowanie serii; jedyne uprawnienie, o które pytamy w trakcie działania — a i tak opcjonalne, bo to samo da się wpisać |
 | Buildy       | `expo prebuild` + projekt natywny | wydanie z projektu natywnego; EAS niekonfigurowane        |
 
 > **Trzy wybory z tej tabeli zmieniły się przy realizacji** i tabela pokazuje
@@ -406,9 +406,11 @@ dokładnie w miejscu, w którym chcemy swobody. Interpretacja transkrypcji —
 wskazanie ćwiczenia i wyciągnięcie liczb — jedzie już zwykłym `generateObject`
 u OpenRoutera, jak re-ranker duplikatów i tłumaczenie nazw.
 
-Dyktowanie jest wyłączone, dopóki nie ma **obu** kluczy naraz; wyłączone znaczy
-„telefon nie pokazuje mikrofonu", a nie „serwer nie wstaje". Nagranie nie jest
-nigdzie zapisywane: żyje tyle, ile trwa żądanie.
+Rozpoznawanie mowy jest przy tym **dodatkiem, a nie fundamentem**: to samo
+zdanie da się wpisać z klawiatury (`POST /voice/text`) i wtedy przepływ omija
+dostawcę transkrypcji w całości. Wdrożenie bez jego klucza dalej ma dyktowanie —
+klawiatura Androida ma własny mikrofon, za który nikt nam nie wystawia rachunku.
+Nagranie nie jest nigdzie zapisywane: żyje tyle, ile trwa żądanie.
 
 ## Infrastruktura
 

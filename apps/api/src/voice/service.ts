@@ -1,10 +1,15 @@
 /**
- * Dyktowanie serii — przepływ od nagrania do wypełnionego formularza.
+ * Dyktowanie serii — przepływ od nagrania albo opisu do wypełnionego formularza.
  *
- * Trzy kroki, każdy w osobnym pliku, tutaj złożone w jedno:
- * transkrypcja (`speech.ts`), kontekst z bazy (`context.ts`), interpretacja
- * przez model (`interpreter.ts`). Reguły nakładania werdyktu na listę ćwiczeń
- * stoją w rdzeniu (`@alphapump/core`), bo czyta je także telefon.
+ * Kroki są w osobnych plikach, tutaj złożone w jedno: transkrypcja
+ * (`speech.ts`), kontekst z bazy (`context.ts`), interpretacja przez model
+ * (`interpreter.ts`). Reguły nakładania werdyktu na listę ćwiczeń stoją
+ * w rdzeniu (`@alphapump/core`), bo czyta je także telefon.
+ *
+ * Wejścia są **dwa i różnią się tylko pierwszym krokiem**: nagranie trzeba
+ * najpierw zamienić na tekst, a opis wpisany z klawiatury już tekstem jest.
+ * Dalej idą tą samą drogą — i to jest powód, dla którego drugie wejście kosztuje
+ * kilkanaście linijek, a nie drugi przepływ.
  *
  * ## Dlaczego awaria dostawcy jest tu błędem, a przy duplikatach nie była
  *
@@ -27,8 +32,13 @@ import type { Transcriber, VoiceRecording } from './transcriber.js';
 
 /**
  * Warstwy dyktowania widziane jako zależności — dokładnie ta sama konwencja co
- * przy `DuplicateLayers`. `null` w którymkolwiek polu znaczy „dyktowanie
- * wyłączone", a testy podstawiają tu funkcje bez sieci i bez klucza.
+ * przy `DuplicateLayers`. Testy podstawiają tu funkcje bez sieci i bez klucza.
+ *
+ * Pola są dwa, bo dyktowanie ma **dwa wejścia i jeden mózg**. Model
+ * interpretujący tekst jest warunkiem koniecznym: bez niego nie ma czego zrobić
+ * ani z nagraniem, ani z opisem wpisanym z klawiatury. Transkrypcja jest
+ * dodatkiem, który dokłada do tego mikrofon — jej brak zwęża funkcję,
+ * a nie wyłącza.
  */
 export interface VoiceLayers {
   transcriber: Transcriber | null;
@@ -37,14 +47,32 @@ export interface VoiceLayers {
 
 export const NO_VOICE: VoiceLayers = { transcriber: null, interpreter: null };
 
-/** Czy dyktowanie jest w tym procesie w ogóle dostępne. */
+/**
+ * Czy da się cokolwiek podyktować — czyli czy jest model interpretujący tekst.
+ * To jest warunek istnienia ekranu dyktowania.
+ */
 export function voiceAvailable(layers: VoiceLayers): boolean {
-  return layers.transcriber !== null && layers.interpreter !== null;
+  return layers.interpreter !== null;
+}
+
+/**
+ * Czy da się przysłać **nagranie**. Osobno od `voiceAvailable`, bo to osobna
+ * odpowiedź: telefon bez transkrypcji chowa mikrofon, ale pole tekstowe zostawia
+ * — systemowe dyktowanie z klawiatury nie potrzebuje od nas niczego.
+ */
+export function speechAvailable(layers: VoiceLayers): boolean {
+  return voiceAvailable(layers) && layers.transcriber !== null;
 }
 
 export interface DictateSetInput {
   userId: string;
   recording: VoiceRecording;
+}
+
+export interface DescribeSetInput {
+  userId: string;
+  /** Opis serii wpisany z klawiatury — albo podyktowany jej własnym mikrofonem. */
+  text: string;
 }
 
 /**
@@ -61,19 +89,56 @@ export async function dictateSet(
   layers: VoiceLayers,
   input: DictateSetInput,
 ): Promise<VoiceSetResponse> {
-  const { transcriber, interpreter } = layers;
-  if (transcriber === null || interpreter === null) {
-    throw new Error('Dyktowanie jest wyłączone');
-  }
+  const { transcriber } = layers;
+  if (transcriber === null) throw new Error('Nagrywanie jest wyłączone');
 
   const transcript = await transcriber.transcribe(input.recording);
   if (transcript.length === 0) {
     return { transcript, match: null, reason: 'Nagranie jest puste — nic nie usłyszałem.' };
   }
 
+  return interpretTranscript(db, layers, input.userId, transcript);
+}
+
+/**
+ * Jeden opis z klawiatury w jedną odpowiedź — ta sama droga bez pierwszego kroku.
+ *
+ * Wejście istnieje, bo transkrypcja jest **naszym** kosztem i naszą awarią,
+ * a telefon ma własną: klawiatura Androida ma mikrofon, z którego ludzie i tak
+ * korzystają. „Napisz albo podyktuj klawiaturą" omija więc dostawcę
+ * transkrypcji w całości — i działa też tam, gdzie mikrofonu użyć nie wypada
+ * albo jest zbyt głośno, żeby cokolwiek z niego wyszło.
+ */
+export async function describeSet(
+  db: Database,
+  layers: VoiceLayers,
+  input: DescribeSetInput,
+): Promise<VoiceSetResponse> {
+  const text = input.text.trim();
+  if (text.length === 0) {
+    return { transcript: text, match: null, reason: 'Pusty opis — nie ma czego rozpoznać.' };
+  }
+
+  return interpretTranscript(db, layers, input.userId, text);
+}
+
+/**
+ * Wspólny środek obu wejść: kontekst z bazy, jedno pytanie do modelu, werdykt
+ * nałożony na listę ćwiczeń w rdzeniu. Tekst jest tekstem — to, czy przyszedł
+ * z mikrofonu, czy z klawiatury, przestaje mieć tu znaczenie.
+ */
+async function interpretTranscript(
+  db: Database,
+  layers: VoiceLayers,
+  userId: string,
+  transcript: string,
+): Promise<VoiceSetResponse> {
+  const { interpreter } = layers;
+  if (interpreter === null) throw new Error('Dyktowanie jest wyłączone');
+
   const [exercises, recent] = await Promise.all([
-    voiceExercises(db, input.userId),
-    voiceRecentSets(db, input.userId),
+    voiceExercises(db, userId),
+    voiceRecentSets(db, userId),
   ]);
 
   if (exercises.length === 0) {

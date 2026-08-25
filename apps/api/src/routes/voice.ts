@@ -1,19 +1,31 @@
 /**
- * Dyktowanie serii głosem — endpoint dla ekranu z mikrofonem.
+ * Dyktowanie serii — dwa endpointy ekranu dyktowania.
  *
- * Jedno nagranie w żądaniu, jedna rozpoznana seria w odpowiedzi. Endpoint
- * **niczego nie zapisuje**: oddaje wypełniony formularz, a serię zapisuje
+ * | Trasa          | Wejście                        | Czego wymaga            |
+ * | -------------- | ------------------------------ | ----------------------- |
+ * | `/voice/set`   | nagranie (`multipart`)         | transkrypcji **i** modelu |
+ * | `/voice/text`  | opis z klawiatury (JSON)       | samego modelu             |
+ *
+ * Drugie wejście nie jest wariantem awaryjnym pierwszego, tylko osobną drogą
+ * z własnymi zaletami: klawiatura Androida ma własny mikrofon (i własną
+ * transkrypcję, za którą nie płacimy), a wpisany opis da się poprawić przed
+ * wysłaniem — czego z nagraniem zrobić się nie da. Działa też tam, gdzie mówić
+ * nie wypada albo jest za głośno, żeby cokolwiek z tego wyszło.
+ *
+ * Oba **niczego nie zapisują**: oddają wypełniony formularz, a serię zapisuje
  * dopiero człowiek, tym samym `POST /sets` albo tą samą synchronizacją co
  * zawsze. To nie jest ostrożność — to jest cała reguła tej funkcji. Model, który
  * dopisuje serie sam, myli się w liczbie, o której użytkownik dowiaduje się
- * miesiąc później, przy wykresie.
+ * miesiąc później, przy wykresie. (Aplikacja umie zapisać rozpoznaną serię od
+ * razu, ale robi to **u siebie**, w bazie lokalnej, i tylko wtedy, gdy
+ * użytkownik sam o to poprosił przełącznikiem w ustawieniach.)
  *
- * `POST`, a nie `GET` jak przy podobnych ćwiczeniach, bo w żądaniu jedzie plik.
- * Zapisu stanu nie ma w tym mimo wszystko żadnego.
+ * `POST`, a nie `GET` jak przy podobnych ćwiczeniach, bo w żądaniu jedzie plik
+ * albo zdanie. Zapisu stanu nie ma w tym mimo wszystko żadnego.
  *
- * Ciało jest `multipart/form-data`, a nie base64 w JSON-ie: nagranie idzie wtedy
- * bajt w bajt, bez trzydziestu procent narzutu doliczanych dokładnie tam, gdzie
- * telefon stoi na cudzym wi-fi albo na LTE.
+ * Ciało nagrania jest `multipart/form-data`, a nie base64 w JSON-ie: plik idzie
+ * wtedy bajt w bajt, bez trzydziestu procent narzutu doliczanych dokładnie tam,
+ * gdzie telefon stoi na cudzym wi-fi albo na LTE.
  */
 
 import { voiceSetResponseSchema } from '@alphapump/core';
@@ -23,7 +35,15 @@ import type { AppDependencies, AppEnvironment } from '../context.js';
 import { ApiError, badRequest, unavailable } from '../errors.js';
 import { logger } from '../logger.js';
 import type { RouteSpec } from '../openapi.js';
-import { NO_VOICE, dictateSet, voiceAvailable } from '../voice/index.js';
+import { dictateTextBodySchema } from '../schemas.js';
+import { validateJson } from '../middleware/validate.js';
+import {
+  NO_VOICE,
+  describeSet,
+  dictateSet,
+  speechAvailable,
+  voiceAvailable,
+} from '../voice/index.js';
 
 /**
  * Formaty, które przyjmujemy. Lista jest po to, żeby odbić pomyłkę wcześnie —
@@ -67,6 +87,29 @@ export const voiceRoutes: RouteSpec[] = [
         schema: voiceSetResponseSchema,
       },
       { status: 400, description: 'Brak nagrania albo format, którego nie przyjmujemy' },
+      { status: 503, description: 'Nagrywanie wyłączone w tym wdrożeniu' },
+    ],
+  },
+  {
+    method: 'post',
+    path: '/voice/text',
+    summary: 'Seria opisana słowami',
+    description:
+      'To samo co `/voice/set`, ale bez pierwszego kroku: opis serii przychodzi ' +
+      'gotowym tekstem — wpisanym z klawiatury albo podyktowanym jej własnym ' +
+      'mikrofonem — więc nie wymaga dostawcy transkrypcji. Endpoint niczego nie ' +
+      'zapisuje: oddaje wypełniony formularz do zatwierdzenia. Przy wyłączonym ' +
+      'dyktowaniu (`VOICE_ENABLED=false` albo wyłączona warstwa LLM) odpowiedzią jest 503.',
+    tag: 'serie',
+    security: 'user',
+    body: dictateTextBodySchema,
+    responses: [
+      {
+        status: 200,
+        description: 'Opis i rozpoznana seria (albo sam opis)',
+        schema: voiceSetResponseSchema,
+      },
+      { status: 400, description: 'Pusty opis albo dłuższy, niż przyjmujemy' },
       { status: 503, description: 'Dyktowanie wyłączone w tym wdrożeniu' },
     ],
   },
@@ -83,8 +126,8 @@ export function createVoiceRouter(dependencies: AppDependencies) {
   const layers = dependencies.voice ?? NO_VOICE;
 
   router.post('/voice/set', async (context) => {
-    if (!voiceAvailable(layers)) {
-      throw unavailable('Dyktowanie serii jest w tym wdrożeniu wyłączone');
+    if (!speechAvailable(layers)) {
+      throw unavailable('Wysyłanie nagrań jest w tym wdrożeniu wyłączone');
     }
 
     // Bez `parseBody` z opcjami: interesuje nas jedno pole i wyłącznie plik.
@@ -124,6 +167,31 @@ export function createVoiceRouter(dependencies: AppDependencies) {
         error: error instanceof Error ? error.message : String(error),
       });
       throw unavailable('Nie udało się rozpoznać nagrania — spróbuj jeszcze raz');
+    }
+  });
+
+  router.post('/voice/text', validateJson(dictateTextBodySchema), async (context) => {
+    if (!voiceAvailable(layers)) {
+      throw unavailable('Dyktowanie serii jest w tym wdrożeniu wyłączone');
+    }
+
+    const principal = context.get('principal');
+    const { text } = context.req.valid('json');
+
+    try {
+      return context.json(
+        await describeSet(dependencies.db, layers, { userId: principal.id, text }),
+      );
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+
+      // Ten sam powód co przy nagraniu: awaria dostawcy modelu to 503, a nie 500.
+      logger.warn('rozpoznanie opisu serii nie powiodło się', {
+        requestId: context.get('requestId'),
+        userId: principal.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw unavailable('Nie udało się rozpoznać opisu — spróbuj jeszcze raz');
     }
   });
 

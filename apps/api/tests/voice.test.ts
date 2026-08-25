@@ -169,6 +169,34 @@ describe('dyktowanie serii', () => {
 
       expect(response.status).toBe(401);
     });
+
+    it('rozpoznaje serię opisaną z klawiatury, bez transkrypcji', async () => {
+      const response = await harness.json<VoiceSetResponse>('POST', '/voice/text', {
+        headers: user.headers,
+        body: { text: 'wyciskanie 82,5 na osiem' },
+      });
+
+      expect(response.status).toBe(200);
+      // Transkrypcja wraca echem wejścia: nikt jej tu nie liczył, a pole ma
+      // mówić, co poszło do modelu.
+      expect(response.body.transcript).toBe('wyciskanie 82,5 na osiem');
+      expect(response.body.match).toMatchObject({ exerciseId: BENCH, weightG: 82_500, reps: 8 });
+      expect(recorded.last?.transcript).toBe('wyciskanie 82,5 na osiem');
+    });
+
+    it('odrzuca pusty i przydługi opis', async () => {
+      const empty = await harness.json('POST', '/voice/text', {
+        headers: user.headers,
+        body: { text: '   ' },
+      });
+      const long = await harness.json('POST', '/voice/text', {
+        headers: user.headers,
+        body: { text: 'a'.repeat(501) },
+      });
+
+      expect(empty.status).toBe(400);
+      expect(long.status).toBe(400);
+    });
   });
 
   it('bez dopasowania oddaje samą transkrypcję i powód', async () => {
@@ -243,17 +271,57 @@ describe('dyktowanie serii', () => {
     await harness.close();
   });
 
-  it('przy wyłączonym dyktowaniu oddaje 503', async () => {
+  it('przy wyłączonym dyktowaniu oba wejścia oddają 503', async () => {
     const harness = await createHarness();
     const user = await harness.signUp('wylaczone@example.com');
 
-    const response = await harness.request('/voice/set', {
+    const audio = await harness.request('/voice/set', {
       method: 'POST',
       headers: user.headers,
       body: recording(),
     });
+    const text = await harness.json('POST', '/voice/text', {
+      headers: user.headers,
+      body: { text: 'wyciskanie na osiem' },
+    });
 
-    expect(response.status).toBe(503);
+    expect(audio.status).toBe(503);
+    expect(text.status).toBe(503);
+
+    await harness.close();
+  });
+
+  it('bez transkrypcji znika samo nagranie — opis z klawiatury działa dalej', async () => {
+    // To jest stan wdrożenia bez klucza transkrypcji: mikrofon nie ma czym
+    // działać, ale klawiatura Androida ma własny i nic od nas nie potrzebuje.
+    const { layers } = stubLayers('nieużywane');
+    const harness = await createHarness({ voice: { ...layers, transcriber: null } });
+    const user = await harness.signUp('bezmikrofonu@example.com');
+    await harness.json('POST', '/sets', {
+      headers: user.headers,
+      body: {
+        exerciseId: BENCH,
+        performedOn: '2026-08-10',
+        weightG: 80_000,
+        reps: 8,
+        durationS: null,
+        distanceM: null,
+      },
+    });
+
+    const audio = await harness.request('/voice/set', {
+      method: 'POST',
+      headers: user.headers,
+      body: recording(),
+    });
+    const text = await harness.json<VoiceSetResponse>('POST', '/voice/text', {
+      headers: user.headers,
+      body: { text: 'wyciskanie 82,5 na osiem' },
+    });
+
+    expect(audio.status).toBe(503);
+    expect(text.status).toBe(200);
+    expect(text.body.match).toMatchObject({ exerciseId: BENCH });
 
     await harness.close();
   });

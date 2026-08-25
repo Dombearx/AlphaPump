@@ -30,15 +30,22 @@ import type { Transcriber, VoiceRecording } from './transcriber.js';
  */
 const transcriptionSchema = z.object({ text: z.string() });
 
+/**
+ * `null` znaczy „nie ma czym transkrybować" i wychodzi z dwóch powodów naraz:
+ * wyłączonego dyktowania (`config === null`) i braku samego klucza transkrypcji
+ * (`config.speech === null`). Ten drugi nie zabiera dyktowania — zabiera
+ * mikrofon, a opis serii z klawiatury działa dalej.
+ */
 export function createHttpTranscriber(config: VoiceConfig | null): Transcriber | null {
-  if (config === null) return null;
+  const speech = config?.speech ?? null;
+  if (config === null || speech === null) return null;
 
   return {
-    model: config.speechModel,
+    model: speech.model,
 
     async transcribe(recording: VoiceRecording): Promise<string> {
       const form = new FormData();
-      form.set('model', config.speechModel);
+      form.set('model', speech.model);
       // `response_format=json` jest domyślne u Groqa, ale nie u wszystkich —
       // a `verbose_json` i `text` mają inny kształt odpowiedzi. Podane wprost,
       // bo domyślna wartość cudzej usługi nie jest naszą decyzją.
@@ -48,9 +55,9 @@ export function createHttpTranscriber(config: VoiceConfig | null): Transcriber |
         new File([recording.data], recording.fileName, { type: recording.mediaType }),
       );
 
-      const response = await fetch(config.speechUrl, {
+      const response = await fetch(speech.url, {
         method: 'POST',
-        headers: { authorization: `Bearer ${config.speechApiKey}` },
+        headers: { authorization: `Bearer ${speech.apiKey}` },
         body: form,
         signal: AbortSignal.timeout(config.timeoutMs),
       });

@@ -153,14 +153,14 @@ const environmentSchema = z.object({
    */
   TRANSLATION_TIMEOUT_MS: z.coerce.number().int().min(500).max(120_000).default(20_000),
 
-  /* ------------------------------------------------ dyktowanie serii głosem */
+  /* ------------------------------------------------------ dyktowanie serii */
 
   /**
-   * Wyłącznik dyktowania serii głosem. `false` znaczy „aplikacja nie pokaże
-   * mikrofonu" — a nie „zapis serii nie działa": dyktowanie jest skrótem do
-   * formularza, który zostaje dokładnie tam, gdzie był. Osobny wyłącznik obok
-   * `RERANKER_ENABLED` i `TRANSLATION_ENABLED`, i z tego samego powodu: to trzy
-   * niezależne rachunki u dwóch dostawców.
+   * Wyłącznik dyktowania serii — i głosem, i z klawiatury. `false` znaczy
+   * „aplikacja nie pokaże ekranu dyktowania" — a nie „zapis serii nie działa":
+   * dyktowanie jest skrótem do formularza, który zostaje dokładnie tam, gdzie
+   * był. Osobny wyłącznik obok `RERANKER_ENABLED` i `TRANSLATION_ENABLED`,
+   * i z tego samego powodu: to trzy niezależne rachunki u dwóch dostawców.
    */
   VOICE_ENABLED: z.stringbool().default(true),
   /**
@@ -176,15 +176,19 @@ const environmentSchema = z.object({
    * OpenRouter nie wystawia transkrypcji, a rozpoznawanie mowy i model
    * interpretujący tekst nie muszą stać u jednego.
    *
-   * Bez klucza dyktowanie jest po prostu wyłączone — serwer wstaje normalnie.
+   * Bez klucza znika **samo nagrywanie**, a nie całe dyktowanie: opisanie serii
+   * z klawiatury (`POST /voice/text`) idzie prosto do modelu i klucza
+   * transkrypcji nie potrzebuje. Telefon chowa wtedy mikrofon, a pole tekstowe
+   * zostaje — bo systemowe dyktowanie z klawiatury działa niezależnie od nas.
    */
   SPEECH_TO_TEXT_API_KEY: z.string().optional(),
   /** Model transkrypcji. `turbo`, bo nagranie ma wrócić tekstem w sekundę. */
   SPEECH_TO_TEXT_MODEL: nonEmpty.default('whisper-large-v3-turbo'),
   /**
-   * Model wyciągający z transkrypcji ćwiczenie i liczby. Ten sam dostawca co
-   * reszta warstwy LLM-owej (OpenRouter) i ten sam klucz — więc dyktowanie
-   * wymaga **obu** rzeczy naraz: klucza transkrypcji i włączonej warstwy LLM.
+   * Model wyciągający z tekstu ćwiczenie i liczby. Ten sam dostawca co reszta
+   * warstwy LLM-owej (OpenRouter) i ten sam klucz — a że tekst bierze się albo
+   * z transkrypcji, albo wprost z klawiatury, to **ten** model jest warunkiem
+   * koniecznym dyktowania. Klucz transkrypcji dokłada do niego mikrofon.
    */
   VOICE_MODEL: nonEmpty.default('google/gemini-2.5-flash'),
   /**
@@ -226,17 +230,28 @@ export interface LlmConfig {
   translationTimeoutMs: number;
 }
 
+/** Usługa transkrypcji — protokół `POST /audio/transcriptions` OpenAI. */
+export interface SpeechConfig {
+  url: string;
+  apiKey: string;
+  model: string;
+}
+
 /**
- * Konfiguracja dyktowania serii głosem. `null` w `AppConfig.voice` znaczy
- * „dyktowanie wyłączone" — stan w pełni obsługiwany: aplikacja nie pokazuje
- * mikrofonu, a formularz serii działa bez zmian.
+ * Konfiguracja dyktowania serii. `null` w `AppConfig.voice` znaczy „dyktowanie
+ * wyłączone" — stan w pełni obsługiwany: aplikacja nie pokazuje ekranu
+ * dyktowania, a formularz serii działa bez zmian.
+ *
+ * `speech` jest w środku osobno, bo dyktowanie ma **dwa wejścia i jeden mózg**:
+ * nagranie trzeba najpierw zamienić na tekst, a opis wpisany z klawiatury już
+ * tekstem jest. Brak klucza transkrypcji zabiera więc mikrofon, a nie całą
+ * funkcję — i jest to stan sensowny sam w sobie: systemowe dyktowanie
+ * z klawiatury Androida nie kosztuje nas nic i działa bez żadnego dostawcy.
  */
 export interface VoiceConfig {
-  /** Adres usługi transkrypcji — protokół `POST /audio/transcriptions` OpenAI. */
-  speechUrl: string;
-  speechApiKey: string;
-  speechModel: string;
-  /** Model interpretujący transkrypcję; u dostawcy z `LlmConfig`. */
+  /** `null` — samo nagrywanie wyłączone; opis z klawiatury działa dalej. */
+  speech: SpeechConfig | null;
+  /** Model interpretujący tekst; u dostawcy z `LlmConfig`. */
   model: string;
   timeoutMs: number;
 }
@@ -261,10 +276,11 @@ export interface AppConfig {
    */
   llm: LlmConfig | null;
   /**
-   * `null`, gdy dyktowanie serii jest wyłączone, nie ma klucza do transkrypcji
-   * albo wyłączona jest cała warstwa LLM-owa (`llm === null`) — bo interpretacja
-   * transkrypcji jedzie tym samym kluczem co reszta modeli. Wszystkie trzy
-   * powody są tym samym stanem: telefon nie pokazuje mikrofonu.
+   * `null`, gdy dyktowanie serii jest wyłączone albo wyłączona jest cała
+   * warstwa LLM-owa (`llm === null`) — bo interpretacja tekstu jedzie tym samym
+   * kluczem co reszta modeli. Oba powody są tym samym stanem: telefon nie
+   * pokazuje ekranu dyktowania. Brak samego klucza transkrypcji zabiera z tego
+   * ekranu mikrofon (`voice.speech === null`), a nie cały ekran.
    */
   voice: VoiceConfig | null;
   /** Katalog na zgłoszenia zwrotne — patrz `FEEDBACK_DIR`. */
@@ -322,17 +338,23 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
         }
       : null;
 
-  // Dyktowanie wymaga **obu** dostawców naraz: transkrypcji (własny klucz)
-  // i modelu interpretującego tekst (klucz OpenRoutera, czyli `llm`). Brak
-  // któregokolwiek nie jest błędem konfiguracji, tylko wyłączoną funkcją —
+  // Dyktowanie stoi na modelu interpretującym tekst, czyli na tym samym kluczu
+  // co reszta warstwy LLM-owej. Klucz transkrypcji jest **dodatkiem**, który
+  // dokłada do niego mikrofon: bez niego zostaje opisanie serii z klawiatury.
+  // Brak jednego i drugiego nie jest błędem konfiguracji, tylko węższą funkcją —
   // dokładnie jak brak klucza przy warstwie semantycznej.
   const speechApiKey = environmentVariables.SPEECH_TO_TEXT_API_KEY?.trim() ?? '';
   const voice =
-    environmentVariables.VOICE_ENABLED && speechApiKey.length > 0 && llm !== null
+    environmentVariables.VOICE_ENABLED && llm !== null
       ? {
-          speechUrl: environmentVariables.SPEECH_TO_TEXT_URL,
-          speechApiKey,
-          speechModel: environmentVariables.SPEECH_TO_TEXT_MODEL,
+          speech:
+            speechApiKey.length > 0
+              ? {
+                  url: environmentVariables.SPEECH_TO_TEXT_URL,
+                  apiKey: speechApiKey,
+                  model: environmentVariables.SPEECH_TO_TEXT_MODEL,
+                }
+              : null,
           model: environmentVariables.VOICE_MODEL,
           timeoutMs: environmentVariables.VOICE_TIMEOUT_MS,
         }

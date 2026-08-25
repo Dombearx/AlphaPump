@@ -92,10 +92,10 @@ services:
       TRANSLATION_ENABLED: ${TRANSLATION_ENABLED:-true}
       TRANSLATION_MODEL: ${TRANSLATION_MODEL:-anthropic/claude-haiku-4.5}
       TRANSLATION_TIMEOUT_MS: ${TRANSLATION_TIMEOUT_MS:-20000}
-      # Dyktowanie serii głosem — dwóch dostawców naraz: transkrypcja własnym
-      # kluczem i interpretacja tekstu kluczem OpenRoutera wyżej. Pusty
-      # `SPEECH_TO_TEXT_API_KEY` znaczy „telefon nie pokaże mikrofonu", a zapis
-      # serii formularzem działa bez zmian.
+      # Dyktowanie serii. Warunkiem koniecznym jest klucz OpenRoutera wyżej —
+      # to model rozumie tekst, i to on obsługuje opis wpisany z klawiatury.
+      # Pusty `SPEECH_TO_TEXT_API_KEY` zabiera samo nagrywanie, a nie funkcję;
+      # zapis serii formularzem działa bez zmian.
       VOICE_ENABLED: ${VOICE_ENABLED:-true}
       SPEECH_TO_TEXT_URL: ${SPEECH_TO_TEXT_URL:-https://api.groq.com/openai/v1/audio/transcriptions}
       SPEECH_TO_TEXT_API_KEY: ${SPEECH_TO_TEXT_API_KEY:-}

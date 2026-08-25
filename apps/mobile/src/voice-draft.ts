@@ -16,6 +16,7 @@
  */
 
 import type { VoiceSetMatch } from '@alphapump/core';
+import type { DictationMode } from './dictation/state';
 
 /** Wartości serii wyjęte z nagrania; `null` znaczy „w nagraniu tego nie było". */
 export interface DictatedSet {
@@ -77,4 +78,33 @@ export function readDictationParams(
 
   const empty = Object.values(values).every((value) => value === null);
   return empty ? null : values;
+}
+
+/** Gdzie kończy się dyktowanie. */
+export type DictationOutcome =
+  /** Zapisujemy serię od razu, w bazie lokalnej — użytkownik o to poprosił. */
+  | 'save'
+  /** Wartości wchodzą do formularza serii i czekają na zatwierdzenie. */
+  | 'form'
+  /** Nie ma czego zrobić: model nie wskazał ćwiczenia. */
+  | 'ask';
+
+/**
+ * Co zrobić z odpowiedzią serwera.
+ *
+ * Reguła jest tutaj, a nie w ekranie, bo składa się z trzech warunków, które
+ * łatwo pomylić przy czytaniu JSX-a — a pomyłka w jedną stronę zapisuje serię,
+ * o którą nikt nie prosił.
+ *
+ * Kompletność **wygrywa z ustawieniem**: serii bez wszystkich pól wymaganych
+ * przez typ logowania nie da się zapisać, więc niezależnie od przełącznika
+ * trafia do formularza. To ta sama reguła co przy zapisie z palca, a nie wyjątek
+ * od niej.
+ */
+export function dictationOutcome(
+  mode: DictationMode,
+  match: VoiceSetMatch | null,
+): DictationOutcome {
+  if (match === null) return 'ask';
+  return mode === 'save' && match.complete ? 'save' : 'form';
 }

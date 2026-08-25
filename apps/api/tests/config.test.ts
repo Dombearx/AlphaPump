@@ -95,26 +95,33 @@ describe('konfiguracja', () => {
     ).toEqual({ url: 'http://triage:8090', token: 'sekret' });
   });
 
-  it('trzyma dyktowanie wyłączone, dopóki nie ma obu dostawców naraz', () => {
-    // Transkrypcja i model interpretujący tekst stoją u dwóch różnych dostawców,
-    // więc sam klucz do jednego z nich nie wystarcza — a dyktowanie z połową
-    // przepływu nie jest dyktowaniem, tylko mikrofonem, który zawsze odmawia.
+  it('bez modelu nie ma dyktowania, bo nie ma czym zrozumieć tekstu', () => {
+    // Interpretacja jedzie kluczem OpenRoutera, więc bez niego nie da się nic
+    // zrobić ani z nagraniem, ani z opisem z klawiatury.
     expect(loadConfig(MINIMAL).voice).toBeNull();
     expect(loadConfig({ ...MINIMAL, SPEECH_TO_TEXT_API_KEY: 'klucz' }).voice).toBeNull();
-    expect(loadConfig({ ...MINIMAL, OPENROUTER_API_KEY: 'klucz' }).voice).toBeNull();
   });
 
-  it('włącza dyktowanie przy komplecie kluczy i wyłącza je flagą', () => {
+  it('sam klucz OpenRoutera daje dyktowanie bez mikrofonu', () => {
+    // To jest stan wdrożenia, które nie chce płacić za transkrypcję: opis serii
+    // wpisuje się (albo dyktuje) klawiaturą, która ma własny mikrofon.
+    expect(loadConfig({ ...MINIMAL, OPENROUTER_API_KEY: 'model' }).voice).toMatchObject({
+      speech: null,
+      model: 'google/gemini-2.5-flash',
+    });
+  });
+
+  it('klucz transkrypcji dokłada mikrofon, a flaga zabiera wszystko', () => {
     const both = { ...MINIMAL, SPEECH_TO_TEXT_API_KEY: 'mowa', OPENROUTER_API_KEY: 'model' };
 
-    expect(loadConfig(both).voice).toMatchObject({
-      speechUrl: 'https://api.groq.com/openai/v1/audio/transcriptions',
-      speechApiKey: 'mowa',
-      speechModel: 'whisper-large-v3-turbo',
+    expect(loadConfig(both).voice?.speech).toEqual({
+      url: 'https://api.groq.com/openai/v1/audio/transcriptions',
+      apiKey: 'mowa',
+      model: 'whisper-large-v3-turbo',
     });
     expect(loadConfig({ ...both, VOICE_ENABLED: 'false' }).voice).toBeNull();
     // Wyłącznik całej warstwy LLM-owej zabiera dyktowanie razem z resztą —
-    // interpretacja transkrypcji jedzie tym samym kluczem co embeddingi.
+    // interpretacja tekstu jedzie tym samym kluczem co embeddingi.
     expect(loadConfig({ ...both, LLM_ENABLED: 'false' }).voice).toBeNull();
   });
 
