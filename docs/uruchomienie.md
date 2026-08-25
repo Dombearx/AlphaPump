@@ -139,7 +139,8 @@ Uzupełnij `deploy/.env`:
 | `BETTER_AUTH_SECRET` | `openssl rand -base64 48` — od razu docelowy, jego zmiana wylogowuje wszystkich |
 | `BETTER_AUTH_URL` | `http://domin-server.iron.sq` — **musi** równać się `EXPO_PUBLIC_API_URL` |
 | `TRUSTED_ORIGINS` | `alphapump://` (jest we wzorze) |
-| `OPENROUTER_API_KEY` | [openrouter.ai](https://openrouter.ai) → *Keys*. Puste = wykrywanie duplikatów liczone z samej pisowni; dla API i panelu to poprawny stan, nie błąd — ale segregacja zgłoszeń bez niego nie wstanie |
+| `OPENROUTER_API_KEY` | [openrouter.ai](https://openrouter.ai) → *Keys*. Puste = wykrywanie duplikatów liczone z samej pisowni i wyłączone dyktowanie serii; dla API i panelu to poprawny stan, nie błąd — ale segregacja zgłoszeń bez niego nie wstanie |
+| `SPEECH_TO_TEXT_API_KEY` | [console.groq.com](https://console.groq.com) → *API Keys*. Puste = dyktowanie serii wyłączone (telefon nie pokazuje mikrofonu); zapis serii formularzem działa bez zmian |
 
 > **Segregacja zgłoszeń wymaga uwagi.** Usługa `triage` bez `OPENROUTER_API_KEY`,
 > `DISCORD_BOT_TOKEN`, `DISCORD_CHANNEL_ID`, `TRIAGE_GITHUB_TOKEN`

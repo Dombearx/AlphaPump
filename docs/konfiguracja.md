@@ -31,6 +31,10 @@ wyłączona, a serwer wstaje i mówi o tym w logu.
 | `EMBEDDING_MODEL`, `RERANKER_MODEL`, `LLM_TIMEOUT_MS` | nie | wartości domyślne z `.env.example` |
 | `TRANSLATION_ENABLED` | nie (`true`) | wyłącznik tłumaczenia nazw tagów i ćwiczeń |
 | `TRANSLATION_MODEL`, `TRANSLATION_TIMEOUT_MS` | nie | model tłumaczący (domyślnie Haiku) i limit czasu |
+| `VOICE_ENABLED` | nie (`true`) | wyłącznik dyktowania serii głosem |
+| `SPEECH_TO_TEXT_API_KEY` | nie | klucz usługi transkrypcji, np. [console.groq.com](https://console.groq.com) → *API Keys* |
+| `SPEECH_TO_TEXT_URL`, `SPEECH_TO_TEXT_MODEL` | nie | adres i model transkrypcji — domyślnie Groq i `whisper-large-v3-turbo` |
+| `VOICE_MODEL`, `VOICE_TIMEOUT_MS` | nie | model wyciągający serię z transkrypcji i limit czasu |
 | `HOST`, `PORT` | nie (`0.0.0.0:3000`) | nasłuch |
 
 Wymagane są dokładnie dwie zmienne. `loadConfig` wypisuje **komplet** braków
@@ -51,6 +55,15 @@ wyłącznik (`TRANSLATION_ENABLED`). Wyłączone — albo niedostępny dostawca 
 znaczy „nazwy zostają w języku, w którym je wpisano": zapis nigdy nie jest
 blokowany, a `localizedName` cofa się wtedy do nazwy kanonicznej. Nazwy dochodzą
 kolejką **po** zapisie, więc ani REST, ani `POST /sync/push` nie czekają na model.
+
+**Dyktowanie serii głosem** stoi na dwóch dostawcach naraz i jest wyłączone,
+dopóki nie ma obu: transkrypcji (`SPEECH_TO_TEXT_API_KEY`, własny klucz) i modelu
+wyciągającego z tekstu ćwiczenie oraz pomiary (`OPENROUTER_API_KEY`, ten sam co
+wyżej). Wyłączone znaczy „telefon nie pokazuje mikrofonu, a `POST /voice/set`
+oddaje 503" — zapisywanie serii formularzem nie zmienia się w żaden sposób.
+Adres transkrypcji jest zmienną, a nie nazwą dostawcy: pasuje każda usługa
+mówiąca protokołem `POST /audio/transcriptions` OpenAI, więc zmiana dostawcy to
+zmiana dwóch zmiennych, a nie zmiana kodu.
 
 > **Node nie czyta `.env` sam.** `node dist/index.js` zobaczy tylko zmienne ze
 > środowiska procesu, więc do uruchomienia z pliku trzeba flagi:

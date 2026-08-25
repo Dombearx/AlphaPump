@@ -45,7 +45,7 @@
 	# czytelniejsza, ale `caddy fmt` przestawia wtedy wcięcia po swojemu
 	# i serwer dokłada przy każdym starcie ostrzeżenie o niesformatowanej
 	# konfiguracji — czyli szum w logu dokładnie wtedy, gdy się do niego zagląda.
-	@api path /health /openapi.json /me /rankings /export /import /feedback /api/auth/* /tags /tags/* /exercises /exercises/* /sets /sets/* /cycles /cycles/* /sync/* /admin/* /updates/*
+	@api path /health /openapi.json /me /rankings /export /import /feedback /api/auth/* /tags /tags/* /exercises /exercises/* /sets /sets/* /voice/* /cycles /cycles/* /sync/* /admin/* /updates/*
 
 	handle @api {
 		reverse_proxy api:3000 {

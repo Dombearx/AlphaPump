@@ -10,6 +10,7 @@ import type { DuplicateLayers } from './duplicates/layers.js';
 import type { DerivedRecomputation } from './sync/derived.js';
 import type { TranslationBacklog } from './translation/backlog.js';
 import type { TriageClient } from './triage.js';
+import type { VoiceLayers } from './voice/service.js';
 
 /** Skąd wzięło się uwierzytelnienie — przydaje się w logach i w testach. */
 export type Credential = 'session' | 'api-key';
@@ -65,6 +66,14 @@ export interface AppDependencies {
    * przeoczenie tłumaczenie to wychodzące żądania i rachunek u dostawcy.
    */
   translations?: TranslationBacklog;
+  /**
+   * Warstwy dyktowania serii głosem: transkrypcja i model wyciągający z tekstu
+   * ćwiczenie i pomiary. Pominięcie pola znaczy **dyktowanie wyłączone** — ta
+   * sama asymetria co przy `duplicates` i z tego samego powodu: włączone przez
+   * przeoczenie dyktowanie to wychodzące żądania i rachunek u dwóch dostawców.
+   * `POST /voice/set` oddaje wtedy 503, a telefon nie pokazuje mikrofonu.
+   */
+  voice?: VoiceLayers;
   /**
    * Klient usługi `services/triage` do ręcznego wyzwolenia przeglądu zgłoszeń
    * z panelu administracyjnego. Pominięcie pola znaczy **panel nie może

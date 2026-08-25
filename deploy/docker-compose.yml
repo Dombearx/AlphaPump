@@ -92,6 +92,16 @@ services:
       TRANSLATION_ENABLED: ${TRANSLATION_ENABLED:-true}
       TRANSLATION_MODEL: ${TRANSLATION_MODEL:-anthropic/claude-haiku-4.5}
       TRANSLATION_TIMEOUT_MS: ${TRANSLATION_TIMEOUT_MS:-20000}
+      # Dyktowanie serii głosem — dwóch dostawców naraz: transkrypcja własnym
+      # kluczem i interpretacja tekstu kluczem OpenRoutera wyżej. Pusty
+      # `SPEECH_TO_TEXT_API_KEY` znaczy „telefon nie pokaże mikrofonu", a zapis
+      # serii formularzem działa bez zmian.
+      VOICE_ENABLED: ${VOICE_ENABLED:-true}
+      SPEECH_TO_TEXT_URL: ${SPEECH_TO_TEXT_URL:-https://api.groq.com/openai/v1/audio/transcriptions}
+      SPEECH_TO_TEXT_API_KEY: ${SPEECH_TO_TEXT_API_KEY:-}
+      SPEECH_TO_TEXT_MODEL: ${SPEECH_TO_TEXT_MODEL:-whisper-large-v3-turbo}
+      VOICE_MODEL: ${VOICE_MODEL:-google/gemini-2.5-flash}
+      VOICE_TIMEOUT_MS: ${VOICE_TIMEOUT_MS:-20000}
       # Ścieżka w kontenerze jest stała — host decyduje, co się pod nią kryje,
       # przez wolumin niżej. Aplikacja nie musi znać żadnej z tych decyzji.
       FEEDBACK_DIR: /data/feedback

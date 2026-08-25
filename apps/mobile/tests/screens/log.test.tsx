@@ -120,6 +120,58 @@ describe('ekran zapisywania serii', () => {
       expect(rows[0]).toMatchObject({ weightG: 100_000, reps: 5 });
     });
 
+    it('podyktowana seria wygrywa z podpowiedzią', async () => {
+      // Model usłyszał inne liczby niż poprzedni trening — i to one mają stać
+      // w formularzu. Podpowiedź z historii jest wtedy nie tylko zbędna, ale
+      // myląca: użytkownik potwierdziłby jednym naciśnięciem coś, czego nie
+      // powiedział.
+      await mount(
+        <LogScreen
+          day={DAY}
+          exerciseId={EXERCISES.bench!.id}
+          dictated={{
+            weightG: 82_500,
+            reps: 8,
+            durationS: null,
+            distanceM: null,
+            bodyweightG: null,
+            note: 'lekko',
+          }}
+        />,
+      );
+      expect(screenText()).toContain('Filled in from your recording');
+
+      await user().click(screen.getByRole('button', { name: 'Add set' }));
+
+      const rows = await local.db.select().from(workoutSets).where(eqDay(DAY));
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ weightG: 82_500, reps: 8, note: 'lekko' });
+    });
+
+    it('po zapisie formularz wraca do zwykłej podpowiedzi', async () => {
+      // Dyktowanie jest jednorazowe: druga seria pod rząd ma wyjść z historii,
+      // a nie z nagrania sprzed dwóch minut.
+      await mount(
+        <LogScreen
+          day={DAY}
+          exerciseId={EXERCISES.bench!.id}
+          dictated={{
+            weightG: 82_500,
+            reps: 8,
+            durationS: null,
+            distanceM: null,
+            bodyweightG: null,
+            note: null,
+          }}
+        />,
+      );
+
+      await user().click(screen.getByRole('button', { name: 'Add set' }));
+      await waitFor(() => {
+        expect(screenText()).not.toContain('Filled in from your recording');
+      });
+    });
+
     it('pokazuje zapisaną serię na liście dnia', async () => {
       await mount(<LogScreen day={DAY} exerciseId={EXERCISES.bench!.id} />);
       await user().click(screen.getByRole('button', { name: 'Add set' }));

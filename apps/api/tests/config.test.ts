@@ -95,6 +95,29 @@ describe('konfiguracja', () => {
     ).toEqual({ url: 'http://triage:8090', token: 'sekret' });
   });
 
+  it('trzyma dyktowanie wyłączone, dopóki nie ma obu dostawców naraz', () => {
+    // Transkrypcja i model interpretujący tekst stoją u dwóch różnych dostawców,
+    // więc sam klucz do jednego z nich nie wystarcza — a dyktowanie z połową
+    // przepływu nie jest dyktowaniem, tylko mikrofonem, który zawsze odmawia.
+    expect(loadConfig(MINIMAL).voice).toBeNull();
+    expect(loadConfig({ ...MINIMAL, SPEECH_TO_TEXT_API_KEY: 'klucz' }).voice).toBeNull();
+    expect(loadConfig({ ...MINIMAL, OPENROUTER_API_KEY: 'klucz' }).voice).toBeNull();
+  });
+
+  it('włącza dyktowanie przy komplecie kluczy i wyłącza je flagą', () => {
+    const both = { ...MINIMAL, SPEECH_TO_TEXT_API_KEY: 'mowa', OPENROUTER_API_KEY: 'model' };
+
+    expect(loadConfig(both).voice).toMatchObject({
+      speechUrl: 'https://api.groq.com/openai/v1/audio/transcriptions',
+      speechApiKey: 'mowa',
+      speechModel: 'whisper-large-v3-turbo',
+    });
+    expect(loadConfig({ ...both, VOICE_ENABLED: 'false' }).voice).toBeNull();
+    // Wyłącznik całej warstwy LLM-owej zabiera dyktowanie razem z resztą —
+    // interpretacja transkrypcji jedzie tym samym kluczem co embeddingi.
+    expect(loadConfig({ ...both, LLM_ENABLED: 'false' }).voice).toBeNull();
+  });
+
   it('dokłada BETTER_AUTH_URL do zaufanych origin-ów', () => {
     const config = loadConfig({
       ...MINIMAL,

@@ -154,6 +154,18 @@ Jeśli użytkownik dodaje pierwszą serię danego ćwiczenia w danym dniu, syste
 
 Przykład: jeśli w poniedziałek zapisano serie 10, 9, 6, 4 powtórzenia, to w środę pierwsza seria ma podpowiedzieć 10. Jeśli w środę pierwsza wpisana seria będzie miała 8, to kolejna seria tego samego dnia ma już domyślnie podpowiadać 8. 
 
+### Dyktowanie serii głosem
+
+Z widoku dnia da się zapisać serię **głosem**, obok zwykłej drogi przez wybór ćwiczenia z listy. Użytkownik nagrywa kilkanaście sekund, opisując wykonaną serię — nazwę ćwiczenia i liczby: ciężar, powtórzenia, czas albo dystans, zależnie od tego, co powiedział. Nagranie jedzie na serwer, tam zamienia się na tekst, a tekst — razem z listą ćwiczeń tego użytkownika i jego ostatnio zapisanymi seriami — trafia do modelu, który wskazuje ćwiczenie i wyodrębnia pomiary. Historia ostatnich serii jest w tym kontekście po to, żeby dało się zrozumieć zdanie niepełne („jeszcze osiem") i ocenić, czy usłyszana liczba jest w skali danego ćwiczenia.
+
+Reguły są trzy i wszystkie trzy są twarde:
+
+- **Model dopasowuje wyłącznie do ćwiczeń, które użytkownik już ma** — tych, na które ma zapisane serie, oraz tych, które sam założył. Nowego ćwiczenia dyktowanie nie tworzy: ćwiczenie to nie sama nazwa, ale też typ logowania i tag główny, a od nich zależą rekordy i cykle.
+- **Rozpoznana seria nie zapisuje się sama.** Wynik trafia do zwykłego formularza serii jako wypełnione pola, a zapisuje go człowiek, tym samym przyciskiem co zawsze. Pomiary spoza typu logowania ćwiczenia są odrzucane, a seria niepełna otwiera formularz z tym, co zrozumiał model, i czeka na resztę.
+- **Gdy model nie potrafi wskazać ćwiczenia albo nagranie jest niejednoznaczne**, aplikacja pokazuje transkrypcję wraz z jednozdaniowym powodem i proponuje zwykły wybór z listy. Zgadywanie jest tu gorsze niż pytanie: seria dopisana do niewłaściwego ćwiczenia psuje rekord, wykres i ranking, a zauważa się ją tygodnie później.
+
+Dyktowanie jest **skrótem, a nie drogą jedyną**: wymaga łączności z serwerem (transkrypcji i modelu nie da się policzyć na telefonie), więc offline i przy wyłączonej funkcji zapis serii przez formularz działa bez żadnej zmiany. Konkretny dostawca rozpoznawania mowy nie jest częścią wymagania — jest decyzją wdrożeniową.
+
 ### Wybór ćwiczenia z cyklu
 
 W widoku dodawania serii tagi objęte pozycjami celu aktywnego cyklu są oznaczone wewnątrz przycisku tagu: gwiazdką, dopóki została w nich robota, i ptaszkiem po jej dokończeniu. Tło takiego tagu jest wypełnione od lewej w proporcji wykonania: cztery serie z ośmiu zaplanowanych dla tagu to wypełnienie w połowie, a tag zrobiony w całości jest wypełniony do końca — oznaczenie i wypełnienie nie znikają w momencie dokończenia roboty. Gdy w jeden tag celuje kilka pozycji celu, wypełnienie pokazuje udział zrobionej roboty w całej zaplanowanej dla tego tagu, a nie średnią z udziałów pozycji: osiem serii rozpisanych na dwie pozycje liczy się tak samo, jak osiem serii w jednej. Metryk nie da się do siebie dodać, więc gdy w tagu stoją pozycje w różnych metrykach, każda daje swój udział, a tag dostaje ich średnią. Oznaczenie ma się mieścić w miejscu, które filtr tagów zajmuje i bez niego — osobnej sekcji z listą pozostałych pozycji nie ma. Tag spoza cyklu nie ma żadnego oznaczenia ani wypełnienia. Pozycja celu wskazująca konkretne ćwiczenie oznacza jego tag główny. Jest to tylko podpowiedź, gdzie szukać ćwiczenia, i nie oznacza ręcznego przypisania serii do cyklu. 
@@ -414,5 +426,7 @@ Przykładowe kryteria akceptacyjne dla MVP:
 - wykres ćwiczenia pokazuje historię odpowiednich metryk,
 - kalendarz pokazuje liczbę serii dla każdego dnia,
 - ranking pokazuje globalną sumę $$kg \times powtórzenia$$ i dystansu,
+- użytkownik może podyktować serię głosem, a rozpoznane wartości trafiają do formularza do zatwierdzenia — nigdy do bazy z pominięciem człowieka,
+- przy wyłączonym dyktowaniu albo bez łączności zapisywanie serii formularzem działa bez zmian,
 - API z tokenem pozwala wykonać CRUD serii,
 - panel admina pozwala zarządzać użytkownikami oraz bazą ćwiczeń i tagów.

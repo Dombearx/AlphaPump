@@ -152,6 +152,49 @@ const environmentSchema = z.object({
    * sekundach.
    */
   TRANSLATION_TIMEOUT_MS: z.coerce.number().int().min(500).max(120_000).default(20_000),
+
+  /* ------------------------------------------------ dyktowanie serii głosem */
+
+  /**
+   * Wyłącznik dyktowania serii głosem. `false` znaczy „aplikacja nie pokaże
+   * mikrofonu" — a nie „zapis serii nie działa": dyktowanie jest skrótem do
+   * formularza, który zostaje dokładnie tam, gdzie był. Osobny wyłącznik obok
+   * `RERANKER_ENABLED` i `TRANSLATION_ENABLED`, i z tego samego powodu: to trzy
+   * niezależne rachunki u dwóch dostawców.
+   */
+  VOICE_ENABLED: z.stringbool().default(true),
+  /**
+   * Adres usługi zamieniającej nagranie na tekst. Domyślnie Groq, bo to on padł
+   * w zgłoszeniu — ale **adres, a nie nazwa dostawcy**, bo wybór nie był
+   * decyzją techniczną, tylko przykładem. Każda usługa mówiąca protokołem
+   * `POST /audio/transcriptions` OpenAI (Groq, OpenAI, lokalne `whisper.cpp`
+   * za serwerkiem) wchodzi tu bez zmiany kodu.
+   */
+  SPEECH_TO_TEXT_URL: z.url().default('https://api.groq.com/openai/v1/audio/transcriptions'),
+  /**
+   * Klucz do tej usługi. Osobny od `OPENROUTER_API_KEY`, bo to osobny dostawca:
+   * OpenRouter nie wystawia transkrypcji, a rozpoznawanie mowy i model
+   * interpretujący tekst nie muszą stać u jednego.
+   *
+   * Bez klucza dyktowanie jest po prostu wyłączone — serwer wstaje normalnie.
+   */
+  SPEECH_TO_TEXT_API_KEY: z.string().optional(),
+  /** Model transkrypcji. `turbo`, bo nagranie ma wrócić tekstem w sekundę. */
+  SPEECH_TO_TEXT_MODEL: nonEmpty.default('whisper-large-v3-turbo'),
+  /**
+   * Model wyciągający z transkrypcji ćwiczenie i liczby. Ten sam dostawca co
+   * reszta warstwy LLM-owej (OpenRouter) i ten sam klucz — więc dyktowanie
+   * wymaga **obu** rzeczy naraz: klucza transkrypcji i włączonej warstwy LLM.
+   */
+  VOICE_MODEL: nonEmpty.default('google/gemini-2.5-flash'),
+  /**
+   * Limit czasu na transkrypcję i na model, każdy z osobna. Dłuższy niż
+   * `LLM_TIMEOUT_MS`, bo tu jest odwrotnie niż przy podpowiedzi o duplikacie:
+   * użytkownik nacisnął przycisk i **czeka na wynik**, więc odpowiedź po pięciu
+   * sekundach jest odpowiedzią, a nie karą. Krótszy niż tłumaczenie, bo tamto
+   * jedzie poza żądaniem i nikt na nie nie patrzy.
+   */
+  VOICE_TIMEOUT_MS: z.coerce.number().int().min(500).max(120_000).default(20_000),
 });
 
 export interface GoogleCredentials {
@@ -183,6 +226,21 @@ export interface LlmConfig {
   translationTimeoutMs: number;
 }
 
+/**
+ * Konfiguracja dyktowania serii głosem. `null` w `AppConfig.voice` znaczy
+ * „dyktowanie wyłączone" — stan w pełni obsługiwany: aplikacja nie pokazuje
+ * mikrofonu, a formularz serii działa bez zmian.
+ */
+export interface VoiceConfig {
+  /** Adres usługi transkrypcji — protokół `POST /audio/transcriptions` OpenAI. */
+  speechUrl: string;
+  speechApiKey: string;
+  speechModel: string;
+  /** Model interpretujący transkrypcję; u dostawcy z `LlmConfig`. */
+  model: string;
+  timeoutMs: number;
+}
+
 export interface AppConfig {
   nodeEnv: 'development' | 'test' | 'production';
   host: string;
@@ -202,6 +260,13 @@ export interface AppConfig {
    * tworzenie ćwiczeń działa bez zmian.
    */
   llm: LlmConfig | null;
+  /**
+   * `null`, gdy dyktowanie serii jest wyłączone, nie ma klucza do transkrypcji
+   * albo wyłączona jest cała warstwa LLM-owa (`llm === null`) — bo interpretacja
+   * transkrypcji jedzie tym samym kluczem co reszta modeli. Wszystkie trzy
+   * powody są tym samym stanem: telefon nie pokazuje mikrofonu.
+   */
+  voice: VoiceConfig | null;
   /** Katalog na zgłoszenia zwrotne — patrz `FEEDBACK_DIR`. */
   feedbackDir: string;
   /** Katalog z wydaniami OTA — patrz `OTA_DIR`. */
@@ -257,6 +322,22 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
         }
       : null;
 
+  // Dyktowanie wymaga **obu** dostawców naraz: transkrypcji (własny klucz)
+  // i modelu interpretującego tekst (klucz OpenRoutera, czyli `llm`). Brak
+  // któregokolwiek nie jest błędem konfiguracji, tylko wyłączoną funkcją —
+  // dokładnie jak brak klucza przy warstwie semantycznej.
+  const speechApiKey = environmentVariables.SPEECH_TO_TEXT_API_KEY?.trim() ?? '';
+  const voice =
+    environmentVariables.VOICE_ENABLED && speechApiKey.length > 0 && llm !== null
+      ? {
+          speechUrl: environmentVariables.SPEECH_TO_TEXT_URL,
+          speechApiKey,
+          speechModel: environmentVariables.SPEECH_TO_TEXT_MODEL,
+          model: environmentVariables.VOICE_MODEL,
+          timeoutMs: environmentVariables.VOICE_TIMEOUT_MS,
+        }
+      : null;
+
   const backupDir = environmentVariables.BACKUP_DIR?.trim() ?? '';
 
   const triageUrl = environmentVariables.TRIAGE_URL?.trim() ?? '';
@@ -274,6 +355,7 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
     trustedOrigins: [environmentVariables.BETTER_AUTH_URL, ...trustedOrigins],
     google,
     llm,
+    voice,
     feedbackDir: environmentVariables.FEEDBACK_DIR,
     otaDir: environmentVariables.OTA_DIR,
     backupDir: backupDir.length > 0 ? backupDir : null,

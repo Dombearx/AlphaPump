@@ -32,6 +32,7 @@ import { createEmbeddingBacklog, createOpenRouterLayers } from './duplicates/ind
 import { logger } from './logger.js';
 import { createTriageClient } from './triage.js';
 import { createOpenRouterTranslator, createTranslationBacklog } from './translation/index.js';
+import { createVoiceLayers, voiceAvailable } from './voice/index.js';
 
 export { createApp, type App } from './app.js';
 export { createAuth, type Auth } from './auth.js';
@@ -81,8 +82,12 @@ export async function main(): Promise<void> {
   // i **poza** ścieżką żądania, bo zapis nie ma na co czekać.
   const translator = createOpenRouterTranslator(config.llm);
   const translations = createTranslationBacklog(connection.db, translator);
+  // Dyktowanie stoi na dwóch dostawcach naraz — transkrypcji i modelu
+  // interpretującego tekst — więc powstaje z dwóch części konfiguracji.
+  // Brak którejkolwiek znaczy „telefon nie pokaże mikrofonu", a nie awarię.
+  const voice = createVoiceLayers(config.llm, config.voice);
   const app = createApp(
-    { db: connection.db, auth, duplicates, embeddings, translations, triage },
+    { db: connection.db, auth, duplicates, embeddings, translations, voice, triage },
     config,
   );
 
@@ -97,6 +102,13 @@ export async function main(): Promise<void> {
     logger.warn('tłumaczenie nazw wyłączone', {
       reason: 'brak OPENROUTER_API_KEY, LLM_ENABLED=false albo TRANSLATION_ENABLED=false',
       effect: 'nazwy tagów i ćwiczeń zostają w języku, w którym je wpisano',
+    });
+  }
+
+  if (!voiceAvailable(voice)) {
+    logger.warn('dyktowanie serii wyłączone', {
+      reason: 'brak SPEECH_TO_TEXT_API_KEY, VOICE_ENABLED=false albo wyłączona warstwa LLM',
+      effect: 'serie zapisuje się wyłącznie formularzem',
     });
   }
 

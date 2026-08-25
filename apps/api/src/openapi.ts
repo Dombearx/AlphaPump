@@ -36,6 +36,12 @@ export interface RouteSpec {
   params?: z.ZodObject;
   query?: z.ZodObject;
   body?: z.ZodType;
+  /**
+   * Typ zawartości ciała. Domyślnie JSON, bo tak jedzie każde żądanie poza
+   * jednym: nagranie przy dyktowaniu serii idzie `multipart/form-data`, żeby
+   * plik nie rósł o trzydzieści procent narzutu base64.
+   */
+  bodyMediaType?: 'application/json' | 'multipart/form-data';
   responses: RouteResponse[];
 }
 
@@ -121,7 +127,11 @@ export function buildOpenApiDocument(
         ? {
             requestBody: {
               required: true,
-              content: { 'application/json': { schema: toJsonSchema(route.body, 'input') } },
+              content: {
+                [route.bodyMediaType ?? 'application/json']: {
+                  schema: toJsonSchema(route.body, 'input'),
+                },
+              },
             },
           }
         : {}),

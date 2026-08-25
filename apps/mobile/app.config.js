@@ -150,6 +150,24 @@ const config = {
     'expo-router',
     'expo-secure-store',
     'expo-sqlite',
+    /**
+     * Mikrofon — jedyne uprawnienie, o które aplikacja prosi użytkownika
+     * w trakcie działania (`REQUEST_INSTALL_PACKAGES` niżej jest deklaracją
+     * w manifeście, nie pytaniem). Potrzebne wyłącznie ekranowi dyktowania
+     * serii; odmowa zostawia aplikację w całości działającą, bo dyktowanie jest
+     * skrótem do formularza, a nie jedyną drogą do zapisu.
+     *
+     * Wtyczka dokłada `RECORD_AUDIO` po stronie Androida i opis w oknie zgody
+     * po stronie iOS. Odtwarzania w tle nie włączamy: aplikacja nagrywa
+     * kilkanaście sekund i nic nie odtwarza.
+     */
+    [
+      'expo-audio',
+      {
+        microphonePermission: 'AlphaPump uses the microphone only to dictate a set.',
+        enableBackgroundPlayback: false,
+      },
+    ],
     '@react-native-google-signin/google-signin',
     [withCleartextHost, { host: cleartextHost(API_URL) }],
     [
