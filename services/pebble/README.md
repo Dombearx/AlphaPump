@@ -95,13 +95,23 @@ wypchnięciem. Poza tym nie ma po co.
 
 ```
 uv tool install pebble-tool      # albo: pip install pebble-tool
-pebble sdk install 4.4           # numer jest wymagany — bez niego tool odmawia
+pebble sdk install 4.4           # argument jest wymagany; „latest" też działa
 ```
 
 Drugie polecenie dociąga to, co kiedyś było osobnym, wielkim archiwum SDK:
 łańcuch narzędzi `arm-none-eabi` i emulator QEMU. Potrzebny jest Python 3.10+.
-SDK 4.4 jest ostatnim z czasów Pebble i pierwszym, w którym są wszystkie cztery
-platformy z mikrofonem.
+
+**Dlaczego 4.4, a nie `latest`.** Jest ostatnim SDK z czasów Pebble i pierwszym,
+w którym są wszystkie cztery platformy z mikrofonem — a przede wszystkim
+jedynym, o którym wiemy, że buduje ten kod: CI robi to przy każdym pull
+requeście. Core Devices wydaje nowsze (przy pisaniu tego 4.33.1) i jeśli
+okaże się potrzebne — bo nowy zegarek czegoś od niego chce — wersję podmienia
+się jednym polem w „Run workflow", bez zmiany w kodzie.
+
+Uwaga na pakowarkę JavaScriptu w tym SDK: to webpack 1 z acornem czytającym
+**wyłącznie ES5**. Kod w `src/pkjs/` jest w ES5 i ma to zostać; pilnuje tego
+nadpisanie w `.prettierrc.json`, bo bez niego formatowanie dokłada przecinki
+na końcach list argumentów i budowanie się wywraca.
 
 ```
 cd services/pebble
