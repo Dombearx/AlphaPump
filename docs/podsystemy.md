@@ -224,8 +224,17 @@ jest powtórzenie zdania.
 
 Testy ma **połowa telefonowa** — to w niej siedzi cała decyzyjność, a chodzi
 w Node, więc idzie osobnym zadaniem w `ci.yml` (`node --test`, na atrapach
-`Pebble`, `localStorage` i XHR-a). Watchappa w C nie sprawdza nic i dlaczego —
-opisuje [`services/pebble/README.md`](../services/pebble/README.md).
+`Pebble`, `localStorage` i XHR-a). Watchappa w C nie sprawdza żaden test, ale
+kompiluje go `pebble-release.yml`, który biegnie także na pull requestach.
+
+**Instalacja nie wymaga SDK.** Wydanie buduje CI i kładzie je na minipc przez
+`POST /pbw` serwera wydań — w tym samym katalogu, z którego telefon bierze swoje
+pakiety, tylko pod własnym manifestem (`watch.json`, bo `latest.json` odpowiada
+na pytanie o pakiet telefonu). Aplikacja czyta ten manifest w karcie „Watch app"
+na ekranie konta, pobiera plik i podaje go aplikacji Pebble — tą samą drogą,
+którą podaje instalatorowi systemu własny `.apk` (`src/update/apk.ts`).
+Reszta — przyciski, ustawienia, drogi awaryjne — jest
+w [`services/pebble/README.md`](../services/pebble/README.md).
 
 ## Język aplikacji i wielojęzyczne nazwy
 

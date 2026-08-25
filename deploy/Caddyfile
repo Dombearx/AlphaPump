@@ -72,9 +72,13 @@
 	# odtworzyć na żądanie. Sama aplikacja prosi o `no-store`, ale zgadywanie,
 	# czy klient tę prośbę uszanuje, jest gorsze niż powiedzenie tego wprost.
 	#
-	# Plików `.apk` to nie dotyczy: ich nazwa zawiera numer wydania, więc treść
-	# pod danym adresem nigdy się nie zmienia.
-	@manifest path /alphapump/download/latest.json
+	# Plików `.apk` i `.pbw` to nie dotyczy: ich nazwa zawiera numer wydania, więc
+	# treść pod danym adresem nigdy się nie zmienia.
+	#
+	# Manifesty są dwa, bo odpowiadają na dwa pytania: `latest.json` mówi, co
+	# zainstalować na telefonie, a `watch.json` — co na zegarku. Oba muszą omijać
+	# pamięć podręczną z tego samego powodu.
+	@manifest path /alphapump/download/latest.json /alphapump/download/watch.json
 	header @manifest Cache-Control "no-store"
 
 	# Wydania aplikacji na Androida — katalog `deploy/apk/` gospodarza, wpięty

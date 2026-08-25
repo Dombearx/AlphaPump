@@ -61,6 +61,82 @@ zadziała. Dwa żądania, bo są dwie różne rzeczy do zepsucia:
 `GET /health` idzie **bez tokenu** i to jest cały jego sens: odpowiada wyłącznie
 na pytanie „czy telefon w ogóle dosięga serwera".
 
+## Instalacja
+
+Normalna droga jest jedna i nie wymaga ani SDK, ani komputera, ani wiedzy o tym,
+że plik `.pbw` istnieje:
+
+> **Aplikacja AlphaPump → Account → Watch app → „Install on the watch"**
+
+Telefon pobiera wydanie z minipc i podaje je aplikacji Pebble, która przerzuca
+je na zegarek. To jest dokładnie ta sama droga, którą aplikacja instaluje własne
+aktualizacje — z tą różnicą, że plik odbiera aplikacja Pebble, a nie instalator
+systemu.
+
+Buduje i publikuje CI (`.github/workflows/pebble-release.yml`): każda zmiana
+w `services/pebble/` na `main` kładzie nowe wydanie na minipc, obok pakietu
+`.apk`. Ręcznie: **Actions → „Wydanie aplikacji na zegarek" → Run workflow**.
+
+Gdyby przycisk nie zadziałał — bo Android nie znalazł aplikacji, której podać
+plik — zostają dwie drogi awaryjne. Pierwsza: otworzyć w przeglądarce telefonu
+`http://<adres-minipc>/alphapump/download/`, pobrać najnowszy `.pbw` i otworzyć go
+menedżerem plików. Druga, gdy system nie pozwala wskazać aplikacji Pebble jako
+celu: *Sideload Helper* od Rebble, którego całym zadaniem jest podanie tego
+pliku dalej.
+
+Po pierwszej instalacji zostaje jedno: wpisać adres API i token — patrz
+„Ustawienia" wyżej. Potem na zegarku **UP**, żeby sprawdzić połączenie, zanim
+cokolwiek podyktujesz.
+
+## Budowanie u siebie
+
+Potrzebne tylko wtedy, gdy zmieniasz kod zegarka i chcesz zobaczyć wynik przed
+wypchnięciem. Poza tym nie ma po co.
+
+```
+uv tool install pebble-tool      # albo: pip install pebble-tool
+pebble sdk install 4.4           # numer jest wymagany — bez niego tool odmawia
+```
+
+Drugie polecenie dociąga to, co kiedyś było osobnym, wielkim archiwum SDK:
+łańcuch narzędzi `arm-none-eabi` i emulator QEMU. Potrzebny jest Python 3.10+.
+SDK 4.4 jest ostatnim z czasów Pebble i pierwszym, w którym są wszystkie cztery
+platformy z mikrofonem.
+
+```
+cd services/pebble
+pebble build
+```
+
+Wynik to `build/alphapump.pbw`. „Platformy" znaczą tu **generacje zegarków**, a nie
+warstwy AlphaPumpa: jeden plik `.pbw` niesie osobny binarny plik dla każdego
+modelu z listy `targetPlatforms`, bo w chwili budowania nie wiadomo, na czyim
+zegarku wyląduje — wybiera dopiero aplikacja na telefonie, przy instalacji.
+Kto buduje dla siebie i wie, co ma na ręce, może zostawić w `package.json` jedną
+pozycję i skrócić budowanie czterokrotnie.
+
+Z samego AlphaPumpa nie ma tu **niczego**: ani bazy, ani biblioteki ćwiczeń, ani
+rekordów, ani synchronizacji. Watchapp to 388 linii C, w których nie pada nawet
+słowo „ćwiczenie" — on zbiera zdanie i pokazuje odpowiedź. Wszystko, co wie
+o dziedzinie, wie serwer.
+
+Wgranie prosto z komputera, z logami:
+
+```
+pebble install --phone 192.168.1.23     # albo --emulator basalt
+pebble logs --phone 192.168.1.23        # `APP_LOG` z watchappa i z PebbleKit JS
+```
+
+Adres bierze się z aplikacji Pebble → *Settings* → *Developer Mode* →
+*Developer Connection*; telefon i komputer muszą być w tej samej sieci. Emulator
+nie ma mikrofonu, więc dyktowania na nim nie sprawdzisz — ale sprawdzenie
+połączenia (UP) i cały przepływ błędów już tak, bo one dzieją się po stronie
+telefonu.
+
+Platformy: `basalt`, `chalk`, `diorite`, `emery` — czyli wszystko z mikrofonem,
+łącznie z nowymi Core 2 Duo i Core Time 2. `aplite` (Pebble Classic i Steel) jest
+pominięty świadomie: bez mikrofonu została by z tego sama diagnostyka.
+
 ## Ustawienia
 
 Aplikacja Pebble na telefonie → AlphaPump → *Settings*. Trzy pola:
@@ -74,71 +150,6 @@ Aplikacja Pebble na telefonie → AlphaPump → *Settings*. Trzy pola:
 Strona ustawień jedzie jako `data:`-URI, a nie z serwera — konfigurator
 hostowany musiałby być osiągalny **zanim** ktokolwiek wpisze adres API, czyli
 dokładnie wtedy, gdy nic jeszcze nie jest ustawione.
-
-## Budowanie i wgrywanie
-
-### 1. SDK
-
-Repozytorium go nie zawiera i CI nie buduje watchappa (patrz „Testy"), więc raz,
-na swojej maszynie. `pebble-tool` utrzymuje dziś Core Devices i instaluje się
-jak zwykłe narzędzie Pythona — `uv` jest w tym repozytorium i tak potrzebny do
-`services/triage`:
-
-```
-uv tool install pebble-tool      # albo: pip install pebble-tool
-pebble sdk install
-```
-
-Drugie polecenie dociąga to, co kiedyś było osobnym, wielkim archiwum SDK:
-łańcuch narzędzi `arm-none-eabi` i emulator QEMU. Potrzebny jest Python 3.10+.
-
-### 2. Budowa
-
-```
-cd services/pebble
-pebble build
-```
-
-Wynik to `build/alphapump.pbw` — jeden plik z aplikacją dla wszystkich czterech
-platform naraz.
-
-### 3. Wgranie na zegarek
-
-**Drogą deweloperską** (najwygodniejsza, bo od razu widać logi):
-
-1. W aplikacji Pebble na telefonie: menu → *Settings* → *Developer Mode* →
-   włącz, potem *Developer Connection* → włącz.
-2. Przepisz **Server IP**, które się tam pokaże.
-3. Z katalogu projektu:
-
-```
-pebble install --phone 192.168.1.23
-pebble logs --phone 192.168.1.23      # `APP_LOG` z watchappa i z PebbleKit JS
-```
-
-Telefon i komputer muszą być w tej samej sieci — to połączenie idzie wprost do
-telefonu, a nie przez zegarek.
-
-**Bez SDK i bez komputera**: przerzuć `.pbw` na telefon (dowolnie — chmura,
-kabel, komunikator) i otwórz go menedżerem plików; aplikacja Pebble sama
-zaproponuje instalację. Na nowszych Androidach bywa, że system nie pozwala
-wskazać jej jako celu — wtedy pomaga *Sideload Helper* od Rebble, którego całym
-zadaniem jest podanie pliku `.pbw` do aplikacji Pebble.
-
-**Bez zegarka**: `pebble install --emulator basalt`. Emulator nie ma mikrofonu,
-więc dyktowania na nim nie sprawdzisz — ale sprawdzenie połączenia (UP) i cały
-przepływ błędów już tak, bo one dzieją się po stronie telefonu.
-
-### 4. Konfiguracja i pierwsze uruchomienie
-
-Po instalacji: aplikacja Pebble → lista aplikacji → AlphaPump → **koło zębate**
-(ustawienia). Wklej adres API i token, zapisz. Potem na zegarku naciśnij **UP** —
-zanim cokolwiek podyktujesz, sprawdzenie połączenia powie, czy telefon widzi
-serwer i czy token żyje.
-
-Platformy: `basalt`, `chalk`, `diorite`, `emery` — czyli wszystko z mikrofonem,
-łącznie z nowymi Core 2 Duo i Core Time 2. `aplite` (Pebble Classic i Steel) jest
-pominięty świadomie: bez mikrofonu została by z tego sama diagnostyka.
 
 ## Czego potrzeba poza tym repozytorium
 
@@ -165,11 +176,12 @@ wszystko da się sprawdzić bez zegarka i jest sprawdzone, na atrapach `Pebble`,
 `localStorage` i `XMLHttpRequest`. Testy chodzą na gołym `node --test`, bez
 jednej zależności, i mają własne zadanie w `ci.yml`.
 
-Watchappa (`src/c`) nie sprawdza nic. `pebble build` wymaga SDK z łańcuchem
-narzędzi dla ARM-a, a potwierdziłby wyłącznie to, że kod się kompiluje — bo
-jedyne, co naprawdę dowodzi działania tej połowy (dyktowanie i przyciski),
-dzieje się na sprzęcie, do którego CI nie ma dostępu. Dlatego w `src/c` nie ma
-żadnej decyzji do podjęcia: watchapp zbiera zdanie, pokazuje odpowiedź i tyle.
+Watchappa (`src/c`) nie sprawdza żaden test — ale **kompiluje go CI**:
+`pebble-release.yml` biegnie także na pull requestach i buduje `.pbw`, więc kod,
+który się nie składa, nie wchodzi do `main`. Dalej to jedyne, co da się
+sprawdzić bez sprzętu: dyktowanie i przyciski dzieją się na zegarku, do którego
+CI nie ma dostępu. Dlatego w `src/c` nie ma żadnej decyzji do podjęcia —
+watchapp zbiera zdanie, pokazuje odpowiedź i tyle.
 
 ## Znane pytania bez odpowiedzi
 

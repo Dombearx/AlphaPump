@@ -597,6 +597,24 @@ zaczną dostawać paczki.
 Konfiguracji EAS repozytorium nie zawiera — wydanie idzie z projektu natywnego
 generowanego przez `prebuild`.
 
+### Aplikacja na zegarek Pebble
+
+Jedzie tą samą drogą co pakiet telefonu i tym samym sekretem
+(`ALPHAPUMP_PUBLISH_TOKEN`), tylko innym wejściem serwera wydań:
+`.github/workflows/pebble-release.yml` buduje `.pbw` i wysyła je na `POST /pbw`.
+Plik ląduje w tym samym katalogu co `.apk`, pod własnym manifestem
+`watch.json` — telefon czyta go w karcie „Watch app" na ekranie konta i podaje
+plik aplikacji Pebble.
+
+Wydania zegarka **nie są sprzątane**, w odróżnieniu od pakietów telefonu:
+kilkadziesiąt kilobajtów nie zapełni dysku, a możliwość wrócenia do wczorajszej
+wersji z listy plików jest tu warta więcej.
+
+Jedna rzecz do zapamiętania przy pierwszym wydaniu: `/update` robi `git pull`,
+ale **nie przeładowuje serwera wydań**, więc dopóki nie zrobisz
+`sudo systemctl restart alphapump-update-server`, proces nie zna trasy
+`POST /pbw` i workflow przerwie się z komunikatem, który to mówi wprost.
+
 ### Sprawdzanie stanu
 
 ```
