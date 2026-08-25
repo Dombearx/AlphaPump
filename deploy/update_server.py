@@ -107,6 +107,18 @@ MANIFEST_NAME = "latest.json"
 # separators, no `..`, nothing but the shape the workflow produces.
 APK_NAME = re.compile(r"^alphapump-\d+\.apk$")
 
+# The watch app lives in the same directory and is published the same way, but
+# keeps its own manifest: `latest.json` describes what the *phone* installs, and
+# a phone that read a watch release there would offer to install a `.pbw` as an
+# Android package. Two files, because they answer two different questions.
+WATCH_MANIFEST_NAME = "watch.json"
+
+# Watch releases are named after the version in `services/pebble/package.json`,
+# which is a semantic version rather than the monotonic build number Android
+# needs -- nothing here refuses an older one, because unlike the phone package
+# there is no installed signature to reconcile with.
+PBW_NAME = re.compile(r"^alphapump-\d+\.\d+\.\d+\.pbw$")
+
 # How many previous releases stay downloadable. Enough to put yesterday's build
 # back on a phone by hand; not so many that the minipc fills up with them.
 KEEP_RELEASES = 3
@@ -377,47 +389,7 @@ async def publish_release(
     if abandoned:
         logger.info("Removed abandoned uploads: %s", ", ".join(abandoned))
 
-    # Written under a temporary name and moved into place, so a download that
-    # dies halfway cannot leave a truncated `.apk` at the address phones fetch.
-    #
-    # All three of the manifest's integrity fields are checked, not just the
-    # SHA-256. They are required of the manifest, so leaving two of them unread
-    # made them decoration -- a number nobody verifies is a number nobody keeps
-    # correct, and the next reader cannot tell which of the three to trust.
-    digest = hashlib.sha256()
-    legacy = hashlib.md5()
-    written = 0
-    with tempfile.NamedTemporaryFile(
-        dir=directory, delete=False, suffix=".part"
-    ) as staged:
-        staging = Path(staged.name)
-        try:
-            while chunk := await apk.read(CHUNK_BYTES):
-                digest.update(chunk)
-                legacy.update(chunk)
-                written += len(chunk)
-                staged.write(chunk)
-        except BaseException:
-            # A client that disappears mid-upload, or a shutdown signal, must
-            # not leave half a release on the disk. The sweep above is the
-            # backstop for the cases that never reach this line at all.
-            staging.unlink(missing_ok=True)
-            raise
-
-    mismatches = []
-    received = digest.hexdigest()
-    if received != str(described["sha256"]).lower():
-        mismatches.append(f"sha256: manifest says {described['sha256']}, file is {received}")
-    received_md5 = legacy.hexdigest()
-    if received_md5 != str(described["md5"]).lower():
-        mismatches.append(f"md5: manifest says {described['md5']}, file is {received_md5}")
-    if written != described["size"]:
-        mismatches.append(f"size: manifest says {described['size']}, file is {written}")
-
-    if mismatches:
-        staging.unlink(missing_ok=True)
-        raise HTTPException(status_code=400, detail="; ".join(mismatches))
-
+    staging = await _stage_verified_upload(apk, directory, described, with_md5=True)
     staging.chmod(0o644)
     staging.replace(directory / name)
     _write_manifest(directory, described)
@@ -427,6 +399,98 @@ async def publish_release(
     return PlainTextResponse(
         f"Published {name}\nRemoved: {', '.join(removed) or 'nothing'}\n"
     )
+
+
+# ------------------------------------------------------------- watch releases
+
+
+@app.get("/pbw")
+def current_watch_release() -> JSONResponse:
+    """The watch app phones are currently offered, or 404 before the first upload."""
+    manifest = apk_dir() / WATCH_MANIFEST_NAME
+    if not manifest.is_file():
+        raise HTTPException(status_code=404, detail="No watch release published yet")
+    return JSONResponse(json.loads(manifest.read_text()))
+
+
+@app.post("/pbw", response_class=PlainTextResponse)
+async def publish_watch_release(
+    manifest: Annotated[str, Form()],
+    pbw: Annotated[UploadFile, File()],
+    authorization: Annotated[str | None, Header()] = None,
+) -> PlainTextResponse:
+    """Publishes the Pebble watch app: the `.pbw` plus the manifest describing it.
+
+    Same shape as `/apk` and for the same reasons, with one difference worth
+    naming: an Android package that arrives here from the wrong hands does not
+    install, because the system compares its signature with the one already on
+    the phone. A `.pbw` has no such backstop -- the Pebble app installs what it
+    is handed. The publish token is therefore the *only* line here, which is
+    the same position over-the-air updates are in.
+
+    The stakes are lower than they look: the watch app holds no data and can do
+    nothing this API would not let its API token do anyway. But "lower" is not
+    "none", and the difference is worth writing down rather than rediscovering.
+    """
+    require_publish_token(authorization)
+
+    described = _validated_watch_manifest(manifest)
+    name = described["file"]
+    logger.info("Receiving watch release %s (version %s)", name, described["version"])
+
+    directory = apk_dir()
+    directory.mkdir(parents=True, exist_ok=True)
+
+    abandoned = _sweep_stale_uploads(directory)
+    if abandoned:
+        logger.info("Removed abandoned uploads: %s", ", ".join(abandoned))
+
+    staging = await _stage_verified_upload(pbw, directory, described, with_md5=False)
+    staging.chmod(0o644)
+    staging.replace(directory / name)
+    _write_manifest(directory, described, WATCH_MANIFEST_NAME)
+
+    # Watch releases are a few tens of kilobytes, so the reason `.apk` files are
+    # pruned -- a minipc filling up with them -- does not apply. Superseded ones
+    # stay downloadable, which is worth more here: a watch that will not take
+    # the newest build is put back to yesterday's by hand, from the file listing.
+    logger.info("Published watch release %s", name)
+    return PlainTextResponse(f"Published {name}\n")
+
+
+def _validated_watch_manifest(raw: str) -> dict[str, Any]:
+    """Parses the watch manifest, refusing anything the phone could not use.
+
+    No MD5 and no version *code*: nothing downstream compares watch releases by
+    number, so requiring a second digest and a monotonic counter would be
+    requiring fields whose only purpose is to be present.
+    """
+    try:
+        described = json.loads(raw)
+    except json.JSONDecodeError as error:
+        raise HTTPException(
+            status_code=400, detail=f"Manifest is not JSON: {error}"
+        ) from error
+
+    if not isinstance(described, dict):
+        raise HTTPException(status_code=400, detail="Manifest must be a JSON object")
+
+    missing = {"version", "file", "size", "sha256"} - described.keys()
+    if missing:
+        raise HTTPException(
+            status_code=400, detail=f"Manifest is missing: {', '.join(sorted(missing))}"
+        )
+
+    if not isinstance(described["size"], int) or described["size"] < 0:
+        raise HTTPException(status_code=400, detail="size must be a non-negative integer")
+
+    if not PBW_NAME.fullmatch(str(described["file"])):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unexpected watch release filename: {described['file']!r}",
+        )
+
+    return described
 
 
 def _validated_manifest(raw: str) -> dict[str, Any]:
@@ -474,12 +538,73 @@ def _validated_manifest(raw: str) -> dict[str, Any]:
     return described
 
 
-def _write_manifest(directory: Path, described: dict[str, Any]) -> None:
-    """Replaces `latest.json` in one step, so no phone reads it half-written."""
-    staging = directory / f"{MANIFEST_NAME}.part"
+async def _stage_verified_upload(
+    upload: UploadFile,
+    directory: Path,
+    described: dict[str, Any],
+    *,
+    with_md5: bool,
+) -> Path:
+    """Streams an upload to a staging file and checks it against its manifest.
+
+    Written under a temporary name and moved into place by the caller, so a
+    download that dies halfway cannot leave a truncated release at the address
+    phones fetch.
+
+    Every integrity field the manifest carries is checked, not just the
+    SHA-256. They are required of the manifest, so leaving any of them unread
+    would make it decoration -- a number nobody verifies is a number nobody
+    keeps correct, and the next reader cannot tell which one to trust. The
+    watch release carries no MD5 (nothing on the far side ever asked for one),
+    which is the whole reason this takes a flag rather than assuming three.
+    """
+    digest = hashlib.sha256()
+    legacy = hashlib.md5()
+    written = 0
+    with tempfile.NamedTemporaryFile(
+        dir=directory, delete=False, suffix=".part"
+    ) as staged:
+        staging = Path(staged.name)
+        try:
+            while chunk := await upload.read(CHUNK_BYTES):
+                digest.update(chunk)
+                if with_md5:
+                    legacy.update(chunk)
+                written += len(chunk)
+                staged.write(chunk)
+        except BaseException:
+            # A client that disappears mid-upload, or a shutdown signal, must
+            # not leave half a release on the disk. The caller's sweep is the
+            # backstop for the cases that never reach this line at all.
+            staging.unlink(missing_ok=True)
+            raise
+
+    mismatches = []
+    received = digest.hexdigest()
+    if received != str(described["sha256"]).lower():
+        mismatches.append(f"sha256: manifest says {described['sha256']}, file is {received}")
+    if with_md5:
+        received_md5 = legacy.hexdigest()
+        if received_md5 != str(described["md5"]).lower():
+            mismatches.append(f"md5: manifest says {described['md5']}, file is {received_md5}")
+    if written != described["size"]:
+        mismatches.append(f"size: manifest says {described['size']}, file is {written}")
+
+    if mismatches:
+        staging.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail="; ".join(mismatches))
+
+    return staging
+
+
+def _write_manifest(
+    directory: Path, described: dict[str, Any], name: str = MANIFEST_NAME
+) -> None:
+    """Replaces a manifest in one step, so no client reads it half-written."""
+    staging = directory / f"{name}.part"
     staging.write_text(json.dumps(described, indent=2, ensure_ascii=False) + "\n")
     staging.chmod(0o644)
-    staging.replace(directory / MANIFEST_NAME)
+    staging.replace(directory / name)
 
 
 def _sweep_stale_uploads(directory: Path) -> list[str]:

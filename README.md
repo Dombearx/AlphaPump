@@ -92,6 +92,7 @@ złapać nie może:
 | `deploy-stack.yml` | PR dotykający wdrożenia, backendu lub panelu | że stos z `deploy/` wstaje na czystej bazie i odpowiada przez Caddy'ego |
 | `deploy.yml` | merge do `main` | wdrożenie na minipc — dopiero po `verify.yml` |
 | `android-release.yml` | merge do `main` ruszający aplikację, tag `v*` i ręcznie | wydanie aplikacji na minipc: paczka JavaScriptu, a gdy ruszyła warstwa natywna — pełny `.apk` |
+| `pebble-release.yml` | PR i merge do `main` ruszający `services/pebble/` oraz ręcznie | wydanie aplikacji na zegarek: `.pbw` na minipc, obok pakietu telefonu; na PR-ce sama kompilacja |
 | `agent-issue.yml` | zgłoszenie z etykietą agenta | poprawka przygotowana automatycznie z treści zgłoszenia |
 
 Zmienne środowiskowe każdej z aplikacji opisuje
