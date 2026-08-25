@@ -192,6 +192,41 @@ nie jest nigdzie zapisywane — żyje tyle, ile trwa żądanie. Testy integracyj
 podstawiają obie warstwy (`apps/api/tests/voice.test.ts`), więc CI nie zależy ani
 od cudzej usługi, ani od klucza w sekretach.
 
+### Dyktowanie z zegarka Pebble
+
+Osobna aplikacja (`services/pebble/`), która **nie dokłada do API niczego** —
+korzysta z dwóch endpointów, które już były, i z tokenów API, które powstały dla
+bota Discord:
+
+```
+Pebble ──dictation──▶ tekst ──AppMessage──▶ PebbleKit JS (w aplikacji Pebble na telefonie)
+                                                  │ POST /voice/text   → rozpoznana seria
+                                                  │ POST /sets         → zapis
+                                            AlphaPump API ──sync──▶ telefon
+```
+
+Rzecz, która rozstrzyga o kształcie całości: **Pebble nie oddaje nagrania**.
+Dictation API daje gotowy tekst, a dźwięku aplikacja na zegarku nie widzi w ogóle
+— transkrypcja dzieje się w aplikacji Pebble i u dostawcy mowy (Rebble albo Core
+Devices), poza naszym kodem i poza naszym rachunkiem. Dlatego zegarek wpina się
+w wejście **tekstowe**, które i tak powstało dla klawiatury.
+
+Zegarek ma własny przycisk sprawdzenia połączenia: `GET /health` bez tokenu
+(czy telefon w ogóle dosięga API), a potem `GET /me` z tokenem (czy token żyje).
+Rozdzielenie tych dwóch jest całym sensem tego przycisku — pierwszy podejrzany
+przy „nie działa" to czysty HTTP przepuszczany przez cudzą aplikację.
+
+Reguła „model nie zapisuje sam" obowiązuje tu tak samo jak w telefonie: po
+rozpoznaniu zegarek domyślnie pokazuje serię i czeka na naciśnięcie, a zapis bez
+potwierdzenia jest ustawieniem, które trzeba włączyć. Serii niekompletnej nie
+zapisze w żadnym trybie — formularza na zegarku nie ma, więc jedynym wyjściem
+jest powtórzenie zdania.
+
+Testy ma **połowa telefonowa** — to w niej siedzi cała decyzyjność, a chodzi
+w Node, więc idzie osobnym zadaniem w `ci.yml` (`node --test`, na atrapach
+`Pebble`, `localStorage` i XHR-a). Watchappa w C nie sprawdza nic i dlaczego —
+opisuje [`services/pebble/README.md`](../services/pebble/README.md).
+
 ## Język aplikacji i wielojęzyczne nazwy
 
 Nazwy tagów i ćwiczeń mają dwa poziomy: **nazwę kanoniczną** (kolumna `name`)

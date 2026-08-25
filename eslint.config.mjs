@@ -41,6 +41,22 @@ export default tseslint.config(
     },
   },
   {
+    /**
+     * PebbleKit JS — połowa aplikacji na zegarek, wykonywana w piaskowce
+     * **wewnątrz aplikacji Pebble na telefonie**. Ani Node, ani przeglądarka:
+     * ma `localStorage` i `XMLHttpRequest`, nie ma `window`, a `Pebble` wstawia
+     * do niej gospodarz. Bez tego bloku wszystkie trzy wyglądają jak literówki.
+     */
+    files: ['services/pebble/src/pkjs/**/*.js'],
+    languageOptions: {
+      globals: {
+        Pebble: 'readonly',
+        localStorage: 'readonly',
+        XMLHttpRequest: 'readonly',
+      },
+    },
+  },
+  {
     rules: {
       '@typescript-eslint/consistent-type-imports': [
         'error',
@@ -48,7 +64,14 @@ export default tseslint.config(
       ],
       '@typescript-eslint/no-unused-vars': [
         'error',
-        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+        // `caughtErrors` obejmuje też `catch (error)`, którego nikt nie czyta —
+        // a takie miejsca istnieją tam, gdzie nie wolno użyć `catch {}` bez
+        // wiązania: PebbleKit JS chodzi w piaskowce starszej niż ES2019.
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+        },
       ],
       /**
        * Konsola tylko tam, gdzie jest wyjściem procesu: `apps/api/src/logger.ts`
