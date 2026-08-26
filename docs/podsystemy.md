@@ -598,6 +598,15 @@ pola — z podpisem, skąd się wzięły — i wygrywają wtedy z podpowiedzią
 z poprzedniej serii. Po zapisie formularz wraca do podpowiedzi: dyktowanie jest
 jednorazowe.
 
+Przy liście serii dnia stoi wejście w **historię tego ćwiczenia**
+(`src/screens/exercise-history.tsx`, trasa `/library/[exerciseId]/history`) —
+karta na dzień treningowy, w środku ponumerowane serie, czyli ten sam układ, co
+na liście dnia. Wchodzi się tam przez `push`, nie `replace`: formularz zostaje
+pod spodem razem z tym, co jest już w nim wpisane, i wraca się do niego
+strzałką w nagłówku albo przyciskiem „Back". Osią czasu niezależną od
+kalendarza, której specyfikacja nie wymaga, to nie jest: ekran pokazuje jedno
+ćwiczenie i nic poza nim.
+
 Rekordy indywidualne nie są nigdzie trzymane — liczy je `@alphapump/core` przy
 rysowaniu ekranu, z serii leżących w bazie lokalnej. Tabela pochodna byłaby
 drugim źródłem prawdy o czymś, co i tak liczy się w milisekundach, i wymagałaby

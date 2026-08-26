@@ -221,6 +221,37 @@ export function exerciseHistory(db: SqliteDatabase, userId: string, exerciseId: 
     .orderBy(asc(workoutSets.performedOn), asc(workoutSets.position), asc(workoutSets.id));
 }
 
+/** Serie jednego ćwiczenia z jednego dnia — jedna karta historii ćwiczenia. */
+export interface ExerciseHistoryDay {
+  day: IsoDate;
+  sets: HistorySetRow[];
+}
+
+/**
+ * Grupuje historię ćwiczenia po dniach, od ostatniego treningu.
+ *
+ * Zapytanie oddaje serie rosnąco, bo w tej kolejności potrzebują ich rekordy
+ * i podpowiedź. Historię czyta się odwrotnie — od tego, co było wczoraj — więc
+ * kolejność dni odwracamy tutaj, zamiast wołać to samo zapytanie drugi raz
+ * w drugą stronę. Wewnątrz dnia zostaje kolejność z zapytania, czyli ta
+ * ustawiona przez użytkownika.
+ */
+export function groupHistoryByDay(rows: readonly HistorySetRow[]): ExerciseHistoryDay[] {
+  const days = new Map<IsoDate, ExerciseHistoryDay>();
+
+  for (const row of rows) {
+    const existing = days.get(row.performedOn);
+    if (existing) {
+      existing.sets.push(row);
+      continue;
+    }
+
+    days.set(row.performedOn, { day: row.performedOn, sets: [row] });
+  }
+
+  return [...days.values()].reverse();
+}
+
 /** Ćwiczenie z tagiem głównym i nickiem autora — nagłówek ekranu logowania. */
 export function exerciseDetails(db: SqliteDatabase, exerciseId: string) {
   return db

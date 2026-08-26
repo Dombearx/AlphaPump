@@ -435,7 +435,21 @@ export function LogScreen({
             </View>
 
             <View className="gap-2">
-              <SectionTitle>Today's sets</SectionTitle>
+              {/* Wejście w historię tego ćwiczenia stoi przy liście dnia, bo
+                  odpowiada na pytanie zadawane dokładnie w tym miejscu: „a ile
+                  brałem poprzednio?". `push`, a nie `replace` — formularz
+                  zostaje pod spodem razem z wpisanymi wartościami i wraca się
+                  do niego strzałką w nagłówku albo „Back" na dole historii. */}
+              <View className="flex-row items-center justify-between">
+                <SectionTitle>Today's sets</SectionTitle>
+                <Pressable
+                  accessibilityRole="button"
+                  className="px-2 py-1 active:opacity-70"
+                  onPress={() => router.push(`/library/${exerciseId}/history`)}
+                >
+                  <Text className="text-accent">History</Text>
+                </Pressable>
+              </View>
               {daySets.length === 0 ? (
                 <Text className="text-muted">
                   None yet — the first one goes to the top of the list.

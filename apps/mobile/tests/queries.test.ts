@@ -18,6 +18,7 @@ import {
   exerciseLibrary,
   exerciseTagList,
   groupAdditionalTags,
+  groupHistoryByDay,
   localUser,
 } from '../src/db/queries';
 import { filterExercises } from '../src/exercise-search';
@@ -30,6 +31,7 @@ import {
 } from './local-database';
 
 const DAY = '2026-08-11';
+const EARLIER = '2026-08-09';
 const AUTHOR = { userId: TEST_USER.id, deviceId: 'device-a' };
 
 describe('zapytania ekranów', () => {
@@ -42,11 +44,11 @@ describe('zapytania ekranów', () => {
 
   afterEach(() => local.close());
 
-  const addBench = () =>
+  const addBenchOn = (day: string) =>
     createSet(local.db, {
       ...AUTHOR,
       exerciseId: EXERCISES.bench!.id,
-      performedOn: DAY,
+      performedOn: day,
       values: {
         weightG: 80_000,
         reps: 8,
@@ -56,6 +58,8 @@ describe('zapytania ekranów', () => {
         note: null,
       },
     });
+
+  const addBench = () => addBenchOn(DAY);
 
   it('biblioteka zwraca ćwiczenia z tagiem głównym', async () => {
     const rows = await exerciseLibrary(local.db, TEST_USER.id);
@@ -95,6 +99,21 @@ describe('zapytania ekranów', () => {
 
     expect(await exerciseHistory(local.db, TEST_USER.id, EXERCISES.bench!.id)).toHaveLength(1);
     expect(await exerciseHistory(local.db, 'ktos-inny', EXERCISES.bench!.id)).toHaveLength(0);
+  });
+
+  it('historia ćwiczenia grupuje się po dniach, od ostatniego treningu', async () => {
+    // Zapytanie oddaje serie rosnąco, bo tak liczą się rekordy — ekran historii
+    // czyta je odwrotnie, od tego, co było ostatnio.
+    await addBench();
+    await addBench();
+    await addBenchOn(EARLIER);
+
+    const days = groupHistoryByDay(
+      await exerciseHistory(local.db, TEST_USER.id, EXERCISES.bench!.id),
+    );
+
+    expect(days.map((entry) => entry.day)).toEqual([DAY, EARLIER]);
+    expect(days.map((entry) => entry.sets.length)).toEqual([2, 1]);
   });
 
   it('kalendarz dostaje liczbę serii dla dnia, w którym coś było', async () => {
