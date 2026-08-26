@@ -172,6 +172,15 @@ describe('ekran zapisywania serii', () => {
       });
     });
 
+    it('prowadzi do historii tego ćwiczenia', async () => {
+      // Serie z poprzednich treningów nie mieszczą się na tym ekranie — mieści
+      // się wejście do nich, przy liście dnia, czyli tam, gdzie pada pytanie
+      // „a ile brałem poprzednio?".
+      await mount(<LogScreen day={DAY} exerciseId={EXERCISES.bench!.id} />);
+
+      expect(screen.getByRole('button', { name: 'History' })).toBeDefined();
+    });
+
     it('pokazuje zapisaną serię na liście dnia', async () => {
       await mount(<LogScreen day={DAY} exerciseId={EXERCISES.bench!.id} />);
       await user().click(screen.getByRole('button', { name: 'Add set' }));
