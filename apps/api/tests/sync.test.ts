@@ -19,6 +19,7 @@ import {
   newCycleId,
   newDeviceId,
   newSetId,
+  syncPullResponseSchema,
   tagId,
   type SyncPullResponse,
   type SyncPushResponse,
@@ -813,6 +814,26 @@ describe('synchronizacja', () => {
         ...pulled.body.changes.exercises.map((row) => row.serverSeq),
       ];
       expect(Math.max(...sequences)).toBeLessThanOrEqual(pulled.body.cursor);
+    });
+
+    it('tłumaczenie zapisane z pominięciem walidacji nie blokuje pullu na stałe', async () => {
+      // `translationsFromModel` odrzuca dziś taką nazwę przy zapisie (patrz
+      // languages.test.ts), ale wiersz zapisany zanim ta reguła zaczęła
+      // obowiązywać wciąż mógł leżeć w bazie — stąd zapis wprost, z pominięciem
+      // aplikacji, żeby odtworzyć ten stan.
+      await harness.db
+        .update(exercises)
+        .set({ translations: { pl: '—', en: 'Flat barbell bench press' } })
+        .where(eq(exercises.id, BENCH));
+
+      const pulled = await phone.pull();
+      // To dokładnie ta walidacja, którą telefon robi po stronie klienta —
+      // wiersz z nazwą bez litery ani cyfry rzucał tu wyjątkiem i zatrzymywał
+      // pull na stałe (patrz opis #85 i #89).
+      expect(() => syncPullResponseSchema.parse(pulled.body)).not.toThrow();
+
+      const bench = pulled.body.changes.exercises.find((row) => row.id === BENCH);
+      expect(bench?.translations).toEqual({ en: 'Flat barbell bench press' });
     });
   });
 

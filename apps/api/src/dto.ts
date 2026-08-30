@@ -10,7 +10,15 @@
  * `YYYY-MM-DD` bez strefy — tak jak są trzymane w bazie.
  */
 
-import type { Cycle, CycleGoal, Exercise, Tag, User, WorkoutSet } from '@alphapump/core';
+import {
+  sanitizeTranslations,
+  type Cycle,
+  type CycleGoal,
+  type Exercise,
+  type Tag,
+  type User,
+  type WorkoutSet,
+} from '@alphapump/core';
 import type {
   CycleGoalRow,
   CycleRow,
@@ -42,7 +50,7 @@ export function toTagDto(row: TagRow): Tag {
     name: row.name,
     slug: row.slug,
     color: row.color,
-    translations: row.translations,
+    translations: sanitizeTranslations(row.translations),
     createdAt: instant(row.createdAt),
     updatedAt: instant(row.updatedAt),
     deletedAt: nullableInstant(row.deletedAt),
@@ -60,7 +68,7 @@ export function toExerciseDto(row: ExerciseRow, additionalTagIds: string[]): Exe
     additionalTagIds,
     note: row.note,
     gym: row.gym,
-    translations: row.translations,
+    translations: sanitizeTranslations(row.translations),
     createdAt: instant(row.createdAt),
     updatedAt: instant(row.updatedAt),
     deletedAt: nullableInstant(row.deletedAt),
