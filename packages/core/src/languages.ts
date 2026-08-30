@@ -78,6 +78,31 @@ export function missingLanguages(translations: Translations | null): Language[] 
 }
 
 /**
+ * Odsiewa z zestawu tłumaczeń wpisy, które nie przejdą przez `displayNameSchema`
+ * po stronie odbiorcy.
+ *
+ * `translationsFromModel` pilnuje tej samej reguły przy zapisie, ale to nie
+ * wystarcza: wiersz zapisany zanim ta reguła zaczęła obowiązywać (albo
+ * zmieniony poza aplikacją) nadal ma prawo leżeć w bazie. Taki wiersz jest
+ * globalny — schodzi do każdego urządzenia przy pierwszym pullu — więc bez
+ * odsiania tutaj jedna zepsuta nazwa zablokowałaby synchronizację wszystkim
+ * na stałe, zamiast dla tego jednego wiersza cofnąć się do nazwy kanonicznej.
+ */
+export function sanitizeTranslations(translations: Translations | null): Translations | null {
+  if (translations === null) return null;
+
+  const clean: Translations = {};
+  for (const language of LANGUAGES) {
+    const name = translations[language]?.trim();
+    if (name !== undefined && name.length > 0 && name.length <= 80 && slug(name).length > 0) {
+      clean[language] = name;
+    }
+  }
+
+  return Object.keys(clean).length > 0 ? clean : null;
+}
+
+/**
  * Domknięcie zestawu tłumaczeń o te, które przyszły z automatu.
  *
  * Wpisane ręcznie ma pierwszeństwo: automat uzupełnia wyłącznie luki, więc

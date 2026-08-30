@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_LANGUAGE,
   sameTranslations,
+  sanitizeTranslations,
   translationsFromModel,
   type TranslationResult,
   LANGUAGES,
@@ -131,6 +132,28 @@ describe('odpowiedź modelu sprowadzona do tłumaczeń', () => {
 
   it('oddaje pusty zestaw, gdy model nie przysłał niczego użytecznego', () => {
     expect(translationsFromModel({ names: [] }, ['pl', 'en'])).toEqual({});
+  });
+});
+
+describe('odsianie zestawu tłumaczeń przed wysłaniem do odbiorcy', () => {
+  it('odrzuca nazwę bez ani jednej litery lub cyfry — wiersz sprzed reguły w translationsFromModel nie może blokować pullu', () => {
+    expect(sanitizeTranslations({ pl: '—', en: 'Deadlift' })).toEqual({ en: 'Deadlift' });
+  });
+
+  it('przycina białe znaki i pomija puste nazwy', () => {
+    expect(sanitizeTranslations({ pl: '  klatka  ', en: '   ' })).toEqual({ pl: 'klatka' });
+  });
+
+  it('oddaje null, gdy nic nie zostaje', () => {
+    expect(sanitizeTranslations(null)).toBeNull();
+    expect(sanitizeTranslations({ pl: '—' })).toBeNull();
+  });
+
+  it('zostawia poprawny komplet bez zmian', () => {
+    expect(sanitizeTranslations({ pl: 'klatka', en: 'chest' })).toEqual({
+      pl: 'klatka',
+      en: 'chest',
+    });
   });
 });
 
