@@ -30,6 +30,7 @@
 
 import { describeRejection } from '@alphapump/core';
 import type { SqliteDatabase, SyncRejectionRow } from '@alphapump/db/sqlite';
+import { recordLog } from '../app-log';
 import { pendingCount } from './outbox';
 import { stuckRows } from './reconcile';
 import { runSync, type SyncRunResult } from './run';
@@ -209,6 +210,13 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
       attempt += 1;
       const phase = phaseOf(error);
       const message = phase === 'offline' ? null : describe(error);
+
+      // Poza `offline` (stan normalny, patrz `transport.ts`) błąd wymiany
+      // ląduje wyłącznie w stanie ekranu — nigdzie po drodze nie ma
+      // `console.*`. Bez tego wpisu zgłoszenie zwrotne o nieudanej
+      // synchronizacji jedzie zawsze z pustym logiem, mimo że to najczęstszy
+      // powód, dla którego ktoś w ogóle zgłasza błąd.
+      if (phase !== 'offline') recordLog('error', ['Sync failed:', error]);
 
       emit({ phase, pending: await countPending(), lastError: message });
       await markError(options.db, message).catch(() => undefined);
