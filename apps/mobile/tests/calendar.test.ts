@@ -13,6 +13,9 @@ import {
   calendarRange,
   calendarWeeks,
   endOfMonth,
+  HEAT_LEVELS,
+  heatLevel,
+  heatPeak,
   monthLabel,
   startOfMonth,
   startOfWeek,
@@ -102,5 +105,40 @@ describe('siatka kalendarza', () => {
     const weeks = calendarWeeks(TODAY, 'month', counts, TODAY);
     // 9 serii z 30 lipca leży poza sierpniem i nie wchodzi do sumy miesiąca.
     expect(totalSets(weeks)).toBe(8);
+  });
+});
+
+describe('heatmapa dni', () => {
+  it('dzień bez serii nie dostaje żadnego odcienia', () => {
+    expect(heatLevel(0, 20)).toBe(0);
+  });
+
+  it('nasycenie rośnie z liczbą serii i nie wychodzi poza skalę', () => {
+    // Odniesienie 20 dzieli się na cztery równe progi: 5, 10, 15, 20.
+    expect(heatLevel(1, 20)).toBe(1);
+    expect(heatLevel(5, 20)).toBe(1);
+    expect(heatLevel(6, 20)).toBe(2);
+    expect(heatLevel(11, 20)).toBe(3);
+    expect(heatLevel(16, 20)).toBe(4);
+    expect(heatLevel(20, 20)).toBe(HEAT_LEVELS);
+    // Dzień z sąsiedniego miesiąca może przebić maksimum tego oglądanego.
+    expect(heatLevel(99, 20)).toBe(HEAT_LEVELS);
+  });
+
+  it('odniesieniem skali jest najcięższy dzień oglądanego miesiąca', () => {
+    const weeks = calendarWeeks(TODAY, 'month', [{ performedOn: '2026-08-12', sets: 24 }], TODAY);
+    expect(heatPeak(weeks)).toBe(24);
+  });
+
+  it('ogony sąsiednich miesięcy nie rozciągają skali', () => {
+    const weeks = calendarWeeks(TODAY, 'month', [{ performedOn: '2026-07-30', sets: 40 }], TODAY);
+    // 30 lipca jest w siatce sierpnia, ale poza samym sierpniem.
+    expect(heatPeak(weeks)).toBe(10);
+  });
+
+  it('pojedyncza seria w pustym miesiącu nie świeci jak pełny trening', () => {
+    const weeks = calendarWeeks(TODAY, 'month', [{ performedOn: '2026-08-12', sets: 1 }], TODAY);
+    // Bez dolnej granicy odniesienia ta jedna seria byłaby własnym maksimum.
+    expect(heatLevel(1, heatPeak(weeks))).toBe(1);
   });
 });

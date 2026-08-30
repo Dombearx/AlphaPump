@@ -179,6 +179,8 @@ Każda zapisana seria jest automatycznie dopasowywana przez system do wszystkich
 
 Aplikacja ma zawierać widok kalendarza z widokiem miesiąca i tygodnia. W kafelku dnia ma być widoczna liczba zapisanych serii dla tego dnia.  [play.google](https://play.google.com/store/apps/details?id=com.github.jamesgay.fitnotes&hl=en_US)
 
+Kafelek dnia z zapisanymi seriami ma być podświetlony odcieniem tym mocniejszym, im więcej serii tego dnia zapisano — jak w kalendarzu commitów na GitHubie. Liczy się liczba serii, nie treningów ani ćwiczeń. Dzień bez serii zostaje na neutralnym tle. Skala jest odniesiona do oglądanego okresu, a pod siatką stoi legenda tłumacząca odcienie. 
+
 Po wejściu w konkretny dzień użytkownik przechodzi do widoku dodawania i przeglądania serii dla wybranej daty. Jest to ten sam wzorzec interfejsu co dla bieżącego dnia. 
 
 Nie jest wymagany osobny widok osi czasu jako lista historii niezależna od kalendarza. 
@@ -427,7 +429,7 @@ Przykładowe kryteria akceptacyjne dla MVP:
 - po usunięciu serii postęp cyklu zmniejsza się odpowiednio,
 - po dodaniu serii rekordowej użytkownik dostaje informację o rekordzie,
 - wykres ćwiczenia pokazuje historię odpowiednich metryk,
-- kalendarz pokazuje liczbę serii dla każdego dnia,
+- kalendarz pokazuje liczbę serii dla każdego dnia, a kafelek dnia jest podświetlony tym mocniej, im więcej serii tego dnia zapisano,
 - ranking pokazuje globalną sumę $$kg \times powtórzenia$$ i dystansu,
 - użytkownik może podyktować serię głosem albo opisać ją jednym zdaniem z klawiatury, a rozpoznane wartości trafiają do formularza do zatwierdzenia,
 - po włączeniu przełącznika w ustawieniach rozpoznana kompletna seria zapisuje się od razu; niepełna zawsze trafia do formularza,
