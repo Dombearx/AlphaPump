@@ -7,6 +7,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { clearLogs, recentLogs } from '../src/app-log';
 import { backoff, createSyncEngine, type SyncEngine } from '../src/sync/engine';
 import {
   SyncAuthError,
@@ -86,6 +87,7 @@ describe('silnik synchronizacji', () => {
     local = await createLocalDatabase();
     await insertTestUser(local.db);
     scheduler = new ManualScheduler();
+    clearLogs();
   });
 
   afterEach(() => {
@@ -154,6 +156,24 @@ describe('silnik synchronizacji', () => {
 
     expect(sync.snapshot().phase).toBe('error');
     expect(sync.snapshot().lastError).toContain('500');
+  });
+
+  it('błąd serwera trafia też do bufora logów — inaczej zgłoszenie zwrotne jedzie pusty', async () => {
+    const sync = start(failing(new SyncServerError('Serwer odpowiedział 500', 500)));
+
+    await sync.syncNow();
+
+    expect(recentLogs()).toContainEqual(
+      expect.objectContaining({ level: 'error', message: expect.stringContaining('500') }),
+    );
+  });
+
+  it('offline jest stanem normalnym i nie zaśmieca bufora logów', async () => {
+    const sync = start(failing(new SyncOfflineError()));
+
+    await sync.syncNow();
+
+    expect(recentLogs()).toEqual([]);
   });
 
   it('po wygaśnięciu sesji przestaje próbować', async () => {
