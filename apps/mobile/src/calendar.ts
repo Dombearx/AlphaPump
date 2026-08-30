@@ -144,3 +144,32 @@ export function calendarWeeks(
 export function totalSets(weeks: readonly CalendarDay[][]): number {
   return weeks.flat().reduce((sum, day) => sum + (day.inMonth ? day.sets : 0), 0);
 }
+
+/**
+ * Heatmapa dni, jak kalendarz commitów na GitHubie: im więcej serii tego dnia,
+ * tym mocniejszy odcień kafelka. Poziom zero to dzień bez serii — zostaje na
+ * neutralnym tle, żeby pusty miesiąc nie wyglądał jak lekko przećwiczony.
+ */
+export const HEAT_LEVELS = 4;
+
+/**
+ * Dolna granica odniesienia dla skali. Skala jest liczona względem oglądanego
+ * okresu, a nie całej historii — kalendarz i tak ciągnie z bazy tylko widoczny
+ * zakres, a maksimum z wszystkich lat kosztowałoby przy każdym przewinięciu
+ * zapytanie po całej tabeli. Za to bez tej granicy jedna seria w pustym
+ * miesiącu byłaby własnym maksimum i świeciłaby najmocniej — czyli tak samo,
+ * jak dzień z pełnym treningiem miesiąc obok.
+ */
+const HEAT_FLOOR = 10;
+
+/** Odniesienie skali: najcięższy dzień okresu, ale nie mniej niż `HEAT_FLOOR`. */
+export function heatPeak(weeks: readonly CalendarDay[][]): number {
+  const days = weeks.flat().filter((day) => day.inMonth);
+  return Math.max(HEAT_FLOOR, ...days.map((day) => day.sets));
+}
+
+/** Stopień nasycenia kafelka: 0 dla dnia bez serii, dalej od 1 do `HEAT_LEVELS`. */
+export function heatLevel(sets: number, peak: number): number {
+  if (sets <= 0) return 0;
+  return Math.min(HEAT_LEVELS, Math.max(1, Math.ceil((sets / peak) * HEAT_LEVELS)));
+}
