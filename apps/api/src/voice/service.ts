@@ -24,7 +24,13 @@
  * naciskając ten sam przycisk co zawsze.
  */
 
-import { applyVoiceVerdict, type VoiceSetResponse } from '@alphapump/core';
+import {
+  applyVoiceVerdict,
+  carryOverLastSet,
+  isRepsOnlyVerdict,
+  type IsoDate,
+  type VoiceSetResponse,
+} from '@alphapump/core';
 import type { Database } from '../db.js';
 import { voiceExercises, voiceRecentSets } from './context.js';
 import type { VoiceInterpreter } from './interpreter.js';
@@ -73,6 +79,13 @@ export interface DescribeSetInput {
   userId: string;
   /** Opis serii wpisany z klawiatury — albo podyktowany jej własnym mikrofonem. */
   text: string;
+  /**
+   * Dzień treningu **z urządzenia**, jeśli je zna. Po nim poznajemy, czy sama
+   * liczba powtórzeń ma co uzupełnić: bez niego nie da się odróżnić serii
+   * dopowiedzianej do trwającego treningu od pierwszej serii nowego dnia,
+   * więc uzupełnianie po prostu nie wchodzi.
+   */
+  day?: IsoDate;
 }
 
 /**
@@ -97,7 +110,7 @@ export async function dictateSet(
     return { transcript, match: null, reason: 'Nagranie jest puste — nic nie usłyszałem.' };
   }
 
-  return interpretTranscript(db, layers, input.userId, transcript);
+  return interpretTranscript(db, layers, input.userId, transcript, undefined);
 }
 
 /**
@@ -119,7 +132,7 @@ export async function describeSet(
     return { transcript: text, match: null, reason: 'Pusty opis — nie ma czego rozpoznać.' };
   }
 
-  return interpretTranscript(db, layers, input.userId, text);
+  return interpretTranscript(db, layers, input.userId, text, input.day);
 }
 
 /**
@@ -132,6 +145,7 @@ async function interpretTranscript(
   layers: VoiceLayers,
   userId: string,
   transcript: string,
+  day: IsoDate | undefined,
 ): Promise<VoiceSetResponse> {
   const { interpreter } = layers;
   if (interpreter === null) throw new Error('Dyktowanie jest wyłączone');
@@ -153,9 +167,26 @@ async function interpretTranscript(
 
   const verdict = await interpreter.interpret({ transcript, exercises, recent });
 
+  // „Osiem" powiedziane między seriami znaczy „to samo ćwiczenie i ten sam
+  // ciężar, co przed chwilą" — a to stoi w bazie, więc dopisujemy je sami.
+  const filled =
+    isRepsOnlyVerdict(verdict) && day !== undefined
+      ? carryOverLastSet(exercises, recent, verdict, day)
+      : verdict;
+
+  if (filled === null) {
+    return {
+      transcript,
+      match: null,
+      reason:
+        'Sama liczba powtórzeń, a nie ma z czego uzupełnić ćwiczenia i ciężaru — ' +
+        'w tym treningu nie ma jeszcze żadnej serii.',
+    };
+  }
+
   return {
     transcript,
-    match: applyVoiceVerdict(exercises, verdict),
-    reason: verdict.reason,
+    match: applyVoiceVerdict(exercises, filled),
+    reason: filled.reason,
   };
 }

@@ -98,7 +98,10 @@ export const voiceRoutes: RouteSpec[] = [
       'To samo co `/voice/set`, ale bez pierwszego kroku: opis serii przychodzi ' +
       'gotowym tekstem — wpisanym z klawiatury albo podyktowanym jej własnym ' +
       'mikrofonem — więc nie wymaga dostawcy transkrypcji. Endpoint niczego nie ' +
-      'zapisuje: oddaje wypełniony formularz do zatwierdzenia. Przy wyłączonym ' +
+      'zapisuje: oddaje wypełniony formularz do zatwierdzenia. Gdy w opisie jest ' +
+      'sama liczba powtórzeń, a żądanie niesie `performedOn`, ćwiczenie i ciężar ' +
+      'dopisywane są z poprzedniej serii tego dnia; bez takiej serii wraca pusty ' +
+      '`match` z powodem. Przy wyłączonym ' +
       'dyktowaniu (`VOICE_ENABLED=false` albo wyłączona warstwa LLM) odpowiedzią jest 503.',
     tag: 'serie',
     security: 'user',
@@ -176,11 +179,15 @@ export function createVoiceRouter(dependencies: AppDependencies) {
     }
 
     const principal = context.get('principal');
-    const { text } = context.req.valid('json');
+    const { text, performedOn } = context.req.valid('json');
 
     try {
       return context.json(
-        await describeSet(dependencies.db, layers, { userId: principal.id, text }),
+        await describeSet(dependencies.db, layers, {
+          userId: principal.id,
+          text,
+          day: performedOn,
+        }),
       );
     } catch (error) {
       if (error instanceof ApiError) throw error;

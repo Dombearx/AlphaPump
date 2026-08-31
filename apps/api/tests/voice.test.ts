@@ -325,4 +325,109 @@ describe('dyktowanie serii', () => {
 
     await harness.close();
   });
+
+  describe('sama liczba powtórzeń', () => {
+    /** Werdykt na „osiem": model nie ma z czego wskazać ćwiczenia ani ciężaru. */
+    const REPS_ONLY = {
+      exerciseIndex: null,
+      weightKg: null,
+      reps: 8,
+      reason: 'Usłyszałem samą liczbę',
+    };
+
+    it('dopisuje ćwiczenie i ciężar z poprzedniej serii tego dnia', async () => {
+      const { layers } = stubLayers('osiem', REPS_ONLY);
+      const harness = await createHarness({ voice: layers });
+      const user = await harness.signUp('samaliczba@example.com');
+
+      await harness.json('POST', '/sets', {
+        headers: user.headers,
+        body: {
+          exerciseId: BENCH,
+          performedOn: '2026-08-31',
+          weightG: 80_000,
+          reps: 10,
+          durationS: null,
+          distanceM: null,
+        },
+      });
+
+      const response = await harness.json<VoiceSetResponse>('POST', '/voice/text', {
+        headers: user.headers,
+        body: { text: 'osiem', performedOn: '2026-08-31' },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body.match).toMatchObject({
+        exerciseId: BENCH,
+        weightG: 80_000,
+        reps: 8,
+        complete: true,
+      });
+      // Powód mówi wprost, skąd wzięło się to, czego użytkownik nie powiedział.
+      expect(response.body.reason).toMatch(/z poprzedniej serii/);
+
+      await harness.close();
+    });
+
+    it('bez serii w tym treningu mówi, czego zabrakło, i niczego nie zgaduje', async () => {
+      const { layers } = stubLayers('osiem', REPS_ONLY);
+      const harness = await createHarness({ voice: layers });
+      const user = await harness.signUp('pierwszaseria@example.com');
+
+      await harness.json('POST', '/sets', {
+        headers: user.headers,
+        body: {
+          exerciseId: BENCH,
+          performedOn: '2026-08-30',
+          weightG: 80_000,
+          reps: 10,
+          durationS: null,
+          distanceM: null,
+        },
+      });
+
+      const response = await harness.json<VoiceSetResponse>('POST', '/voice/text', {
+        headers: user.headers,
+        body: { text: 'osiem', performedOn: '2026-08-31' },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body.match).toBeNull();
+      expect(response.body.reason).toMatch(/nie ma jeszcze żadnej serii/);
+
+      await harness.close();
+    });
+
+    it('bez dnia w żądaniu zostaje sam werdykt modelu', async () => {
+      // Klient, który dnia nie przysłał, nie ma jak powiedzieć, czy trwa ten sam
+      // trening — więc dostaje dokładnie to, co dotąd.
+      const { layers } = stubLayers('osiem', REPS_ONLY);
+      const harness = await createHarness({ voice: layers });
+      const user = await harness.signUp('bezdnia@example.com');
+
+      await harness.json('POST', '/sets', {
+        headers: user.headers,
+        body: {
+          exerciseId: BENCH,
+          performedOn: '2026-08-31',
+          weightG: 80_000,
+          reps: 10,
+          durationS: null,
+          distanceM: null,
+        },
+      });
+
+      const response = await harness.json<VoiceSetResponse>('POST', '/voice/text', {
+        headers: user.headers,
+        body: { text: 'osiem' },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body.match).toBeNull();
+      expect(response.body.reason).toBe('Usłyszałem samą liczbę');
+
+      await harness.close();
+    });
+  });
 });

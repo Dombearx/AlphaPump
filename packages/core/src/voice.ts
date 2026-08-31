@@ -30,6 +30,16 @@
  * o które chodzi" i normalnym wyborem z biblioteki — czyli tym samym, co dziś,
  * bez straty.
  *
+ * ## Dlaczego samą liczbę powtórzeń uzupełnia kod, a nie model
+ *
+ * Bo „osiem" rzucone między seriami znaczy „to samo, co przed chwilą", a to,
+ * co było przed chwilą, stoi w bazie — nie ma czego zgadywać. Model dostaje
+ * historię po to, żeby zrozumieć zdanie, a nie po to, żeby je uzupełniać:
+ * gdyby wolno mu było dopisywać ćwiczenie z historii, robiłby to także wtedy,
+ * gdy usłyszał nazwę i jej nie rozpoznał. Dlatego werdykt „sama liczba
+ * powtórzeń" jest wykrywany po kształcie (`isRepsOnlyVerdict`), a ćwiczenie
+ * i ciężar dopisuje `carryOverLastSet` z ostatniej serii tego treningu.
+ *
  * ## Dlaczego pomiary spoza typu logowania są wycinane
  *
  * Bo model powie „dwadzieścia powtórzeń deski" i będzie w tym więcej prawdy niż
@@ -40,6 +50,7 @@
  */
 
 import { z } from 'zod';
+import type { IsoDate } from './dates.js';
 import {
   hasCompleteMeasurements,
   requiredMeasurements,
@@ -49,7 +60,7 @@ import {
   type SetMeasurements,
 } from './logging-type.js';
 import { displayNameSchema, loggingTypeSchema, noteSchema, uuidSchema } from './schemas.js';
-import { kilogramsToGrams } from './units.js';
+import { gramsToKilograms, kilogramsToGrams } from './units.js';
 
 /**
  * Ile ćwiczeń trafia na listę podawaną modelowi.
@@ -86,8 +97,15 @@ export interface VoiceExercise {
 
 /** Ostatnio zapisana seria — kontekst dla zdań niepełnych. */
 export interface VoiceRecentSet {
+  /**
+   * Ćwiczenie tej serii. Modelowi nie jedzie — on dostaje samą nazwę — ale
+   * `carryOverLastSet` musi wskazać pozycję na liście, a po nazwie trafiałoby
+   * to w to samo, w co UUID przepisany przez model: w ćwiczenie o podobnej
+   * nazwie.
+   */
+  exerciseId: string;
   exerciseName: string;
-  performedOn: string;
+  performedOn: IsoDate;
   measurements: SetMeasurements;
 }
 
@@ -224,5 +242,66 @@ export function applyVoiceVerdict(
         : kilogramsToGrams(verdict.bodyweightKg),
     note: note.length === 0 ? null : note,
     complete: hasCompleteMeasurements(exercise.loggingType, measurements),
+  };
+}
+
+/**
+ * Czy z całego zdania została sama liczba powtórzeń — bez ćwiczenia i bez
+ * żadnego innego pomiaru.
+ *
+ * Tak wygląda werdykt na „osiem" rzucone między seriami: model nie ma z czego
+ * wskazać ćwiczenia, a historii dopisać mu nie wolno. Rozpoznanie tego jednego
+ * kształtu jest sygnałem, że resztę da się dopisać **z bazy** — czyli tam,
+ * gdzie pomyłka jest niemożliwa, a nie tylko mało prawdopodobna.
+ */
+export function isRepsOnlyVerdict(verdict: VoiceSetVerdict): boolean {
+  return (
+    verdict.exerciseIndex === null &&
+    verdict.reps !== null &&
+    verdict.weightKg === null &&
+    verdict.durationS === null &&
+    verdict.distanceM === null &&
+    verdict.bodyweightKg === null
+  );
+}
+
+/**
+ * Dopisuje do werdyktu ćwiczenie i ciężar z poprzedniej serii tego treningu.
+ *
+ * `recent` musi być posortowane **od najnowszej** — tak samo, jak jedzie do
+ * modelu; brana jest pierwsza pozycja, czyli ostatnia zapisana seria.
+ *
+ * `null` znaczy „nie ma z czego uzupełnić" i wychodzi w dwóch sytuacjach:
+ * ostatnia seria jest z innego dnia (czyli w tym treningu nie ma jeszcze
+ * żadnej) albo jej ćwiczenia nie ma na liście podanej modelowi — a poza tą
+ * listą nie ma jak go wskazać. Obie kończą się pytaniem do użytkownika, bo
+ * cena zgadywania jest tu ta sama co przy dopasowaniu ćwiczenia.
+ *
+ * Dzień jest **z urządzenia**, a nie z zegara serwera: seria należy do dnia
+ * kalendarzowego tego, kto ją zapisuje, więc tylko on wie, czy trwa jeszcze
+ * ten sam trening.
+ */
+export function carryOverLastSet(
+  exercises: readonly VoiceExercise[],
+  recent: readonly VoiceRecentSet[],
+  verdict: VoiceSetVerdict,
+  day: IsoDate,
+): VoiceSetVerdict | null {
+  const last = recent[0];
+  if (last === undefined || last.performedOn !== day) return null;
+
+  const index = exercises.findIndex((exercise) => exercise.exerciseId === last.exerciseId);
+  if (index === -1) return null;
+
+  const { weightG } = last.measurements;
+
+  return {
+    ...verdict,
+    exerciseIndex: index,
+    // Pozostałe pomiary zostają takie, jakie przyszły od modelu: powtórzenia są
+    // tym, co użytkownik właśnie powiedział, a czasu ani dystansu poprzednia
+    // seria nie ma prawa podpowiedzieć — one zmieniają się co serię.
+    weightKg: weightG === null ? null : gramsToKilograms(weightG),
+    reason: `Sama liczba powtórzeń — ćwiczenie i ciężar z poprzedniej serii: ${last.exerciseName}.`,
   };
 }

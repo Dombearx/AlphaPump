@@ -166,6 +166,19 @@ z jednym przekręconym znakiem trafiłby w cudze ćwiczenie, a numer spoza zakre
 odrzuca `applyVoiceVerdict` w rdzeniu. Tam też wycinane są pomiary spoza osi typu
 logowania („dwadzieścia powtórzeń deski") i przeliczane kilogramy na gramy.
 
+Jeden kształt werdyktu domyka jeszcze serwer: **sama liczba powtórzeń**. „Osiem"
+rzucone między seriami znaczy „to samo ćwiczenie i ten sam ciężar, co przed
+chwilą" — model nie ma z czego tego wskazać, a uzupełniać z historii mu nie
+wolno (robiłby to także wtedy, gdy nazwę usłyszał i jej nie rozpoznał). Dlatego
+werdykt bez ćwiczenia, bez ciężaru i z samymi powtórzeniami rozpoznaje
+`isRepsOnlyVerdict`, a ćwiczenie i ciężar dopisuje `carryOverLastSet`
+z **ostatniej serii tego dnia** — odczytem z bazy, nie domysłem. Dzień jedzie
+w żądaniu (`performedOn` w `POST /voice/text`), bo należy do urządzenia: tylko
+ono wie, czy trwa jeszcze ten sam trening. Bez takiej serii — pierwsza seria
+dnia albo klient, który dnia nie przysłał — `match` zostaje pusty, a `reason`
+mówi, czego zabrakło. Korzysta z tego dziś zegarek; aplikacja pola nie wysyła,
+więc działa jak dotąd.
+
 **Serwer nie zapisuje serii** — oddaje transkrypcję i wypełniony formularz.
 Zapis dzieje się na telefonie i tylko tam, a co się dzieje po rozpoznaniu,
 rozstrzyga przełącznik w ustawieniach (`src/dictation/`, reguła w
@@ -215,6 +228,12 @@ Zegarek ma własny przycisk sprawdzenia połączenia: `GET /health` bez tokenu
 (czy telefon w ogóle dosięga API), a potem `GET /me` z tokenem (czy token żyje).
 Rozdzielenie tych dwóch jest całym sensem tego przycisku — pierwszy podejrzany
 przy „nie działa" to czysty HTTP przepuszczany przez cudzą aplikację.
+
+Zegarek dokłada do rozpoznania jedno pole: **dzień** (`performedOn`), ten sam,
+który pojedzie za chwilę w `POST /sets`. Dzięki niemu dyktowanie samej liczby
+powtórzeń — „osiem" między seriami — dostaje ćwiczenie i ciężar z poprzedniej
+serii tego treningu, zamiast kończyć się pytaniem „o które ćwiczenie chodzi".
+Przy pierwszej serii dnia uzupełniać nie ma z czego i zegarek pokazuje to wprost.
 
 Reguła „model nie zapisuje sam" obowiązuje tu tak samo jak w telefonie: po
 rozpoznaniu zegarek domyślnie pokazuje serię i czeka na naciśnięcie, a zapis bez
