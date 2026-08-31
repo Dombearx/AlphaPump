@@ -143,6 +143,44 @@ function describe(match) {
   return match.name + ': ' + parts.join(' ');
 }
 
+/**
+ * Które pomiary wymaga dany typ logowania — trzecia implementacja tej samej
+ * reguły, co `requiredMeasurements` w `@alphapump/core` i `RECORD_AXES` w API.
+ * Ten sam powód co przy `describe`: pakiet bez bundlera w cudzej piaskowce nie
+ * dociągnie zależności, więc tabelka zostaje duplikatem, a nie importem.
+ */
+var REQUIRED_MEASUREMENTS = {
+  weight_reps: ['weightG', 'reps'],
+  weight_time: ['weightG', 'durationS'],
+  bodyweight_reps: ['reps'],
+  bodyweight_time: ['durationS'],
+  distance_time: ['distanceM', 'durationS'],
+};
+
+var MEASUREMENT_LABELS = {
+  weightG: 'weight',
+  reps: 'reps',
+  durationS: 'time',
+  distanceM: 'distance',
+};
+
+/**
+ * Nazwy pomiarów, których modelowi zabrakło — po to, żeby „Missing numbers"
+ * mówiło **co** dopowiedzieć, a nie tylko, że czegoś brakuje. Bez tego seria
+ * z samymi powtórzeniami przy ćwiczeniu na ciężar wygląda dla użytkownika jak
+ * kompletna, bo `describe` pomija pola o wartości `null` bez śladu.
+ */
+function missingMeasurements(match) {
+  var required = REQUIRED_MEASUREMENTS[match.loggingType] || [];
+  var names = [];
+
+  for (var i = 0; i < required.length; i++) {
+    if (match[required[i]] === null) names.push(MEASUREMENT_LABELS[required[i]]);
+  }
+
+  return names.join(' and ');
+}
+
 /** Dzień kalendarzowy telefonu — seria należy do dnia, nie do chwili. */
 function today() {
   var now = new Date();
@@ -268,8 +306,15 @@ function recognise(text) {
 
     if (!match.complete) {
       // Serii bez kompletu pól nie da się zapisać, a formularza na zegarku nie
-      // ma — więc jedyne sensowne wyjście to powtórzyć zdanie z liczbami.
-      reply(STATUS.UNKNOWN, 'Missing numbers', describe(match) + ' — say the whole set again.');
+      // ma — więc jedyne sensowne wyjście to powtórzyć zdanie z liczbami. Samo
+      // „say the whole set again" nie mówiło, czego zabrakło (np. wagi przy
+      // ćwiczeniu na obciążenie ze wspomaganiem) — stąd nazwanie brakującego
+      // pomiaru wprost.
+      reply(
+        STATUS.UNKNOWN,
+        'Missing numbers',
+        describe(match) + ' — missing ' + missingMeasurements(match) + '. Say the whole set again.'
+      );
       return;
     }
 

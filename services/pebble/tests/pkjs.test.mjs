@@ -264,6 +264,27 @@ describe('rozpoznanie serii', () => {
 
     assert.equal(eager.last().STATUS, STATUS.UNKNOWN);
     assert.equal(eager.calls.length, 1);
+    assert.match(eager.last().BODY, /missing reps/);
+  });
+
+  it('komunikat o brakujących liczbach nazywa konkretny brakujący pomiar', async () => {
+    // Zgłoszenie #94: „assisted pull up 5 reps" nie podaje wagi, a poprzedni
+    // komunikat („say the whole set again") nie mówił, czego zabrakło.
+    const eager = sandbox({ ...SETTINGS, confirm: false });
+    eager.routes['POST http://api.test/voice/text'] = {
+      status: 200,
+      body: {
+        transcript: 'assisted pull up 5 reps',
+        match: { ...MATCH, name: 'Assisted pull up', weightG: null, reps: 5, complete: false },
+        reason: null,
+      },
+    };
+
+    eager.fire('appmessage', { payload: { TRANSCRIPT: 'assisted pull up 5 reps' } });
+    await eager.settle();
+
+    assert.equal(eager.last().STATUS, STATUS.UNKNOWN);
+    assert.match(eager.last().BODY, /missing weight/);
   });
 
   it('wyłączone dyktowanie na serwerze mówi wprost, że to nie awaria sieci', async () => {
