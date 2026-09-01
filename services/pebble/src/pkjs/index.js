@@ -290,7 +290,11 @@ function recognise(text) {
   pending = null;
   reply(STATUS.WORKING, 'Recognising…', text);
 
-  request('POST', '/voice/text', { text: text }, function (problem, body) {
+  // Dzień jedzie razem ze zdaniem, a nie dopiero przy zapisie: po nim serwer
+  // poznaje, czy sama liczba powtórzeń („osiem") należy jeszcze do tego samego
+  // treningu, co poprzednia seria — i tylko wtedy dopisuje do niej ćwiczenie
+  // i ciężar. Jest to ten sam dzień, który za chwilę pojedzie w `POST /sets`.
+  request('POST', '/voice/text', { text: text, performedOn: today() }, function (problem, body) {
     if (problem) {
       reply(STATUS.ERROR, 'No answer', problem);
       return;

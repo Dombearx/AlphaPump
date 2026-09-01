@@ -100,6 +100,7 @@ export async function voiceRecentSets(
 ): Promise<VoiceRecentSet[]> {
   const rows = await db
     .select({
+      exerciseId: exercises.id,
       name: exercises.name,
       performedOn: workoutSets.performedOn,
       weightG: workoutSets.weightG,
@@ -116,6 +117,7 @@ export async function voiceRecentSets(
     .limit(limit);
 
   return rows.map((row) => ({
+    exerciseId: row.exerciseId,
     exerciseName: row.name,
     performedOn: row.performedOn,
     measurements: {

@@ -72,6 +72,14 @@ export const similarExercisesQuerySchema = z.object({
  */
 export const dictateTextBodySchema = z.object({
   text: z.string().trim().min(1).max(500),
+  /**
+   * Dzień treningu, do którego opis należy — kalendarzowy dzień urządzenia,
+   * ten sam, który pojedzie potem w `POST /sets`. Serwer używa go do jednego:
+   * żeby wiedzieć, czy sama liczba powtórzeń ma z czego dopisać ćwiczenie
+   * i ciężar. Nieobowiązkowy, bo klient, który go nie zna, ma dostać dokładnie
+   * to, co dotąd.
+   */
+  performedOn: isoDateSchema.optional(),
 });
 
 /* --------------------------------------------------------------------- seria */

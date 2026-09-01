@@ -9,9 +9,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyVoiceVerdict,
+  carryOverLastSet,
+  isRepsOnlyVerdict,
   voiceSetResponseSchema,
   voiceSetVerdictSchema,
   type VoiceExercise,
+  type VoiceRecentSet,
   type VoiceSetVerdict,
 } from '../src/voice.js';
 
@@ -117,6 +120,100 @@ describe('applyVoiceVerdict', () => {
     expect(
       applyVoiceVerdict([BENCH], verdict({ weightKg: 80, reps: 5, note: ' bolało kolano ' })),
     ).toMatchObject({ note: 'bolało kolano' });
+  });
+});
+
+describe('uzupełnianie samej liczby powtórzeń', () => {
+  const TODAY = '2026-08-31';
+
+  const recentSet = (overrides: Partial<VoiceRecentSet> = {}): VoiceRecentSet => ({
+    exerciseId: BENCH.exerciseId,
+    exerciseName: BENCH.name,
+    performedOn: TODAY,
+    measurements: { weightG: 80_000, reps: 10, durationS: null, distanceM: null },
+    ...overrides,
+  });
+
+  it('sama liczba powtórzeń to werdykt bez ćwiczenia i bez innych pomiarów', () => {
+    expect(isRepsOnlyVerdict(verdict({ exerciseIndex: null, reps: 8 }))).toBe(true);
+    // Nazwa padła, więc uzupełniać nie ma czego — model wskazał ćwiczenie sam.
+    expect(isRepsOnlyVerdict(verdict({ exerciseIndex: 0, reps: 8 }))).toBe(false);
+    // Ciężar padł, więc zdanie nie było „samą liczbą".
+    expect(isRepsOnlyVerdict(verdict({ exerciseIndex: null, reps: 8, weightKg: 80 }))).toBe(false);
+    expect(isRepsOnlyVerdict(verdict({ exerciseIndex: null, reps: null }))).toBe(false);
+  });
+
+  it('dopisuje ćwiczenie i ciężar z ostatniej serii tego treningu', () => {
+    const carried = carryOverLastSet(
+      [PLANK, BENCH],
+      [recentSet()],
+      verdict({ exerciseIndex: null, reps: 8 }),
+      TODAY,
+    );
+
+    if (carried === null) throw new Error('spodziewano się uzupełnionego werdyktu');
+
+    expect(carried).toMatchObject({ exerciseIndex: 1, weightKg: 80, reps: 8 });
+    expect(applyVoiceVerdict([PLANK, BENCH], carried)).toMatchObject({
+      exerciseId: BENCH.exerciseId,
+      weightG: 80_000,
+      reps: 8,
+      complete: true,
+    });
+  });
+
+  it('bierze serię ostatnią, a nie pierwszą lepszą z historii', () => {
+    const carried = carryOverLastSet(
+      [BENCH, PLANK],
+      [
+        recentSet({ measurements: { weightG: 85_000, reps: 6, durationS: null, distanceM: null } }),
+        recentSet(),
+      ],
+      verdict({ exerciseIndex: null, reps: 8 }),
+      TODAY,
+    );
+
+    expect(carried).toMatchObject({ weightKg: 85 });
+  });
+
+  it('nie sięga po serię z poprzedniego treningu', () => {
+    expect(
+      carryOverLastSet(
+        [BENCH],
+        [recentSet({ performedOn: '2026-08-30' })],
+        verdict({ exerciseIndex: null, reps: 8 }),
+        TODAY,
+      ),
+    ).toBeNull();
+  });
+
+  it('bez żadnej wcześniejszej serii nie ma z czego uzupełnić', () => {
+    expect(
+      carryOverLastSet([BENCH], [], verdict({ exerciseIndex: null, reps: 8 }), TODAY),
+    ).toBeNull();
+  });
+
+  it('ćwiczenie spoza listy podanej modelowi nie ma jak zostać wskazane', () => {
+    expect(
+      carryOverLastSet([PLANK], [recentSet()], verdict({ exerciseIndex: null, reps: 8 }), TODAY),
+    ).toBeNull();
+  });
+
+  it('ćwiczenie bez ciężaru dopisuje się bez niego', () => {
+    const carried = carryOverLastSet(
+      [PLANK],
+      [
+        recentSet({
+          exerciseId: PLANK.exerciseId,
+          exerciseName: PLANK.name,
+          measurements: { weightG: null, reps: null, durationS: 60, distanceM: null },
+        }),
+      ],
+      verdict({ exerciseIndex: null, reps: 8 }),
+      TODAY,
+    );
+
+    expect(carried).toMatchObject({ exerciseIndex: 0, weightKg: null });
   });
 });
 

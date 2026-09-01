@@ -179,6 +179,9 @@ describe('rozpoznanie serii', () => {
 
     assert.equal(phone.lastCall().key, 'POST http://api.test/voice/text');
     assert.equal(phone.lastCall().headers['x-api-key'], 'ap_token');
+    // Dzień jedzie już przy rozpoznaniu: po nim serwer poznaje, czy sama liczba
+    // powtórzeń ma z czego dopisać ćwiczenie i ciężar poprzedniej serii.
+    assert.match(phone.lastCall().body.performedOn, /^\d{4}-\d{2}-\d{2}$/);
     assert.equal(phone.last().STATUS, STATUS.CONFIRM);
     assert.equal(phone.last().BODY, 'Bench press: 82.5 kg x 8');
   });
