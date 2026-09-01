@@ -33,6 +33,7 @@ import {
   type RankingEntry,
   type RankingMetric,
 } from '@alphapump/core';
+import { describeShapeMismatch } from '../sync/shape';
 import { SyncAuthError, SyncOfflineError, SyncServerError } from '../sync/transport';
 
 const TIMEOUT_MS = 10_000;
@@ -99,14 +100,22 @@ export function createRemoteReader(options: RemoteReaderOptions): RemoteReader {
     async globalRecords(exerciseId) {
       const body = await read(`/exercises/${exerciseId}/records`);
       const parsed = globalRecordsResponseSchema.safeParse(body);
-      if (!parsed.success) throw new SyncServerError('Records response has an unknown shape');
+      if (!parsed.success) {
+        throw new SyncServerError(
+          `Records response has an unknown shape: ${describeShapeMismatch(body, parsed.error)}`,
+        );
+      }
       return parsed.data.records;
     },
 
     async ranking(metric) {
       const body = await read(`/rankings?metric=${metric}`);
       const parsed = rankingResponseSchema.safeParse(body);
-      if (!parsed.success) throw new SyncServerError('Ranking response has an unknown shape');
+      if (!parsed.success) {
+        throw new SyncServerError(
+          `Ranking response has an unknown shape: ${describeShapeMismatch(body, parsed.error)}`,
+        );
+      }
       return parsed.data.entries;
     },
 
@@ -117,7 +126,9 @@ export function createRemoteReader(options: RemoteReaderOptions): RemoteReader {
       const body = await read(`/exercises/similar?${query.toString()}`);
       const parsed = duplicateCheckResponseSchema.safeParse(body);
       if (!parsed.success) {
-        throw new SyncServerError('Similar-exercises response has an unknown shape');
+        throw new SyncServerError(
+          `Similar-exercises response has an unknown shape: ${describeShapeMismatch(body, parsed.error)}`,
+        );
       }
       return parsed.data;
     },
