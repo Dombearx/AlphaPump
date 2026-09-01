@@ -22,6 +22,7 @@
  */
 
 import { voiceSetResponseSchema, type VoiceSetResponse } from '@alphapump/core';
+import { describeShapeMismatch } from '../sync/shape';
 import { SyncAuthError, SyncOfflineError, SyncServerError } from '../sync/transport';
 
 /**
@@ -121,7 +122,11 @@ export function createVoiceClient(options: VoiceClientOptions): VoiceClient {
     }
 
     const parsed = voiceSetResponseSchema.safeParse(body);
-    if (!parsed.success) throw new SyncServerError('Dictation response has an unknown shape');
+    if (!parsed.success) {
+      throw new SyncServerError(
+        `Dictation response has an unknown shape: ${describeShapeMismatch(body, parsed.error)}`,
+      );
+    }
     return parsed.data;
   };
 

@@ -30,6 +30,7 @@ import {
   type SyncPushRequest,
   type SyncPushResponse,
 } from '@alphapump/core';
+import { describeShapeMismatch } from './shape';
 
 /** Serwera nie da się dosięgnąć. Nie jest to błąd — to normalny stan pracy. */
 export class SyncOfflineError extends Error {
@@ -124,7 +125,11 @@ export function createHttpTransport(options: HttpTransportOptions): SyncTranspor
     async push(payload) {
       const body = await request('/sync/push', { method: 'POST', body: JSON.stringify(payload) });
       const parsed = syncPushResponseSchema.safeParse(body);
-      if (!parsed.success) throw new SyncServerError('Push response has an unknown shape');
+      if (!parsed.success) {
+        throw new SyncServerError(
+          `Push response has an unknown shape: ${describeShapeMismatch(body, parsed.error)}`,
+        );
+      }
       return parsed.data;
     },
 
@@ -132,7 +137,11 @@ export function createHttpTransport(options: HttpTransportOptions): SyncTranspor
       const query = `?since=${String(since)}&limit=${String(limit)}`;
       const body = await request(`/sync/pull${query}`, { method: 'GET' });
       const parsed = syncPullResponseSchema.safeParse(body);
-      if (!parsed.success) throw new SyncServerError('Pull response has an unknown shape');
+      if (!parsed.success) {
+        throw new SyncServerError(
+          `Pull response has an unknown shape: ${describeShapeMismatch(body, parsed.error)}`,
+        );
+      }
       return parsed.data;
     },
   };
