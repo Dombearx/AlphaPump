@@ -184,6 +184,20 @@ export function createLibraryTagRouter(dependencies: AppDependencies) {
             .set({ primaryTagId: targetId, ...stampWrite() })
             .where(inArray(exercises.id, primaryIds));
         }
+        // Ćwiczenie mogło już mieć tag docelowy wśród dodatkowych, zanim jego
+        // tag główny się na niego przepiął — inaczej po scaleniu tag główny
+        // powtarzałby się wśród dodatkowych tego samego wiersza.
+        const staleTargetLinks = primaryIds.filter((exerciseId) => hasTarget.has(exerciseId));
+        if (staleTargetLinks.length > 0) {
+          await tx
+            .delete(exerciseTags)
+            .where(
+              and(
+                eq(exerciseTags.tagId, targetId),
+                inArray(exerciseTags.exerciseId, staleTargetLinks),
+              ),
+            );
+        }
         // Ćwiczenia, którym zmienił się wyłącznie zestaw tagów dodatkowych, też
         // muszą pojechać na telefony — zestaw jedzie razem z wierszem ćwiczenia.
         const touchedByLinks = [...movable, ...redundant]
@@ -242,7 +256,7 @@ export function createLibraryTagRouter(dependencies: AppDependencies) {
           targetId,
           movedPrimary: primaryIds.length,
           movedAdditional: movable.length,
-          mergedAdditional: redundant.length,
+          mergedAdditional: redundant.length + staleTargetLinks.length,
           movedGoals: movableGoals.length,
         };
       });
