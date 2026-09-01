@@ -452,6 +452,36 @@ describe('panel: porządkowanie biblioteki', () => {
       expect(tags.body.map((tag) => tag.id)).not.toContain(sourceId);
     });
 
+    it('zdejmuje dodatkowy tag, który po scaleniu powtórzyłby nowy tag główny', async () => {
+      const duplicate = await harness.json<Tag>('POST', '/tags', {
+        headers: admin.headers,
+        body: { name: 'Klata bis' },
+      });
+      const sourceId = duplicate.body.id;
+
+      // Tag główny tego ćwiczenia jest tagiem pomyłkowym, a tag docelowy
+      // scalenia jest już wśród jego tagów dodatkowych.
+      const exercise = await createExercise(harness, member, 'Z tagiem docelowym jako dodatkowy', {
+        primaryTagId: sourceId,
+        additionalTagIds: [CHEST],
+      });
+
+      const merged = await harness.json<TagMergeReport>(
+        'POST',
+        `/admin/library/tags/${sourceId}/merge`,
+        { headers: admin.headers, body: { targetId: CHEST } },
+      );
+      expect(merged.status).toBe(200);
+      expect(merged.body).toMatchObject({ movedPrimary: 1, mergedAdditional: 1 });
+
+      const library = await harness.json<Exercise[]>('GET', '/exercises', {
+        headers: admin.headers,
+      });
+      const row = library.body.find((entry) => entry.id === exercise.id);
+      expect(row?.primaryTagId).toBe(CHEST);
+      expect(row?.additionalTagIds).not.toContain(CHEST);
+    });
+
     it('odmawia scalenia tagu z samym sobą', async () => {
       const response = await harness.json('POST', `/admin/library/tags/${BICEPS}/merge`, {
         headers: admin.headers,
