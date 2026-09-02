@@ -381,7 +381,7 @@ export async function importArchive(
 
         case 'exercises': {
           for (const batch of chunks(writableExercises)) {
-            await tx
+            const written = await tx
               .insert(exercises)
               .values(
                 batch.map((entry) => ({
@@ -414,23 +414,48 @@ export async function importArchive(
                   serverSeq: nextServerSeq(),
                 },
                 setWhere: sql`${exercises.updatedAt} < excluded.updated_at`,
-              });
+              })
+              .returning({ id: exercises.id });
 
-            // Komplet tagów dodatkowych jest podmieniany, tak jak w CRUD-zie
-            // i w pushu — różnicowanie zbioru dałoby ten sam wynik za cenę
-            // trzeciego miejsca, w którym można się pomylić.
-            const ids = batch.map((entry) => entry.id);
-            await tx.delete(exerciseTags).where(inArray(exerciseTags.exerciseId, ids));
+            /*
+             * Tagi dodatkowe podmieniamy **wyłącznie** tym wierszom, które ten
+             * wsad naprawdę zapisał.
+             *
+             * `RETURNING` oddaje po `ON CONFLICT DO UPDATE … WHERE` tylko wiersze
+             * wstawione albo faktycznie zaktualizowane, więc wiersz, który
+             * przegrał LWW z nowszym stanem bazy, w tej liście się nie pojawia.
+             * Wcześniej podmiana szła po całym wsadzie i psuła dokładnie ten
+             * wiersz, którego reguła LWW miała bronić: tag główny zostawał
+             * z bazy, a zestaw dodatkowych przychodził ze starszego archiwum —
+             * czyli ten sam tag potrafił wyjść jednocześnie głównym
+             * i dodatkowym. Taki wiersz nie przechodzi przez `exerciseSchema`,
+             * a ćwiczenia są globalne, więc jedno odtworzenie z kopii zabierało
+             * panel i synchronizację wszystkim.
+             */
+            const writtenIds = new Set(written.map((entry) => entry.id));
+            const replaced = batch.filter((entry) => writtenIds.has(entry.id));
 
-            const links = batch.flatMap((entry) =>
-              entry.exercise.additionalTagIds.map((tagId, position) => ({
-                exerciseId: entry.id,
-                tagId,
-                position,
-              })),
-            );
-            if (links.length > 0) {
-              await tx.insert(exerciseTags).values(links).onConflictDoNothing();
+            if (replaced.length > 0) {
+              // Komplet tagów dodatkowych jest podmieniany, tak jak w CRUD-zie
+              // i w pushu — różnicowanie zbioru dałoby ten sam wynik za cenę
+              // trzeciego miejsca, w którym można się pomylić.
+              await tx.delete(exerciseTags).where(
+                inArray(
+                  exerciseTags.exerciseId,
+                  replaced.map((entry) => entry.id),
+                ),
+              );
+
+              const links = replaced.flatMap((entry) =>
+                entry.exercise.additionalTagIds.map((tagId, position) => ({
+                  exerciseId: entry.id,
+                  tagId,
+                  position,
+                })),
+              );
+              if (links.length > 0) {
+                await tx.insert(exerciseTags).values(links).onConflictDoNothing();
+              }
             }
           }
           imported.exercises = writableExercises.length;

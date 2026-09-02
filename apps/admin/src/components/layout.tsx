@@ -26,6 +26,7 @@ const NAV = [
   { to: '/library', label: 'Biblioteka' },
   { to: '/triage', label: 'Feedback' },
   { to: '/data', label: 'Dane' },
+  { to: '/integrity', label: 'Konflikty' },
 ] as const;
 
 export function Layout() {

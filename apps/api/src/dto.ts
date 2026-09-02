@@ -11,6 +11,7 @@
  */
 
 import {
+  sanitizeAdditionalTagIds,
   sanitizeTranslations,
   type Cycle,
   type CycleGoal,
@@ -57,6 +58,22 @@ export function toTagDto(row: TagRow): Tag {
   };
 }
 
+/**
+ * Ćwiczenie w kształcie API.
+ *
+ * Zestaw tagów dodatkowych przechodzi tu przez `sanitizeAdditionalTagIds`
+ * i jest to ta sama decyzja, co przy tłumaczeniach niżej. Ćwiczenia są globalne:
+ * jeden wiersz, w którym tag główny powtarza się wśród dodatkowych — bo tak
+ * zostawiła go ścieżka zapisu naprawiona dopiero w kolejnym wydaniu albo ręczna
+ * zmiana w bazie — nie przechodzi przez `exerciseSchema` u odbiorcy i wywala
+ * parsowanie **całej** odpowiedzi. Panel przestaje się otwierać, a telefony
+ * stają na „Pull response has an unknown shape" i nie ruszą, dopóki ktoś nie
+ * poprawi bazy ręcznie.
+ *
+ * Odsianie tutaj tego nie naprawia — ono odbiera temu jednemu wierszowi moc
+ * zatrzymania wszystkiego. Naprawą jest `/admin/integrity`, gdzie ten sam
+ * konflikt jest wypisany razem z tym, co zrobi przycisk „Napraw".
+ */
 export function toExerciseDto(row: ExerciseRow, additionalTagIds: string[]): Exercise {
   return {
     id: row.id,
@@ -65,7 +82,7 @@ export function toExerciseDto(row: ExerciseRow, additionalTagIds: string[]): Exe
     authorId: row.authorId,
     loggingType: row.loggingType,
     primaryTagId: row.primaryTagId,
-    additionalTagIds,
+    additionalTagIds: sanitizeAdditionalTagIds(row.primaryTagId, additionalTagIds),
     note: row.note,
     gym: row.gym,
     translations: sanitizeTranslations(row.translations),

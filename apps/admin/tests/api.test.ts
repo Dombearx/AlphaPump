@@ -243,7 +243,53 @@ describe('porządkowanie biblioteki', () => {
     const rows = await listLibraryExercises({ includeDeleted: true }, fake.impl);
 
     expect(fake.calls[0]?.url).toContain('/admin/library/exercises?includeDeleted=true');
-    expect(rows[0]?.usage).toMatchObject({ sets: 12, users: 2 });
+    expect(rows.items[0]?.usage).toMatchObject({ sets: 12, users: 2 });
+    expect(rows.rejected).toEqual([]);
+  });
+
+  /**
+   * Wiersz, którego nie przyjmuje schemat, nie ma prawa zabrać całej listy.
+   *
+   * Ćwiczenia są globalne, więc jeden krzywy wiersz jedzie w każdej odpowiedzi.
+   * Przy `z.array(schema)` zabierał administratorowi cały ekran biblioteki —
+   * czyli jedyne narzędzie, którym dało się go poprawić.
+   */
+  it('oddaje wiersze poprawne i opisuje te, których schemat nie przyjął', async () => {
+    const broken = {
+      exercise: {
+        ...EXERCISE,
+        id: '44444444-4444-4444-8444-444444444444',
+        name: 'Zepsute',
+        // Tag główny powtórzony wśród dodatkowych — dokładnie ten konflikt,
+        // przez który panel przestawał się otwierać.
+        additionalTagIds: [EXERCISE.primaryTagId],
+      },
+      authorNickname: 'Kuba',
+      builtIn: false,
+      hasEmbedding: false,
+      usage: { sets: 0, deletedSets: 0, users: 0, goals: 0, lastPerformedOn: null },
+    };
+
+    const fake = fakeFetch(200, {
+      exercises: [
+        {
+          exercise: EXERCISE,
+          authorNickname: 'Kuba',
+          builtIn: false,
+          hasEmbedding: true,
+          usage: { sets: 12, deletedSets: 1, users: 2, goals: 0, lastPerformedOn: '2026-04-01' },
+        },
+        broken,
+      ],
+    });
+
+    const rows = await listLibraryExercises({}, fake.impl);
+
+    expect(rows.items).toHaveLength(1);
+    expect(rows.items[0]?.exercise.id).toBe(EXERCISE.id);
+    expect(rows.rejected).toHaveLength(1);
+    expect(rows.rejected[0]?.name).toBe('Zepsute');
+    expect(rows.rejected[0]?.message).toContain('Tag główny');
   });
 
   it('scalenie idzie POST-em i niesie wyłącznie cel — źródło jest w ścieżce', async () => {

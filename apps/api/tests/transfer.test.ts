@@ -14,12 +14,12 @@
  * wynika z pary autor + nazwa.
  */
 
-import { canonicalArchive, type Archive } from '@alphapump/core';
+import { canonicalArchive, exerciseSchema, type Archive } from '@alphapump/core';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { BODY_LIMIT_BYTES } from '../src/app.js';
 import { exportArchive, importArchive } from '../src/transfer/index.js';
-import { exercises, users, workoutSets } from '../src/schema.js';
+import { exerciseTags, exercises, users, workoutSets } from '../src/schema.js';
 import { createHarness, type Harness, type TestUser } from './harness.js';
 
 interface Seeded {
@@ -473,6 +473,72 @@ describe('uprawnienia i odporność importu', () => {
 
     const all = await source.harness.db.select().from(workoutSets);
     expect(all).toHaveLength(3);
+
+    await source.harness.close();
+  });
+
+  /**
+   * Wiersz, który przegrał LWW, nie może dostać tagów dodatkowych z archiwum.
+   *
+   * Podmiana szła wcześniej po **całym** wsadzie, a nie po wierszach faktycznie
+   * zapisanych, więc odtworzenie starszej kopii zostawiało ćwiczenie z tagiem
+   * głównym z bazy i zestawem dodatkowych z pliku. Gdy trafiały na siebie, ten
+   * sam tag wychodził jednocześnie głównym i dodatkowym — a takiego wiersza nie
+   * przyjmuje `exerciseSchema`, więc jedno odtworzenie z kopii zabierało panel
+   * i synchronizację wszystkim naraz.
+   */
+  it('nie podmienia tagów dodatkowych wierszowi, który przegrał LWW', async () => {
+    const source = await seedData();
+
+    const second = await source.harness.json<{ id: string }>('POST', '/tags', {
+      body: { name: 'Przedramiona' },
+      headers: source.owner.headers,
+    });
+
+    // Archiwum ze stanem, w którym „Przedramiona" są tagiem dodatkowym.
+    await source.harness.json('PATCH', `/exercises/${source.exerciseId}`, {
+      body: { additionalTagIds: [second.body.id] },
+      headers: source.owner.headers,
+    });
+    const archive = await exportArchive(source.harness.db, {
+      kind: 'user',
+      userId: source.owner.id,
+    });
+
+    // Po eksporcie ten sam tag staje się w bazie tagiem **głównym**. Wiersz jest
+    // teraz nowszy niż archiwum, więc import nie ma prawa go ruszyć.
+    await source.harness.json('PATCH', `/exercises/${source.exerciseId}`, {
+      body: { primaryTagId: second.body.id, additionalTagIds: [] },
+      headers: source.owner.headers,
+    });
+
+    const imported = await source.harness.json('POST', '/import', {
+      body: archive,
+      headers: source.owner.headers,
+    });
+    expect(imported.status).toBe(200);
+
+    const [row] = await source.harness.db
+      .select()
+      .from(exercises)
+      .where(eq(exercises.id, source.exerciseId));
+    expect(row?.primaryTagId).toBe(second.body.id);
+
+    const links = await source.harness.db
+      .select()
+      .from(exerciseTags)
+      .where(eq(exerciseTags.exerciseId, source.exerciseId));
+    expect(links).toEqual([]);
+
+    // I to samo sprawdzone od strony skutku: ćwiczenie dalej przechodzi przez
+    // schemat, którym czyta je panel i telefon.
+    const library = await source.harness.json<{ id: string }[]>('GET', '/exercises', {
+      headers: source.owner.headers,
+    });
+    const parsed = exerciseSchema.safeParse(
+      library.body.find((entry) => entry.id === source.exerciseId),
+    );
+    expect(parsed.success).toBe(true);
 
     await source.harness.close();
   });

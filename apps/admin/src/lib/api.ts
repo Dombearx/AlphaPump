@@ -24,8 +24,11 @@ import {
   exerciseSchema,
   feedbackTriageReportSchema,
   importReportSchema,
-  libraryExerciseListSchema,
-  libraryTagListSchema,
+  integrityRepairReportSchema,
+  integrityReportSchema,
+  libraryExerciseSchema,
+  libraryTagSchema,
+  parseRows,
   systemStatsSchema,
   tagMergeReportSchema,
   tagSchema,
@@ -39,8 +42,11 @@ import {
   type ExerciseMergeReport,
   type FeedbackTriageReport,
   type ImportReport,
+  type IntegrityRepairReport,
+  type IntegrityReport,
   type LibraryExercise,
   type LibraryTag,
+  type RejectedRow,
   type TranslationRefreshReport,
   type Translations,
   type SystemStats,
@@ -120,6 +126,39 @@ export async function request<T>(
   }
 
   return parsed.data;
+}
+
+/**
+ * Lista, której nie unieważnia jeden zły wiersz.
+ *
+ * `request` jest kategoryczny i tak ma zostać: odpowiedź innego kształtu, niż
+ * umówiony, jest błędem i lepiej, żeby wyszedł na wierzch. Ale listy biblioteki
+ * są inne — jadą **całą** tabelą, a wiersze w bazie bywają starsze niż reguły,
+ * które ich dotyczą. Przy `z.array(schema)` jedno ćwiczenie z powtórzonym tagiem
+ * zabiera cały ekran biblioteki: panel pokazuje „The /admin/library/exercises
+ * response has an unknown shape" i nie ma z niego dojścia do niczego — w tym do
+ * wiersza, który trzeba poprawić.
+ *
+ * Dlatego tutaj rozbiór idzie wiersz po wierszu. Wiersze poprawne wchodzą do
+ * tabeli, niepoprawne wracają osobno razem z komunikatem schematu, a ekran mówi
+ * wprost, ilu wierszy nie umiał wczytać i odsyła do przeglądu konfliktów. Panel
+ * administratora jest narzędziem do naprawiania bazy — nie może być pierwszą
+ * rzeczą, którą zepsuta baza wyłącza.
+ */
+export interface RowList<T> {
+  items: T[];
+  /** Wiersze, których schemat nie przyjął — do pokazania, nie do przemilczenia. */
+  rejected: RejectedRow[];
+}
+
+export async function requestList<T>(
+  path: string,
+  key: string,
+  itemSchema: z.ZodType<T>,
+  options: RequestOptions = {},
+): Promise<RowList<T>> {
+  const envelope = await request(path, z.object({ [key]: z.array(z.unknown()) }), options);
+  return parseRows(envelope[key] ?? [], itemSchema);
 }
 
 /* -------------------------------------------------------------- moje konto */
@@ -279,22 +318,24 @@ export const deleteTag = async (id: string, fetchImpl?: typeof fetch): Promise<v
 export const listLibraryExercises = (
   options: { includeDeleted?: boolean } = {},
   fetchImpl?: typeof fetch,
-): Promise<LibraryExercise[]> =>
-  request(
+): Promise<RowList<LibraryExercise>> =>
+  requestList(
     `/admin/library/exercises${options.includeDeleted === true ? '?includeDeleted=true' : ''}`,
-    libraryExerciseListSchema,
+    'exercises',
+    libraryExerciseSchema,
     { fetchImpl },
-  ).then((body) => body.exercises);
+  );
 
 export const listLibraryTags = (
   options: { includeDeleted?: boolean } = {},
   fetchImpl?: typeof fetch,
-): Promise<LibraryTag[]> =>
-  request(
+): Promise<RowList<LibraryTag>> =>
+  requestList(
     `/admin/library/tags${options.includeDeleted === true ? '?includeDeleted=true' : ''}`,
-    libraryTagListSchema,
+    'tags',
+    libraryTagSchema,
     { fetchImpl },
-  ).then((body) => body.tags);
+  );
 
 /**
  * Podobne ćwiczenia — to samo wyszukiwanie hybrydowe, które w aplikacji
@@ -358,6 +399,33 @@ export const refreshEmbeddings = (fetchImpl?: typeof fetch): Promise<EmbeddingRe
 export const refreshTranslations = (fetchImpl?: typeof fetch): Promise<TranslationRefreshReport> =>
   request('/admin/library/translations/refresh', translationRefreshReportSchema, {
     method: 'POST',
+    fetchImpl,
+  });
+
+/* ------------------------------------------------------- konflikty w bazie */
+
+/**
+ * Przegląd bazy pod kątem konfliktów.
+ *
+ * Czyta stan, nie zmienia go — dlatego panel może go odświeżać po każdej
+ * operacji i dlatego naprawa jest osobnym żądaniem: zdjęcie komuś tagu ma być
+ * kliknięciem administratora, a nie skutkiem wejścia na ekran.
+ */
+export const getIntegrityReport = (fetchImpl?: typeof fetch): Promise<IntegrityReport> =>
+  request('/admin/integrity', integrityReportSchema, { fetchImpl });
+
+/**
+ * Naprawa wskazanych zgłoszeń. Serwer przegląda bazę jeszcze raz i naprawia
+ * wyłącznie te, które dalej istnieją — kliknięcie w listę sprzed pięciu minut
+ * nie jest pomyłką, tylko wpisem w `skipped`.
+ */
+export const repairIntegrityIssues = (
+  ids: readonly string[],
+  fetchImpl?: typeof fetch,
+): Promise<IntegrityRepairReport> =>
+  request('/admin/integrity/repair', integrityRepairReportSchema, {
+    method: 'POST',
+    body: { ids },
     fetchImpl,
   });
 

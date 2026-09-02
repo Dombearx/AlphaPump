@@ -21,6 +21,7 @@
 
 import { LANGUAGES, LANGUAGE_LABELS, type LibraryExercise } from '@alphapump/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 import { useMemo, useState } from 'react';
 import { ExerciseForm } from '../components/exercise-form';
 import { ExerciseLibrary } from '../components/exercise-library';
@@ -102,19 +103,23 @@ export function LibraryPage() {
     },
   });
 
+  // Wiersze, które przeszły przez schemat. Te, które nie przeszły, jadą obok
+  // w `rejected` i lądują w ostrzeżeniu nad tabelą — panel pokazuje bibliotekę
+  // bez nich zamiast nie pokazywać jej wcale.
+  const exerciseRows = exercises.data?.items ?? [];
+  const tagRows = tags.data?.items ?? [];
+  const rejected = [...(exercises.data?.rejected ?? []), ...(tags.data?.rejected ?? [])];
+
   const liveTags = useMemo(
-    () => (tags.data ?? []).filter((entry) => entry.tag.deletedAt === null).map((e) => e.tag),
+    () => tagRows.filter((entry) => entry.tag.deletedAt === null).map((e) => e.tag),
     [tags.data],
   );
   const tagNames = useMemo(
-    () => new Map((tags.data ?? []).map((entry) => [entry.tag.id, entry.tag.name])),
+    () => new Map(tagRows.map((entry) => [entry.tag.id, entry.tag.name])),
     [tags.data],
   );
 
-  const visible = useMemo(
-    () => filterExercises(exercises.data ?? [], filter),
-    [exercises.data, filter],
-  );
+  const visible = useMemo(() => filterExercises(exerciseRows, filter), [exercises.data, filter]);
 
   if (exercises.isPending || tags.isPending) return <Loading label="Loading the library…" />;
   if (exercises.error) return <Problem error={exercises.error} />;
@@ -134,12 +139,39 @@ export function LibraryPage() {
     });
   };
 
-  const deletedExercises = (exercises.data ?? []).filter(
-    (entry) => entry.exercise.deletedAt !== null,
-  ).length;
+  const deletedExercises = exerciseRows.filter((entry) => entry.exercise.deletedAt !== null).length;
 
   return (
     <div className="flex flex-col gap-6">
+      {rejected.length > 0 && (
+        <Card className="flex flex-col gap-2 border-danger/40">
+          <CardTitle>
+            {rejected.length} rows from the database could not be read — they are missing from the
+            lists below
+          </CardTitle>
+          <p className="text-sm text-muted">
+            Nie jest to błąd panelu: te wiersze leżą w bazie w kształcie, którego nie przyjmuje
+            schemat aplikacji. Reszta biblioteki działa normalnie, a tamte wiersze są niewidoczne aż
+            do poprawienia — także dla telefonów.
+          </p>
+          <ul className="flex flex-col gap-1 text-sm text-text">
+            {rejected.map((row) => (
+              <li key={`${String(row.id)}-${String(row.index)}`}>
+                <span className="font-medium">{row.name ?? row.id ?? `wiersz ${row.index}`}</span>
+                <span className="text-muted"> — {row.message}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-sm text-muted">
+            Konflikty, które system rozpoznaje i umie naprawić, są wypisane na ekranie{' '}
+            <Link to="/integrity" className="text-text underline">
+              Konflikty
+            </Link>
+            .
+          </p>
+        </Card>
+      )}
+
       {mutate.error !== null && <Problem error={mutate.error} />}
       {note !== null && (
         <p className="rounded-lg border border-success/40 bg-success/10 p-3 text-sm text-success">
@@ -150,8 +182,7 @@ export function LibraryPage() {
       <Card className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <CardTitle>
-            Exercises ({visible.length} of {(exercises.data ?? []).length}, {deletedExercises}{' '}
-            deleted)
+            Exercises ({visible.length} of {exerciseRows.length}, {deletedExercises} deleted)
           </CardTitle>
           <div className="flex gap-2">
             <Button
@@ -279,7 +310,7 @@ export function LibraryPage() {
 
         <ExerciseLibrary
           rows={visible}
-          all={exercises.data ?? []}
+          all={exerciseRows}
           tagNames={tagNames}
           busy={mutate.isPending}
           onEdit={(entry) => {
@@ -317,7 +348,7 @@ export function LibraryPage() {
       </Card>
 
       <Card className="flex flex-col gap-3">
-        <CardTitle>Tags ({(tags.data ?? []).length})</CardTitle>
+        <CardTitle>Tags ({tagRows.length})</CardTitle>
 
         <form
           className="flex items-center gap-2"
@@ -361,11 +392,11 @@ export function LibraryPage() {
           </Button>
         </form>
 
-        {(tags.data ?? []).length === 0 ? (
+        {tagRows.length === 0 ? (
           <Empty>No tags yet.</Empty>
         ) : (
           <TagLibrary
-            rows={tags.data ?? []}
+            rows={tagRows}
             busy={mutate.isPending}
             onRename={(entry, name, translations) => {
               mutate.mutate(async () => {
