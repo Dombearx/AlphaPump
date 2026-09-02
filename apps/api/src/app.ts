@@ -29,6 +29,7 @@ import { createDuplicateRouter, duplicateRoutes } from './routes/duplicates.js';
 import { createExerciseRouter, exerciseRoutes } from './routes/exercises.js';
 import { createFeedbackRouter, feedbackRoutes } from './routes/feedback.js';
 import { createHealthRouter, healthRoutes } from './routes/health.js';
+import { createIntegrityRouter, integrityRoutes } from './routes/integrity.js';
 import { createMeRouter, meRoutes } from './routes/me.js';
 import { createRankingRouter, rankingRoutes } from './routes/rankings.js';
 import { createRecordRouter, recordRoutes } from './routes/records.js';
@@ -61,6 +62,7 @@ export const documentedRoutes: RouteSpec[] = [
   ...transferRoutes,
   ...adminRoutes,
   ...adminLibraryRoutes,
+  ...integrityRoutes,
   ...feedbackRoutes,
   ...updateRoutes,
 ];
@@ -215,6 +217,7 @@ export function createApp(dependencies: AppDependencies, config: AppConfig) {
   secured.route('/', createTransferRouter(resolved));
   secured.route('/', createAdminRouter(resolved, config.backupDir));
   secured.route('/', createAdminLibraryRouter(resolved));
+  secured.route('/', createIntegrityRouter(resolved));
   secured.route('/', createFeedbackRouter(config.feedbackDir));
 
   app.route('/', secured);
