@@ -157,6 +157,13 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile.web
+      args:
+        # Moduł dostawcy DNS wkompilowany w Caddy'ego — bez niego nie ma
+        # wyzwania DNS-01, a bez DNS-01 nie ma certyfikatu dla serwera, do
+        # którego Let's Encrypt nie ma jak się połączyć. Musi odpowiadać
+        # `ACME_DNS_PROVIDER` niżej; rozjazd kończy start kontenera błędem
+        # `module not registered`.
+        CADDY_DNS_MODULE: ${CADDY_DNS_MODULE:-github.com/caddy-dns/duckdns}
     image: alphapump/web:${IMAGE_TAG:-local}
     restart: unless-stopped
     # Sterownik `json-file` bez limitu rośnie, aż zapełni dysk — a na tym samym
@@ -175,8 +182,33 @@ services:
     # stos dotyka sieci gospodarza. `0.0.0.0` odpowiada decyzji z dokumentu stacku
     # (sieć lokalna minipc jest traktowana jako zaufana); wpisanie tu adresu
     # z interfejsu NetBird zawęża dostęp do samego VPN-u.
+    environment:
+      # Kanoniczna nazwa stosu — ta, na którą wystawiany jest certyfikat, i ta,
+      # którą mają w konfiguracji telefony. Wartość domyślna `:80` to stary tryb
+      # bez TLS-u: stos wstaje po HTTP i nie odzywa się do Let's Encryptu ani
+      # razu. Wartości domyślne są tu powtórzone za `deploy/Caddyfile`, bo
+      # Compose nie umie „nie ustawić" zmiennej — pusty napis przeszedłby do
+      # kontenera i Caddy wziąłby go za adres nasłuchu.
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+      # Stary adres (`http://100.64.0.1`), z którego Caddy przekierowuje na
+      # nazwę wyżej. Puste znaczy „nie ma czego przekierowywać".
+      LEGACY_ADDRESS: ${LEGACY_ADDRESS:-http://legacy.invalid}
+      ACME_DNS_PROVIDER: ${ACME_DNS_PROVIDER:-duckdns}
+      # Token do API DNS-a. Jedyny sekret, jakiego wymaga TLS — Caddy dopisuje
+      # nim rekord TXT przy każdym odnowieniu i kasuje go po wydaniu
+      # certyfikatu. Pusty znaczy „stos jedzie po HTTP".
+      ACME_DNS_TOKEN: ${ACME_DNS_TOKEN:-}
     ports:
       - '${BIND_ADDRESS:-0.0.0.0}:${HTTP_PORT:-80}:80'
+      # HTTPS. Port jest wystawiony także w trybie bez TLS-u — wtedy nikt na nim
+      # nie nasłuchuje wewnątrz kontenera i połączenie jest po prostu odrzucane,
+      # co jest tańsze niż druga ścieżka konfiguracji do pomylenia.
+      - '${BIND_ADDRESS:-0.0.0.0}:${HTTPS_PORT:-443}:443'
+      # HTTP/3 jedzie po UDP na tym samym numerze. Caddy ogłasza je nagłówkiem
+      # `Alt-Svc` niezależnie od tego, czy port jest przepuszczony — a klient,
+      # który to ogłoszenie przyjmie i trafi w ścianę, wraca do TCP dopiero po
+      # przeterminowaniu. Taniej przepuścić, niż tłumaczyć sekundowe zacięcia.
+      - '${BIND_ADDRESS:-0.0.0.0}:${HTTPS_PORT:-443}:443/udp'
     volumes:
       # Dystrybucja aplikacji na Androida. Plik `.apk` położony w tym katalogu
       # jest do pobrania pod `/alphapump/download/<nazwa>` — czyli tam, gdzie telefony i tak
@@ -187,11 +219,30 @@ services:
       # Pliki wydań OTA — Caddy oddaje je pod `/alphapump/ota/`. Sam manifest
       # obsługuje API, bo zależy od nagłówków żądania.
       - ${OTA_DIR:-./ota}:/srv/alphapump/ota:ro
+      # Certyfikat, klucz prywatny i konto ACME. **Wolumin nazwany, nie katalog
+      # gospodarza** — to jest stan wewnętrzny Caddy'ego, nie coś do zaglądania.
+      #
+      # Bez niego każde `docker compose down` kasuje certyfikat, a następny start
+      # prosi Let's Encrypt o nowy. Limit to **pięć certyfikatów na tę samą
+      # nazwę w ciągu tygodnia** — czyli piąte odtworzenie stosu w tygodniu
+      # zostawia stos bez HTTPS-a na kilka dni, bez żadnego błędu w kodzie.
+      # Ten jeden wiersz jest różnicą między „odnawia się samo" a tym.
+      - caddy-data:/data
+      # Stan konfiguracji Caddy'ego. Nie jest krytyczny jak `/data`, ale bez
+      # niego Caddy przy każdym starcie pisze do warstwy kontenera i mówi o tym
+      # w logu — szum w miejscu, w którym szukamy problemów z certyfikatem.
+      - caddy-config:/config
     healthcheck:
       # `wget -q -O -` zamiast `--spider`: obraz Caddy'ego stoi na Alpine,
       # a wget z busyboksa ma krótkie flagi zawsze, długie zależnie od budowy.
       # Żądanie idzie przez Caddy'ego do `/health`, więc „zdrowy" znaczy tu
       # także „proxy do API działa", a nie tylko „proces słucha na porcie".
+      #
+      # Adres zostaje `http://127.0.0.1` także po włączeniu TLS-u i to jest
+      # celowe: sprawdzamy, czy **ten** kontener żyje, a nie czy działa DNS
+      # i czy certyfikat jest ważny. Obsługuje to osobny blok w `deploy/Caddyfile`
+      # — po włączeniu TLS-u kanoniczny blok nasłuchuje pod nazwą domeny
+      # i żądanie spod pętli zwrotnej przestałoby do niego pasować.
       test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1/health']
       interval: 10s
       timeout: 5s
@@ -271,3 +322,5 @@ services:
 volumes:
   pgdata:
   triage-state:
+  caddy-data:
+  caddy-config:

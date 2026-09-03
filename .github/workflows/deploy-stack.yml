@@ -40,6 +40,11 @@ jobs:
       # Port zamiast 80: runner i tak jest rootem, ale 8080 nie wchodzi w drogę
       # niczemu, co GitHub uruchamia na maszynie obok.
       HTTP_PORT: 8080
+      # To samo dla HTTPS-a. Stos jedzie tu w trybie bez TLS-u (`SITE_ADDRESS`
+      # niżej jest puste), więc na tym porcie nikt nie nasłuchuje — ale Compose
+      # i tak go rezerwuje, a 443 na współdzielonym runnerze jest portem, o który
+      # łatwiej się potknąć niż 8443.
+      HTTPS_PORT: 8443
       BASE_URL: http://localhost:8080
 
     steps:
@@ -62,6 +67,15 @@ jobs:
           OPENROUTER_API_KEY=
           BIND_ADDRESS=127.0.0.1
           HTTP_PORT=${HTTP_PORT}
+          HTTPS_PORT=${HTTPS_PORT}
+          # Puste SITE_ADDRESS znaczy „bez TLS-u": Caddy nasłuchuje na samym
+          # porcie 80 i nie odzywa się do Let's Encryptu ani razu. Certyfikatu
+          # w CI nie da się wystawić — wyzwanie DNS-01 wymaga tokenu do API
+          # DNS-a, czyli sekretu, którego tu nie ma i mieć nie powinno.
+          # Sprawdzany jest więc rozdział ruchu, ten sam w obu trybach.
+          # (Bez odwrotnych apostrofów: ten heredoc nie jest cytowany, więc
+          # wykonałby to, co w nich stoi.)
+          SITE_ADDRESS=
           EOF
 
       # Budowane są **wszystkie** obrazy, łącznie z segregacją zgłoszeń: błąd

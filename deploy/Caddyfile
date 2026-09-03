@@ -2,8 +2,7 @@
 #
 # Podział jest **ścieżką, nie hostem**, i to jest decyzja, nie wygoda. Panel
 # uwierzytelnia się ciasteczkiem sesji; osobny host dla panelu zrobiłby z niego
-# ciasteczko między witrynami, a takie po HTTP wymaga flag, których po HTTP
-# ustawić się nie da. Przy jednym pochodzeniu problem nie powstaje.
+# ciasteczko między witrynami. Przy jednym pochodzeniu problem nie powstaje.
 #
 # Konsekwencja: **lista ścieżek niżej jest kontraktem**. Ścieżka, której tu nie
 # ma, nie trafia do API — trafia do panelu, który odda na nią `index.html`
@@ -12,20 +11,66 @@
 # `apps/api/tests/deploy.test.ts`: sprawdza, że każda trasa opisana w OpenAPI
 # pasuje do którejś ścieżki poniżej i że żadna trasa panelu do nich nie pasuje.
 #
-# TLS jest wyłączony świadomie — ruch jedzie wewnątrz WireGuarda (NetBird),
-# a HTTPS byłby szyfrowaniem wewnątrz szyfrowania. Uzasadnienie w całości:
-# `docs/stack_technologiczny.md`, sekcja „TLS — świadomie pominięty w MVP".
+# ------------------------------------------------------------------ TLS ------
+#
+# Certyfikat jest z Let's Encrypt i **odnawia się sam** — Caddy sięga po nowy,
+# gdy zostaje jedna trzecia okresu ważności, czyli około trzydziestu dni przed
+# wygaśnięciem. Nie ma tu żadnego crona do napisania ani niczego do odhaczenia
+# w kalendarzu; jedyne, co musi działać, to ruch wychodzący z minipc.
+#
+# Wyzwaniem jest **DNS-01**, i to nie jest wybór stylistyczny. Pozostałe dwa
+# (HTTP-01, TLS-ALPN-01) polegają na tym, że serwer Let's Encrypt łączy się
+# z naszym serwerem od zewnątrz — a ten stoi w NetBirdzie, bez przekierowanych
+# portów, i osiągalny z internetu nie jest ani nie ma być. DNS-01 dowodzi
+# kontroli nad domeną wpisem TXT w DNS-ie, więc nikt się tu do niczego nie
+# łączy: Caddy sam dopisuje `_acme-challenge.<domena>`, czeka aż będzie widoczny,
+# i sam go kasuje po wydaniu certyfikatu.
+#
+# Publiczna jest przez to wyłącznie **nazwa**. Rekord A może wskazywać na adres
+# z NetBirda (`100.64.x.x`) — nikt spoza VPN i tak się tam nie dobije, a telefony
+# w VPN dostają certyfikat, któremu ufają bez instalowania czegokolwiek.
+#
+# Moduł DNS-a jest **wkompilowany w binarkę** (`deploy/Dockerfile.web`,
+# argument `CADDY_DNS_MODULE`), bo obraz `caddy:2-alpine` nie zawiera żadnego.
+# Nazwa dostawcy niżej musi więc odpowiadać modułowi, z którym zbudowano obraz —
+# rozjazd kończy się `module not registered: dns.providers.<nazwa>` przy starcie
+# kontenera, czyli od razu i z nazwą własną problemu w logu.
 {
 	# Panel administracyjny Caddy'ego nie jest nikomu potrzebny, a nasłuchuje
 	# na 2019 bez uwierzytelnienia.
 	admin off
-	# Bez tego Caddy zobaczyłby nazwę hosta i spróbowałby wystawić certyfikat
-	# — do adresu w VPN, do którego Let's Encrypt nie ma jak się dobić.
-	auto_https off
+	# `email` świadomie nie ma. Adres w koncie ACME służy Let's Encryptowi
+	# wyłącznie do ostrzegania o **wygasającym** certyfikacie — czyli jest
+	# siatką bezpieczeństwa dla wdrożeń, które odnawiają ręcznie. To odnawia
+	# się samo, a pusta zmienna środowiskowa w tym miejscu jest błędem składni,
+	# nie brakiem opcji. Chcesz te powiadomienia: dopisz tu `email adres@…`.
 }
 
-:80 {
+# Kanoniczny adres stosu — nazwa, na którą wystawiany jest certyfikat.
+#
+# `SITE_ADDRESS` bez wartości znaczy `:80`, czyli **stary tryb**: zwykłe HTTP,
+# bez certyfikatu i bez ani jednego zapytania do Let's Encryptu (przy nasłuchu
+# na samym porcie 80 Caddy nie włącza automatycznego HTTPS). Tak jedzie CI
+# w `.github/workflows/deploy-stack.yml` i tak da się postawić stos lokalnie,
+# nie mając żadnej domeny. Wpisanie nazwy domeny włącza TLS i nic poza tym.
+{$SITE_ADDRESS::80} {
 	encode gzip
+
+	tls {
+		# Nazwa dostawcy DNS i token do jego API. Token czytany jest
+		# `{env.…}`, czyli **w czasie działania**, a nie podstawiany przy
+		# wczytaniu konfiguracji — dzięki temu nie ląduje w `caddy adapt`
+		# ani w zrzucie konfiguracji, którym łatwo się podzielić w zgłoszeniu
+		# błędu.
+		dns {$ACME_DNS_PROVIDER:duckdns} {env.ACME_DNS_TOKEN}
+		# Czym sprawdzać, czy wpis TXT jest już widoczny. Bez tego Caddy pyta
+		# resolwera systemowego — a na minipc jest nim **NetBird**, który
+		# odpowiada na własne nazwy i przekazuje resztę dalej. Sprawdzanie
+		# propagacji przez resolwera z rozdwojonym widokiem świata to
+		# dokładnie ten rodzaj awarii, który objawia się raz na trzy miesiące
+		# przy odnowieniu, o czwartej rano.
+		resolvers 1.1.1.1 8.8.8.8
+	}
 
 	# Sufit na ciało żądania. API ma własny, ciaśniejszy limit (`BODY_LIMIT_BYTES`
 	# w `apps/api/src/app.ts`) — ten jest przed nim i chroni to, czego tamten nie
@@ -134,5 +179,49 @@
 		root * /srv
 		try_files {path} /index.html
 		file_server
+	}
+}
+
+# Stary adres — ten, który telefony i zegarki mają zapisany z czasów bez TLS-u.
+#
+# Bez tego bloku przejście na HTTPS jest **twardym odcięciem**: certyfikatu na
+# adres IP wystawić się nie da, więc aplikacja, która ma w konfiguracji
+# `http://100.64.0.1`, po prostu przestaje trafiać na serwer — a nową wersję
+# z nowym adresem pobiera dokładnie stamtąd. Przekierowanie rozwiązuje jajko
+# i kurę: stary adres dalej odpowiada, tyle że wskazuje na nowy.
+#
+# Kanonicznej nazwy to nie dotyczy i nie ma jej tu z rozmysłem — dla niej Caddy
+# stawia przekierowanie z portu 80 sam, i robi to kodem **308**, który zachowuje
+# metodę i ciało żądania (`POST` po przekierowaniu zostaje `POST`-em). Tutaj jest
+# `permanent`, czyli 301, bo to jest przeprowadzka klientów, a nie przekierowanie
+# schematu — i tak ma zostać w ich pamięci.
+#
+# `HSTS` świadomie nie ma: nagłówek każe przeglądarce **nigdy** nie odzywać się
+# do tej nazwy po HTTP, co skasowałoby ten blok w połowie migracji.
+#
+# Pusta zmienna znaczy `legacy.invalid` — nazwa z zarezerwowanej domeny, której
+# nikt nie wyśle, więc blok jest wtedy martwy i nie wchodzi nikomu w drogę.
+# Adresów może być kilka po przecinku, ale **każdy z własnym `http://`**; bez
+# schematu Caddy uzna go za nazwę do wystawienia certyfikatu.
+{$LEGACY_ADDRESS:http://legacy.invalid} {
+	redir https://{$SITE_ADDRESS}{uri} permanent
+}
+
+# Sprawdzenie zdrowia kontenera — wyłącznie dla `healthcheck` z `docker-compose.yml`.
+#
+# Blok istnieje, bo dopasowanie idzie po nagłówku `Host`, a `wget` z wnętrza
+# kontenera puka pod `127.0.0.1` i taki właśnie `Host` wysyła. Po włączeniu TLS-u
+# kanoniczny blok wyżej nasłuchuje pod **nazwą domeny** i żądania spod adresu
+# pętli zwrotnej przestałyby do niego pasować — healthcheck dostawałby 404
+# i Compose uznałby zdrowy stos za padnięty.
+#
+# Jest tu sama `/health`, i to celowo: to nie jest drugie wejście do stosu,
+# tylko odpowiedź na jedno pytanie. Ruch z zewnątrz nigdy nie ma tu `Host`-a
+# `127.0.0.1`. (Wynika z tego jedno: `deploy/smoke.sh` uruchamiany pod adresem
+# `http://127.0.0.1` sprawdzi tylko `/health` — sprawdzaj stos pod nazwą, którą
+# naprawdę widzą telefony.)
+http://127.0.0.1 {
+	handle /health {
+		reverse_proxy api:3000
 	}
 }
