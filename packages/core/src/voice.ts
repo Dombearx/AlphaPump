@@ -66,11 +66,29 @@ import { gramsToKilograms, kilogramsToGrams } from './units.js';
  * Ile ćwiczeń trafia na listę podawaną modelowi.
  *
  * Lista jest kontekstem jednego wywołania, więc płaci się za nią przy każdym
- * dyktowaniu. Sto pozycji to więcej, niż ktokolwiek ma w rotacji, a przy
- * kolejności „najczęściej wykonywane najpierw" ćwiczenie, które nie zmieściło
- * się w setce, jest tym, którego użytkownik nie robił od miesięcy.
+ * dyktowaniu — i dlatego jest to limit, a nie cała biblioteka bez ograniczeń.
+ * Sto pozycji mieści z zapasem to, co ktokolwiek ma w rotacji, więc obcięcie
+ * dotyczy wyłącznie ogona biblioteki: ćwiczeń, których dyktujący nigdy nie
+ * robił i których nazwa nie padła w nagraniu (patrz kolejność kubełków
+ * w `voiceExercises` po stronie serwera).
  */
 export const VOICE_EXERCISE_LIMIT = 100;
+
+/**
+ * Ile kartek biblioteki wolno pokazać modelowi na jedno nagranie.
+ *
+ * Pierwsza idzie zawsze. Kolejne — dopiero wtedy, gdy model odpowiedział „żadne
+ * z tych nie pasuje": biblioteka większa niż limit znaczy, że odpowiedź „nie
+ * wiem" mogła być prawdą o pokazanym wycinku, a nie o bibliotece. Zapytanie
+ * o dalszy ciąg kosztuje jedno wywołanie modelu i sekundę oczekiwania, ale płaci
+ * się je wyłącznie przy nietrafieniu — czyli tam, gdzie alternatywą jest
+ * odesłanie użytkownika do listy.
+ *
+ * Trzy, a nie „ile trzeba": trzysta pozycji to więcej niż ma jakakolwiek
+ * biblioteka, którą ktoś naprawdę przegląda, a każda kolejna kartka to kolejna
+ * sekunda człowieka stojącego z telefonem przy ustach.
+ */
+export const VOICE_EXERCISE_PASSES = 3;
 
 /**
  * Ile ostatnich serii jedzie do modelu jako kontekst.

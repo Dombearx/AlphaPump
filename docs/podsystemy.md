@@ -155,10 +155,34 @@ transkrypcji tylko dokłada do niego mikrofon: `voiceAvailable` pyta o pierwsze,
 `speechAvailable` o oba.
 
 Model dostaje transkrypcję i **kontekst z bazy** (`voice/context.ts`): do stu
-ćwiczeń użytkownika — tych, na które ma serie, i tych, które sam założył, od
-najczęściej wykonywanego — oraz dwadzieścia ostatnich serii. Historia jest tam
+ćwiczeń z biblioteki oraz dwadzieścia ostatnich serii. Historia jest tam
 po to, żeby dało się zrozumieć zdanie niepełne („jeszcze osiem") i ocenić skalę
 usłyszanej liczby.
+
+Biblioteka jest wspólna, więc lista bierze ją **całą** — ćwiczenie widoczne
+w aplikacji ma dać się podyktować, nawet jeśli dyktujący nie ma na nie jeszcze
+żadnej serii. Setka to jednak limit, więc o tym, co wypadnie przy obcięciu,
+rozstrzyga kolejność: najpierw ćwiczenia tego użytkownika (te, na które ma serie,
+i te, które sam założył, od najczęściej wykonywanego), potem te, których nazwa
+pada w transkrypcji, a na końcu reszta biblioteki alfabetycznie. Środkowy kubełek
+jest tam po to, żeby przy dużej bibliotece limit nie odciął akurat tego
+ćwiczenia, które padło w nagraniu.
+
+Gdy mimo to model odpowie „żadne z tych nie pasuje", a biblioteka jest dłuższa
+niż jedna kartka, dostaje **dalszy ciąg** tego samego porządku — najwyżej
+`VOICE_EXERCISE_PASSES` kartek na jedno nagranie, czyli trzysta pozycji. Jest to
+zdanie o pokazanym wycinku, a nie o bibliotece, więc odesłanie użytkownika do
+listy przed sprawdzeniem reszty byłoby przedwczesne. Kolejna kartka kosztuje
+jedno wywołanie modelu i płaci się je wyłącznie przy nietrafieniu; kartka
+krótsza od limitu kończy pytanie, bo znaczy koniec biblioteki. Sama liczba
+powtórzeń („jeszcze osiem") jest z tego wyjęta — tam nazwa ćwiczenia w ogóle nie
+padła, więc żadna kartka jej nie zawiera.
+
+Dyktowanie, które nie trafiło w żadne ćwiczenie, zostawia po sobie wpis
+`dyktowanie bez dopasowania` w logu serwera — z transkrypcją, liczbą pozycji
+podanych modelowi i informacją, czy lista była przycięta do limitu. Serwer
+niczego przy dyktowaniu nie zapisuje, więc bez tego wpisu jedynym śladem po
+nietrafionym nagraniu byłoby zgłoszenie zwrotne od użytkownika.
 
 Odpowiada **numerem pozycji z listy**, nie identyfikatorem — ten sam wzorzec co
 przy re-rankerze duplikatów i z tego samego powodu: UUID przepisany przez model
