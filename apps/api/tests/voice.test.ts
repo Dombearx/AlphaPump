@@ -227,7 +227,9 @@ describe('dyktowanie serii', () => {
     await harness.close();
   });
 
-  it('nowe konto bez ćwiczeń nie pyta modelu', async () => {
+  it('nowe konto dostaje do wyboru bibliotekę wbudowaną', async () => {
+    // Ćwiczenie z biblioteki działa od pierwszego dnia, bez zapisania serii
+    // z listy „na rozgrzewkę". Odwrotna reguła kosztowała zgłoszenie #103.
     const { layers, recorded } = stubLayers('wyciskanie na osiem');
     const harness = await createHarness({ voice: layers });
     const user = await harness.signUp('pustekonto@example.com');
@@ -240,8 +242,71 @@ describe('dyktowanie serii', () => {
     const body = (await response.json()) as VoiceSetResponse;
 
     expect(response.status).toBe(200);
-    expect(body.match).toBeNull();
-    expect(recorded.last).toBeNull();
+    expect(recorded.last?.exercises.map((exercise) => exercise.exerciseId)).toContain(BENCH);
+    expect(body.match).not.toBeNull();
+
+    await harness.close();
+  });
+
+  it('bierze ćwiczenie z biblioteki, na które dyktujący nie ma ani jednej serii', async () => {
+    // Zgłoszenie #103 w całości: „Push up" stał w bibliotece i telefon go
+    // pokazywał, ale model go nie dostawał, bo zgłaszający nie miał na niego
+    // serii — a założył je ktoś inny.
+    const { layers, recorded } = stubLayers('push up twenty four reps');
+    const harness = await createHarness({ voice: layers });
+
+    const author = await harness.signUp('autor-pompek@example.com');
+    const created = await harness.json<{ id: string }>('POST', '/exercises', {
+      headers: author.headers,
+      body: { name: 'Push up', loggingType: 'bodyweight_reps', primaryTagId: tagId('chest') },
+    });
+
+    const user = await harness.signUp('dyktujacy@example.com');
+    await harness.json('POST', '/sets', {
+      headers: user.headers,
+      body: {
+        exerciseId: BENCH,
+        performedOn: '2026-08-10',
+        weightG: 80_000,
+        reps: 8,
+        durationS: null,
+        distanceM: null,
+      },
+    });
+
+    const response = await harness.request('/voice/set', {
+      method: 'POST',
+      headers: user.headers,
+      body: recording(),
+    });
+
+    expect(response.status).toBe(200);
+
+    const offered = recorded.last?.exercises ?? [];
+    expect(offered.map((exercise) => exercise.exerciseId)).toContain(created.body.id);
+    // I to nie na szarym końcu: ćwiczenie, którego nazwa padła w nagraniu, stoi
+    // zaraz za ćwiczeniami dyktującego, żeby limit listy nie odciął akurat jego.
+    expect(offered[1]).toMatchObject({ exerciseId: created.body.id, name: 'Push up' });
+    expect(offered[0]).toMatchObject({ exerciseId: BENCH });
+
+    await harness.close();
+  });
+
+  it('rozpoznaje nazwę powiedzianą po polsku, choć kanoniczna jest angielska', async () => {
+    // Nazwy z pozostałych języków są w bibliotece osobnym polem, więc dobór
+    // kandydatów musi zaglądać i tam — inaczej „pompki" nie trafiałyby
+    // w „Weighted push up" nigdy.
+    const { layers, recorded } = stubLayers('pompki z obciążeniem dwadzieścia cztery');
+    const harness = await createHarness({ voice: layers });
+    const user = await harness.signUp('popolsku@example.com');
+
+    await harness.request('/voice/set', {
+      method: 'POST',
+      headers: user.headers,
+      body: recording(),
+    });
+
+    expect(recorded.last?.exercises[0]).toMatchObject({ name: 'Weighted push up' });
 
     await harness.close();
   });

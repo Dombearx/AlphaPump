@@ -17,11 +17,31 @@
  * ## Co jest „listą ćwiczeń użytkownika"
  *
  * Biblioteka jest wspólna: każdy widzi wszystkie ćwiczenia i może zapisać serię
- * na dowolne. Jako kontekst dla modelu to za dużo — kilkaset pozycji, z których
- * użytkownik wykonuje kilkanaście. Bierzemy więc te, które **są jego**
- * w praktyce: ćwiczenia, na które ma zapisane serie, oraz te, które sam założył.
- * Kolejność po liczbie własnych serii malejąco, więc obcięcie listy do limitu
- * odcina ćwiczenia, których nie robi.
+ * na dowolne. Listą jest więc **cała żywa biblioteka**, a nie sama jej część
+ * należąca do dyktującego.
+ *
+ * Wcześniej było odwrotnie: brały się z niej wyłącznie ćwiczenia, na które
+ * użytkownik ma zapisane serie, i te, które sam założył. Kosztowało to zgłoszenie
+ * „nie znalazłem ćwiczenia Push up na twojej liście, dyktując »Push up twenty
+ * four reps«" — ćwiczenie stało w bibliotece i telefon je pokazywał, ale model
+ * go nie dostawał, bo zgłaszający nie miał na nie jeszcze ani jednej serii.
+ * Ćwiczenie widoczne w aplikacji i niewidoczne dla dyktowania jest dla
+ * użytkownika po prostu zepsute, a „zapisz je raz ręcznie, wtedy zacznie
+ * działać" nie jest regułą, którą da się komukolwiek powiedzieć.
+ *
+ * Kontekst jednego wywołania ma jednak limit (`VOICE_EXERCISE_LIMIT`), więc
+ * o tym, co wypadnie przy obcięciu, rozstrzyga kolejność — a ta jest trzema
+ * kubełkami:
+ *
+ * 1. **jego ćwiczenia** — te, na które ma zapisane serie, i te, które sam
+ *    założył; wewnątrz kubełka od najczęściej wykonywanego,
+ * 2. **ćwiczenia, których nazwa pada w tym, co powiedział** — czyli dokładnie
+ *    te, o które w tym jednym nagraniu może chodzić,
+ * 3. reszta biblioteki, alfabetycznie.
+ *
+ * Kubełek drugi jest po to, żeby limit nie przywrócił tego samego błędu przy
+ * większej bibliotece: „push up twenty four reps" wciąga „Push up" na listę
+ * niezależnie od tego, ile pozycji stoi przed nim alfabetycznie.
  */
 
 import {
@@ -31,34 +51,58 @@ import {
   type VoiceExercise,
   type VoiceRecentSet,
 } from '@alphapump/core';
-import { and, count, desc, eq, exists, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, isNull, sql, type SQL } from 'drizzle-orm';
 import type { Database } from '../db.js';
 import { exercises, workoutSets } from '../schema.js';
 
 /**
- * Ćwiczenia użytkownika, od najczęściej wykonywanego.
+ * Czy nazwa ćwiczenia — kanoniczna albo któraś z nazw w pozostałych językach —
+ * pada w zdaniu, które użytkownik podyktował.
  *
- * `exists` zamiast złączenia z filtrem: interesuje nas „czy ma na to serie",
- * a nie „ile ich ma w sumie" — a złączenie liczące serie i tak jest niżej,
- * w `ORDER BY`, gdzie odpowiada na inne pytanie.
+ * Kierunek jest odwrotny niż w wyszukiwarce biblioteki: **nazwa jest
+ * zapytaniem, a transkrypcja dokumentem**. Nazwa jest krótka i ma się w całości
+ * znaleźć w zdaniu („push up" w „push up twenty four reps"); szukanie nazwy
+ * zawierającej całe zdanie nie trafiłoby nigdy w nic.
+ *
+ * Porównanie idzie po surowym tekście, a nie po slugu, mimo że slug jest
+ * w bibliotece znormalizowany. Slug zdejmuje ogonki, transkrypcja ich nie
+ * zdejmuje — a normalizacja tylko jednej strony rozjeżdża dokładnie te nazwy,
+ * dla których w ogóle powstała („leżąc" kontra „lezac").
+ */
+function spokenIn(transcript: string): SQL<boolean> {
+  const spoken = sql`to_tsvector('simple', ${transcript})`;
+
+  return sql<boolean>`(
+    ${spoken} @@ plainto_tsquery('simple', ${exercises.name})
+    or exists (
+      select 1
+      from jsonb_each_text(coalesce(${exercises.translations}, '{}'::jsonb)) as alias(lang, name)
+      where ${spoken} @@ plainto_tsquery('simple', alias.name)
+    )
+  )`;
+}
+
+/**
+ * Ćwiczenia do wyboru dla modelu — jego własne przodem, reszta biblioteki za
+ * nimi (patrz nagłówek modułu).
+ *
+ * `count` po złączeniu z seriami użytkownika odpowiada tu na dwa pytania naraz:
+ * „czy to ćwiczenie jest jego" (liczba większa od zera) i „jak często je robi"
+ * (sama liczba, do kolejności wewnątrz pierwszego kubełka).
  */
 export async function voiceExercises(
   db: Database,
   userId: string,
+  transcript: string,
   limit: number = VOICE_EXERCISE_LIMIT,
 ): Promise<VoiceExercise[]> {
-  const mine = db
-    .select({ one: sql`1` })
-    .from(workoutSets)
-    .where(
-      and(
-        eq(workoutSets.exerciseId, exercises.id),
-        eq(workoutSets.userId, userId),
-        isNull(workoutSets.deletedAt),
-      ),
-    );
-
   const setCount = count(workoutSets.id);
+
+  const bucket = sql`case
+    when ${eq(exercises.authorId, userId)} or ${setCount} > 0 then 0
+    when ${spokenIn(transcript)} then 1
+    else 2
+  end`;
 
   const rows = await db
     .select({
@@ -77,9 +121,9 @@ export async function voiceExercises(
         isNull(workoutSets.deletedAt),
       ),
     )
-    .where(and(isNull(exercises.deletedAt), or(eq(exercises.authorId, userId), exists(mine))))
+    .where(isNull(exercises.deletedAt))
     .groupBy(exercises.id)
-    .orderBy(desc(setCount), exercises.name)
+    .orderBy(asc(bucket), desc(setCount), asc(exercises.name))
     .limit(limit);
 
   return rows.map((row) => ({

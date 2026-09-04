@@ -66,9 +66,11 @@ import { gramsToKilograms, kilogramsToGrams } from './units.js';
  * Ile ćwiczeń trafia na listę podawaną modelowi.
  *
  * Lista jest kontekstem jednego wywołania, więc płaci się za nią przy każdym
- * dyktowaniu. Sto pozycji to więcej, niż ktokolwiek ma w rotacji, a przy
- * kolejności „najczęściej wykonywane najpierw" ćwiczenie, które nie zmieściło
- * się w setce, jest tym, którego użytkownik nie robił od miesięcy.
+ * dyktowaniu — i dlatego jest to limit, a nie cała biblioteka bez ograniczeń.
+ * Sto pozycji mieści z zapasem to, co ktokolwiek ma w rotacji, więc obcięcie
+ * dotyczy wyłącznie ogona biblioteki: ćwiczeń, których dyktujący nigdy nie
+ * robił i których nazwa nie padła w nagraniu (patrz kolejność kubełków
+ * w `voiceExercises` po stronie serwera).
  */
 export const VOICE_EXERCISE_LIMIT = 100;
 

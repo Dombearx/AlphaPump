@@ -25,6 +25,7 @@
  */
 
 import {
+  VOICE_EXERCISE_LIMIT,
   applyVoiceVerdict,
   carryOverLastSet,
   isRepsOnlyVerdict,
@@ -32,6 +33,7 @@ import {
   type VoiceSetResponse,
 } from '@alphapump/core';
 import type { Database } from '../db.js';
+import { logger } from '../logger.js';
 import { voiceExercises, voiceRecentSets } from './context.js';
 import type { VoiceInterpreter } from './interpreter.js';
 import type { Transcriber, VoiceRecording } from './transcriber.js';
@@ -151,17 +153,21 @@ async function interpretTranscript(
   if (interpreter === null) throw new Error('Dyktowanie jest wyłączone');
 
   const [exercises, recent] = await Promise.all([
-    voiceExercises(db, userId),
+    // Transkrypcja wchodzi do zapytania: to ona wciąga na listę ćwiczenie
+    // z biblioteki, którego użytkownik jeszcze nie robił (patrz `context.ts`).
+    voiceExercises(db, userId, transcript),
     voiceRecentSets(db, userId),
   ]);
 
   if (exercises.length === 0) {
-    // Nowe konto: nie ma z czego wybierać, więc pytanie do modelu byłoby
-    // wywołaniem, którego jedyną możliwą odpowiedzią jest „nie wiem".
+    // Pusta biblioteka: nie ma z czego wybierać, więc pytanie do modelu byłoby
+    // wywołaniem, którego jedyną możliwą odpowiedzią jest „nie wiem". Po seedzie
+    // jest to stan nieosiągalny — zostaje jako bezpiecznik, a nie jako ścieżka,
+    // którą ktokolwiek chodzi.
     return {
       transcript,
       match: null,
-      reason: 'Nie masz jeszcze żadnych ćwiczeń — zapisz pierwszą serię z listy.',
+      reason: 'Biblioteka ćwiczeń jest pusta — nie ma czego dopasować.',
     };
   }
 
@@ -184,9 +190,28 @@ async function interpretTranscript(
     };
   }
 
+  const match = applyVoiceVerdict(exercises, filled);
+
+  // Nietrafione dyktowanie jest jedynym śladem, jaki po tej funkcji zostaje:
+  // serwer niczego nie zapisuje, a użytkownik zwykle wybiera ćwiczenie z listy
+  // i idzie dalej, więc bez tego wpisu wiedzielibyśmy o problemie dopiero ze
+  // zgłoszenia zwrotnego — czyli wtedy, gdy komuś się chciało je napisać.
+  // Transkrypcja jedzie do logu w całości: bez niej „model nie dopasował" jest
+  // zdaniem, z którym nie da się nic zrobić.
+  if (match === null) {
+    logger.warn('dyktowanie bez dopasowania', {
+      userId,
+      transcript,
+      candidates: exercises.length,
+      // Lista przycięta do limitu znaczy, że biblioteka nie zmieściła się
+      // w kontekście — i że dopasowanie mogło polec właśnie na obcięciu.
+      truncated: exercises.length >= VOICE_EXERCISE_LIMIT,
+    });
+  }
+
   return {
     transcript,
-    match: applyVoiceVerdict(exercises, filled),
+    match,
     reason: filled.reason,
   };
 }

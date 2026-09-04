@@ -1,7 +1,7 @@
 /**
  * Wyciąganie serii z transkrypcji — model generatywny na OpenRouterze.
  *
- * Wejściem jest tekst nagrania, lista ćwiczeń użytkownika i jego ostatnie serie.
+ * Wejściem jest tekst nagrania, lista ćwiczeń do wyboru i ostatnie serie użytkownika.
  * Wyjściem — jedna pozycja z tej listy (po **indeksie**, nie po nazwie) i liczby.
  * Ten sam dostawca i ten sam klucz co embeddingi, re-ranker i tłumaczenie, z tego
  * samego powodu, dla którego tamte trzy nie rozjeżdżają się na kilku dostawców.
@@ -45,8 +45,11 @@ export type VoiceVerdict = ReturnType<typeof voiceSetVerdictSchema.parse>;
 
 const SYSTEM_PROMPT = [
   'Zapisujesz serie treningowe dyktowane głosem w aplikacji na siłownię.',
-  'Dostajesz transkrypcję jednego nagrania, ponumerowaną listę ćwiczeń użytkownika',
-  'i jego ostatnio zapisane serie.',
+  'Dostajesz transkrypcję jednego nagrania, ponumerowaną listę ćwiczeń do wyboru',
+  'i ostatnio zapisane serie użytkownika.',
+  'Lista jest biblioteką aplikacji, a nie samymi ćwiczeniami tego użytkownika:',
+  'na jej początku stoją te, które faktycznie wykonuje, więc przy dwóch tak samo',
+  'pasujących nazwach wybierasz tę z niższym numerem.',
   'Wskazujesz **numer** ćwiczenia z listy i wyciągasz liczby: ciężar w kilogramach,',
   'powtórzenia, czas w sekundach, dystans w metrach.',
   'Nowych ćwiczeń nie wymyślasz — wolno wskazać wyłącznie pozycję z listy.',
@@ -78,7 +81,7 @@ function userPrompt(request: VoiceInterpretation): string {
   return [
     `Nagranie: „${request.transcript}"`,
     '',
-    'Ćwiczenia użytkownika (numer, nazwa, nazwy obce, typ logowania):',
+    'Ćwiczenia do wyboru (numer, nazwa, nazwy obce, typ logowania):',
     exerciseList(request.exercises),
     '',
     'Ostatnio zapisane serie (od najnowszej):',
