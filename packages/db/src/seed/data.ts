@@ -226,6 +226,13 @@ const EXERCISE_DEFINITIONS: readonly ExerciseDefinition[] = [
     additionalTags: ['triceps', 'shoulders'],
   },
   {
+    name: 'Push up',
+    namePl: 'Pompki',
+    loggingType: 'bodyweight_reps',
+    primaryTag: 'chest',
+    additionalTags: ['triceps', 'shoulders'],
+  },
+  {
     name: 'Weighted push up',
     namePl: 'Pompki z obciążeniem',
     loggingType: 'weight_reps',
