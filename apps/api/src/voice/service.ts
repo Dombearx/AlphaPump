@@ -26,10 +26,13 @@
 
 import {
   VOICE_EXERCISE_LIMIT,
+  VOICE_EXERCISE_PASSES,
   applyVoiceVerdict,
   carryOverLastSet,
   isRepsOnlyVerdict,
   type IsoDate,
+  type VoiceRecentSet,
+  type VoiceSetMatch,
   type VoiceSetResponse,
 } from '@alphapump/core';
 import type { Database } from '../db.js';
@@ -190,7 +193,16 @@ async function interpretTranscript(
     };
   }
 
-  const match = applyVoiceVerdict(exercises, filled);
+  const first = applyVoiceVerdict(exercises, filled);
+  if (first !== null) return { transcript, match: first, reason: filled.reason };
+
+  // Model powiedział „żadne z tych nie pasuje". Przy bibliotece większej niż
+  // jedna kartka jest to zdanie o **pokazanym wycinku**, a nie o bibliotece,
+  // więc pytamy o dalszy ciąg. Sama liczba powtórzeń jest z tego wyjęta: tam
+  // nazwa ćwiczenia w ogóle nie padła, więc żadna kartka jej nie zawiera.
+  const later = isRepsOnlyVerdict(filled)
+    ? { match: null, reason: filled.reason, offered: exercises.length, passes: 1 }
+    : await matchInFurtherPages(db, interpreter, userId, transcript, recent, exercises.length);
 
   // Nietrafione dyktowanie jest jedynym śladem, jaki po tej funkcji zostaje:
   // serwer niczego nie zapisuje, a użytkownik zwykle wybiera ćwiczenie z listy
@@ -198,20 +210,60 @@ async function interpretTranscript(
   // zgłoszenia zwrotnego — czyli wtedy, gdy komuś się chciało je napisać.
   // Transkrypcja jedzie do logu w całości: bez niej „model nie dopasował" jest
   // zdaniem, z którym nie da się nic zrobić.
-  if (match === null) {
+  if (later.match === null) {
     logger.warn('dyktowanie bez dopasowania', {
       userId,
       transcript,
-      candidates: exercises.length,
-      // Lista przycięta do limitu znaczy, że biblioteka nie zmieściła się
-      // w kontekście — i że dopasowanie mogło polec właśnie na obcięciu.
-      truncated: exercises.length >= VOICE_EXERCISE_LIMIT,
+      candidates: later.offered,
+      passes: later.passes,
     });
   }
 
   return {
     transcript,
-    match,
-    reason: filled.reason,
+    match: later.match,
+    // Powód z pierwszej kartki: to na niej stały ćwiczenia, które ten człowiek
+    // faktycznie robi, więc jego zdanie o nagraniu jest najbliższe prawdy.
+    reason: later.match === null ? filled.reason : later.reason,
   };
+}
+
+/**
+ * Kolejne kartki biblioteki, po jednej, dopóki któraś nie da dopasowania.
+ *
+ * Każda kartka to osobne wywołanie modelu, więc pętla kończy się na
+ * `VOICE_EXERCISE_PASSES` — razem z pierwszą kartką jest to trzysta pozycji.
+ * Kartka krótsza od limitu znaczy koniec biblioteki i kończy pętlę wcześniej.
+ */
+async function matchInFurtherPages(
+  db: Database,
+  interpreter: VoiceInterpreter,
+  userId: string,
+  transcript: string,
+  recent: readonly VoiceRecentSet[],
+  offered: number,
+): Promise<{
+  match: VoiceSetMatch | null;
+  reason: string | null;
+  offered: number;
+  passes: number;
+}> {
+  let seen = offered;
+  let passes = 1;
+
+  while (passes < VOICE_EXERCISE_PASSES) {
+    const page = await voiceExercises(db, userId, transcript, { offset: seen });
+    if (page.length === 0) break;
+
+    passes += 1;
+    seen += page.length;
+
+    const verdict = await interpreter.interpret({ transcript, exercises: page, recent });
+    const match = applyVoiceVerdict(page, verdict);
+    if (match !== null) return { match, reason: verdict.reason, offered: seen, passes };
+
+    if (page.length < VOICE_EXERCISE_LIMIT) break;
+  }
+
+  return { match: null, reason: null, offered: seen, passes };
 }

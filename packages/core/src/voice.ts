@@ -75,6 +75,22 @@ import { gramsToKilograms, kilogramsToGrams } from './units.js';
 export const VOICE_EXERCISE_LIMIT = 100;
 
 /**
+ * Ile kartek biblioteki wolno pokazać modelowi na jedno nagranie.
+ *
+ * Pierwsza idzie zawsze. Kolejne — dopiero wtedy, gdy model odpowiedział „żadne
+ * z tych nie pasuje": biblioteka większa niż limit znaczy, że odpowiedź „nie
+ * wiem" mogła być prawdą o pokazanym wycinku, a nie o bibliotece. Zapytanie
+ * o dalszy ciąg kosztuje jedno wywołanie modelu i sekundę oczekiwania, ale płaci
+ * się je wyłącznie przy nietrafieniu — czyli tam, gdzie alternatywą jest
+ * odesłanie użytkownika do listy.
+ *
+ * Trzy, a nie „ile trzeba": trzysta pozycji to więcej niż ma jakakolwiek
+ * biblioteka, którą ktoś naprawdę przegląda, a każda kolejna kartka to kolejna
+ * sekunda człowieka stojącego z telefonem przy ustach.
+ */
+export const VOICE_EXERCISE_PASSES = 3;
+
+/**
  * Ile ostatnich serii jedzie do modelu jako kontekst.
  *
  * Nie po to, żeby model je przepisał, tylko żeby miał czym uzupełnić zdanie

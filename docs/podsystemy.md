@@ -168,6 +168,16 @@ pada w transkrypcji, a na końcu reszta biblioteki alfabetycznie. Środkowy kube
 jest tam po to, żeby przy dużej bibliotece limit nie odciął akurat tego
 ćwiczenia, które padło w nagraniu.
 
+Gdy mimo to model odpowie „żadne z tych nie pasuje", a biblioteka jest dłuższa
+niż jedna kartka, dostaje **dalszy ciąg** tego samego porządku — najwyżej
+`VOICE_EXERCISE_PASSES` kartek na jedno nagranie, czyli trzysta pozycji. Jest to
+zdanie o pokazanym wycinku, a nie o bibliotece, więc odesłanie użytkownika do
+listy przed sprawdzeniem reszty byłoby przedwczesne. Kolejna kartka kosztuje
+jedno wywołanie modelu i płaci się je wyłącznie przy nietrafieniu; kartka
+krótsza od limitu kończy pytanie, bo znaczy koniec biblioteki. Sama liczba
+powtórzeń („jeszcze osiem") jest z tego wyjęta — tam nazwa ćwiczenia w ogóle nie
+padła, więc żadna kartka jej nie zawiera.
+
 Dyktowanie, które nie trafiło w żadne ćwiczenie, zostawia po sobie wpis
 `dyktowanie bez dopasowania` w logu serwera — z transkrypcją, liczbą pozycji
 podanych modelowi i informacją, czy lista była przycięta do limitu. Serwer

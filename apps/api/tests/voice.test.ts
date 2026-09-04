@@ -12,12 +12,16 @@
  */
 
 import {
+  SYSTEM_USER_ID,
+  VOICE_EXERCISE_LIMIT,
   builtInExerciseId,
+  slug,
   tagId,
   type VoiceSetResponse,
   type VoiceSetVerdict,
 } from '@alphapump/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { exercises } from '../src/schema.js';
 import type { VoiceInterpretation, VoiceInterpreter, VoiceLayers } from '../src/voice/index.js';
 import type { Transcriber } from '../src/voice/index.js';
 import { createHarness, type Harness, type TestUser } from './harness.js';
@@ -494,5 +498,114 @@ describe('dyktowanie serii', () => {
 
       await harness.close();
     });
+  });
+});
+
+/**
+ * Biblioteka większa niż jedna kartka kontekstu.
+ *
+ * „Żadne z tych nie pasuje" jest wtedy zdaniem o **pokazanym wycinku**, a nie
+ * o bibliotece — więc model dostaje dalszy ciąg, zamiast odsyłać użytkownika do
+ * listy. Płaci się za to wyłącznie przy nietrafieniu.
+ */
+describe('biblioteka nie mieszcząca się w jednym kontekście', () => {
+  /** Wypełniacz: nazwy spoza nagrania, sortujące się na koniec alfabetu. */
+  const filler = (count: number) =>
+    Array.from({ length: count }, (_, index) => {
+      const name = `Zz test lift ${String(index).padStart(3, '0')}`;
+      return {
+        id: builtInExerciseId(name),
+        name,
+        slug: slug(name),
+        authorId: SYSTEM_USER_ID,
+        loggingType: 'weight_reps' as const,
+        primaryTagId: tagId('chest'),
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+      };
+    });
+
+  /** Model, który na kolejne pytania odpowiada kolejnymi werdyktami z listy. */
+  function scriptedLayers(transcript: string, script: readonly (number | null)[]) {
+    const seen: VoiceInterpretation[] = [];
+
+    const interpreter: VoiceInterpreter = {
+      model: 'atrapa-llm',
+      interpret: (request) => {
+        const exerciseIndex = script[seen.length] ?? null;
+        seen.push(request);
+        return Promise.resolve({
+          exerciseIndex,
+          weightKg: 60,
+          reps: 10,
+          durationS: null,
+          distanceM: null,
+          bodyweightKg: null,
+          note: null,
+          reason: exerciseIndex === null ? 'Nie wiem, o które ćwiczenie chodzi' : 'Rozpoznane',
+        });
+      },
+    };
+
+    const layers: VoiceLayers = {
+      transcriber: { model: 'atrapa-whisper', transcribe: () => Promise.resolve(transcript) },
+      interpreter,
+    };
+
+    return { layers, seen };
+  }
+
+  it('po „nic nie pasuje" pokazuje modelowi dalszy ciąg biblioteki', async () => {
+    const { layers, seen } = scriptedLayers('jakiś ruch, którego nie nazwałem wprost', [null, 0]);
+    const harness = await createHarness({ voice: layers });
+    const user = await harness.signUp('dwiekartki@example.com');
+    await harness.db.insert(exercises).values(filler(120));
+
+    const response = await harness.request('/voice/set', {
+      method: 'POST',
+      headers: user.headers,
+      body: recording(),
+    });
+    const body = (await response.json()) as VoiceSetResponse;
+
+    expect(seen).toHaveLength(2);
+    expect(seen[0]?.exercises).toHaveLength(VOICE_EXERCISE_LIMIT);
+    expect(seen[1]?.exercises.length).toBeGreaterThan(0);
+
+    // Druga kartka jest dalszym ciągiem, a nie powtórką pierwszej.
+    const first = new Set(seen[0]?.exercises.map((exercise) => exercise.exerciseId));
+    expect(seen[1]?.exercises.some((exercise) => first.has(exercise.exerciseId))).toBe(false);
+
+    expect(body.match?.exerciseId).toBe(seen[1]?.exercises[0]?.exerciseId);
+
+    await harness.close();
+  });
+
+  it('kończy na wyczerpanej bibliotece, a nie pyta w kółko', async () => {
+    const { layers, seen } = scriptedLayers('coś, czego w bibliotece nie ma', [
+      null,
+      null,
+      null,
+      null,
+    ]);
+    const harness = await createHarness({ voice: layers });
+    const user = await harness.signUp('bezkonca@example.com');
+    await harness.db.insert(exercises).values(filler(120));
+
+    const response = await harness.request('/voice/set', {
+      method: 'POST',
+      headers: user.headers,
+      body: recording(),
+    });
+    const body = (await response.json()) as VoiceSetResponse;
+
+    // Dwie kartki: druga jest krótsza od limitu, czyli biblioteka się skończyła.
+    expect(seen).toHaveLength(2);
+    expect(body.match).toBeNull();
+    // Powód zostaje ten z pierwszej kartki — to na niej stały ćwiczenia,
+    // które ten człowiek faktycznie robi.
+    expect(body.reason).toBe('Nie wiem, o które ćwiczenie chodzi');
+
+    await harness.close();
   });
 });

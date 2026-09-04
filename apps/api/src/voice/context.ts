@@ -42,6 +42,15 @@
  * Kubełek drugi jest po to, żeby limit nie przywrócił tego samego błędu przy
  * większej bibliotece: „push up twenty four reps" wciąga „Push up" na listę
  * niezależnie od tego, ile pozycji stoi przed nim alfabetycznie.
+ *
+ * Zostaje przypadek, w którym nazwa w nagraniu nie pada wprost — „wyciskanie na
+ * ławce" zamiast „Flat barbell bench press". Dlatego lista jest **kartkowana**:
+ * `offset` wydaje kolejny kawałek tego samego porządku, a `service.ts` sięga po
+ * niego dopiero wtedy, gdy model powiedział, że z pokazanych nie pasuje żadne.
+ * Porządek musi być więc ścisły do końca — stąd `id` na końcu `ORDER BY`:
+ * dwie pozycje o tej samej nazwie (biblioteka jest wspólna, więc dwoje ludzi
+ * może mieć „Pompki") bez tego rozstrzygnięcia potrafiłyby wypaść na obu
+ * kartkach albo na żadnej.
  */
 
 import {
@@ -90,12 +99,19 @@ function spokenIn(transcript: string): SQL<boolean> {
  * „czy to ćwiczenie jest jego" (liczba większa od zera) i „jak często je robi"
  * (sama liczba, do kolejności wewnątrz pierwszego kubełka).
  */
+export interface VoicePage {
+  limit?: number;
+  /** Ile pozycji z początku porządku pominąć — kolejna kartka biblioteki. */
+  offset?: number;
+}
+
 export async function voiceExercises(
   db: Database,
   userId: string,
   transcript: string,
-  limit: number = VOICE_EXERCISE_LIMIT,
+  page: VoicePage = {},
 ): Promise<VoiceExercise[]> {
+  const limit = page.limit ?? VOICE_EXERCISE_LIMIT;
   const setCount = count(workoutSets.id);
 
   const bucket = sql`case
@@ -123,8 +139,9 @@ export async function voiceExercises(
     )
     .where(isNull(exercises.deletedAt))
     .groupBy(exercises.id)
-    .orderBy(asc(bucket), desc(setCount), asc(exercises.name))
-    .limit(limit);
+    .orderBy(asc(bucket), desc(setCount), asc(exercises.name), asc(exercises.id))
+    .limit(limit)
+    .offset(page.offset ?? 0);
 
   return rows.map((row) => ({
     exerciseId: row.id,
