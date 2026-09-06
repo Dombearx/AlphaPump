@@ -62,6 +62,15 @@ describe('rekordy globalne', () => {
 
     await expect(reader(fetchImpl).globalRecords(EXERCISE)).rejects.toBeInstanceOf(SyncServerError);
   });
+
+  it('ćwiczenie, które serwer jeszcze nie widział, nie jest błędem', async () => {
+    // Dokładnie to dostaje telefon zaraz po utworzeniu (albo wskrzeszeniu po
+    // usunięciu) ćwiczenia lokalnie: push jeszcze nie doleciał, więc serwer
+    // odpowiada 404, zanim zdąży zobaczyć wiersz.
+    const fetchImpl = respond({ error: 'not found' }, 404);
+
+    await expect(reader(fetchImpl).globalRecords(EXERCISE)).resolves.toEqual([]);
+  });
 });
 
 describe('ranking', () => {

@@ -98,7 +98,17 @@ export function createRemoteReader(options: RemoteReaderOptions): RemoteReader {
 
   return {
     async globalRecords(exerciseId) {
-      const body = await read(`/exercises/${exerciseId}/records`);
+      // Świeżo utworzone (albo wskrzeszone po usunięciu) ćwiczenie bywa widoczne
+      // lokalnie, zanim doleci do serwera paczką synchronizacji — push idzie z
+      // opóźnieniem i nie jest niczym, na co ten ekran czeka. Serwer odpowiada
+      // wtedy 404, ale to nie jest błąd: rekordów po prostu jeszcze nie widać,
+      // tak samo jak dla ćwiczenia bez żadnej zapisanej serii.
+      const body = await read(`/exercises/${exerciseId}/records`).catch((error: unknown) => {
+        if (error instanceof SyncServerError && error.status === 404) return null;
+        throw error;
+      });
+      if (body === null) return [];
+
       const parsed = globalRecordsResponseSchema.safeParse(body);
       if (!parsed.success) {
         throw new SyncServerError(
