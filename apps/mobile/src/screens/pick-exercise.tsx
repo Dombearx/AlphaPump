@@ -83,8 +83,8 @@ export function PickExerciseScreen({ day }: { day: IsoDate }) {
   const cycleRows = useLiveQuery(cycleList(db, userId, false), [userId]);
   const goalRows = useLiveQuery(cycleGoalList(db, userId), [userId]);
   const cycles = useMemo(
-    () => withGoals(cycleRows.data ?? [], goalRows.data ?? []),
-    [cycleRows.data, goalRows.data],
+    () => withGoals(cycleRows.data ?? [], goalRows.data ?? [], day),
+    [cycleRows.data, goalRows.data, day],
   );
   const from = useMemo(() => earliestRelevantDay(cycles, day), [cycles, day]);
   const sets = useLiveQuery(setsForCycles(db, userId, from), [userId, from]);

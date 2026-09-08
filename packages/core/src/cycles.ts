@@ -213,6 +213,33 @@ export function resetCycleRange(range: CycleRange, startsOn: IsoDate): CycleRang
 }
 
 /**
+ * Bieżący okres cyklu — okno zawierające `today`, wyprowadzone z długości
+ * cyklu bez ruszania zapisanego początku.
+ *
+ * Cykl o stałej długości ma się liczyć **sam**: gdy minie jego koniec, kolejny
+ * okres (tej samej długości) zaczyna się automatycznie, bez ręcznego resetu.
+ * `startsOn` zapisany w bazie zostaje kotwicą — stąd liczymy, ile pełnych
+ * okresów minęło do dziś, i podstawiamy właściwe okno. Ręczny reset
+ * (`resetCycleRange`) służy do czegoś innego: do przesunięcia samej kotwicy,
+ * kiedy użytkownik świadomie chce zacząć liczyć od nowa właśnie dziś.
+ *
+ * Cykl bez daty końca nie ma okresów do przewijania — wraca bez zmian. Cykl,
+ * który jeszcze się nie zaczął (`today` przed `startsOn`), też wraca bez
+ * zmian: nie ma czego przewijać do przodu.
+ */
+export function currentCyclePeriod(range: CycleRange, today: IsoDate): CycleRange {
+  const length = cycleLengthDays(range);
+  if (length === null) return range;
+
+  const endsOn = range.endsOn as IsoDate;
+  if (today <= endsOn) return range;
+
+  const periodsElapsed = Math.floor(differenceInDays(range.startsOn, today) / length);
+  const startsOn = addDays(range.startsOn, periodsElapsed * length);
+  return { startsOn, endsOn: addDays(startsOn, length - 1) };
+}
+
+/**
  * Okres poprzedzający bieżący — okno tej samej długości, przyklejone do niego
  * od dołu. `offset` równy dwóm daje okres przedostatni i tak dalej.
  *

@@ -42,8 +42,8 @@ export function CyclesScreen() {
   const goals = useLiveQuery(cycleGoalList(db, userId), [userId]);
 
   const cycles = useMemo(
-    () => withGoals(rows.data ?? [], goals.data ?? []),
-    [rows.data, goals.data],
+    () => withGoals(rows.data ?? [], goals.data ?? [], today),
+    [rows.data, goals.data, today],
   );
 
   // Serie czytamy od najwcześniejszego dnia, który może wpłynąć na wynik —

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   computeCycleProgress,
+  currentCyclePeriod,
   cycleLengthDays,
   findMatchingCycles,
   goalContribution,
@@ -254,6 +255,40 @@ describe('okresy cyklu', () => {
     expect(resetCycleRange({ startsOn: '2026-08-01', endsOn: null }, '2026-09-01')).toEqual({
       startsOn: '2026-09-01',
       endsOn: null,
+    });
+  });
+
+  describe('currentCyclePeriod', () => {
+    const dwaTygodnie = { startsOn: '2026-08-01', endsOn: '2026-08-14' };
+
+    it('zostawia zakres bez zmian, dopóki dzisiaj mieści się w cyklu', () => {
+      expect(currentCyclePeriod(dwaTygodnie, '2026-08-01')).toEqual(dwaTygodnie);
+      expect(currentCyclePeriod(dwaTygodnie, '2026-08-14')).toEqual(dwaTygodnie);
+    });
+
+    it('cykl, który jeszcze się nie zaczął, zostaje bez zmian', () => {
+      expect(currentCyclePeriod(dwaTygodnie, '2026-07-20')).toEqual(dwaTygodnie);
+    });
+
+    it('po minięciu końca przewija okno do przodu o pełne okresy', () => {
+      // Dwa pełne okresy dwutygodniowe minęły (15–28 sierpnia, 29 sierpnia – 11
+      // września) — 12 września ląduje w trzecim, od 29 sierpnia do 11 września.
+      expect(currentCyclePeriod(dwaTygodnie, '2026-09-08')).toEqual({
+        startsOn: '2026-08-29',
+        endsOn: '2026-09-11',
+      });
+    });
+
+    it('dzień tuż po końcu przechodzi do następnego okresu, nie kolejnych', () => {
+      expect(currentCyclePeriod(dwaTygodnie, '2026-08-15')).toEqual({
+        startsOn: '2026-08-15',
+        endsOn: '2026-08-28',
+      });
+    });
+
+    it('cykl bez daty końca nie ma okresów do przewijania', () => {
+      const bezKonca = { startsOn: '2026-08-01', endsOn: null };
+      expect(currentCyclePeriod(bezKonca, '2030-01-01')).toEqual(bezKonca);
     });
   });
 

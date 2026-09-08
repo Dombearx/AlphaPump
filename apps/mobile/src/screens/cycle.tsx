@@ -54,8 +54,8 @@ export function CycleScreen({ cycleId }: { cycleId: string }) {
   const goals = useLiveQuery(cycleGoalList(db, userId), [userId]);
 
   const cycles = useMemo(
-    () => withGoals([...(active.data ?? []), ...(archived.data ?? [])], goals.data ?? []),
-    [active.data, archived.data, goals.data],
+    () => withGoals([...(active.data ?? []), ...(archived.data ?? [])], goals.data ?? [], today),
+    [active.data, archived.data, goals.data, today],
   );
 
   const from = useMemo(() => earliestRelevantDay(cycles, today), [cycles, today]);
