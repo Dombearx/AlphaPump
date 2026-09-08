@@ -53,12 +53,24 @@ tytuł.
 
 | Przycisk | Co robi                                                               |
 | -------- | --------------------------------------------------------------------- |
-| SELECT   | dyktowanie; a gdy seria czeka na potwierdzenie — zapis                 |
+| SELECT   | dyktowanie; gdy seria czeka na potwierdzenie — zapis; po awarii — ponowienie |
 | UP       | **sprawdzenie połączenia** (`GET /health`, potem `GET /me`)            |
-| BACK     | odrzucenie czekającej serii, a poza tym wyjście z aplikacji            |
+| BACK     | odrzucenie czekającej serii lub ponowienia, a poza tym wyjście z aplikacji |
 
 Wibracja mówi to samo co ekran, tylko do kieszeni: jedno pulsnięcie — zapisane,
 dwa — coś poszło nie tak.
+
+### Gdy wysyłka nie przechodzi
+
+Kiedy zawiedzie serwer albo sieć — cisza, przekroczony czas, 5xx — zegarek
+pokazuje błąd z podpowiedzią **„SELECT retry"**, a telefon trzyma nieudaną
+wysyłkę: rozpoznanie powtarza się tym samym zdaniem, zapis — tą samą serią.
+Dyktować od nowa nie trzeba, bo w zdaniu nie było błędu.
+
+Ponowienia nie ma tam, gdzie powtórzenie oddałoby dokładnie tę samą odpowiedź:
+przy błędzie walidacji, martwym tokenie i wyłączonym na serwerze dyktowaniu.
+Wtedy zostaje zwykły ekran błędu, bo przycisk, który niczego nie zmienia, jest
+gorszy niż jego brak. `BACK` odkłada ponowienie i wraca do ekranu głównego.
 
 ### Sprawdzenie połączenia
 

@@ -43,9 +43,11 @@ var STATUS = {
   SAVED: 4,
   UNKNOWN: 5,
   ERROR: 6,
+  /** Błąd, który minie sam — zegarek pokazuje przy nim ponowienie. */
+  RETRY: 7,
 };
 
-var COMMAND = { SAVE: 1, DISCARD: 2, CHECK: 3 };
+var COMMAND = { SAVE: 1, DISCARD: 2, CHECK: 3, RETRY: 4 };
 
 var SETTINGS_KEY = 'alphapump-settings';
 
@@ -73,6 +75,15 @@ var TIMEOUT_MS = 30000;
 
 /** Seria rozpoznana i czekająca na potwierdzenie z zegarka. */
 var pending = null;
+
+/**
+ * Ostatnia wysyłka, która nie udała się nie z winy użytkownika — gotowa do
+ * powtórzenia jednym naciśnięciem. Trzymamy samą operację (domknięcie), a nie
+ * jej dane, bo powtórzeniem rozpoznania jest to samo zdanie, a powtórzeniem
+ * zapisu — ta sama seria; jedno i drugie leży już w domknięciu, które je
+ * wywołało.
+ */
+var retry = null;
 
 /* --------------------------------------------------------------- ustawienia */
 
@@ -138,6 +149,10 @@ function reply(status, title, body) {
  * ekran sprzed tej zmiany.
  */
 function replyIdle() {
+  // Powrót do spoczynku znaczy, że nie ma już czego powtarzać: ekran
+  // z ponowieniem zniknął, a stare domknięcie czekałoby tylko na przypadek.
+  retry = null;
+
   var settings = readSettings();
   if (!configured(settings)) {
     reply(STATUS.SETUP, 'Set me up', 'Open the app settings in the Pebble phone app.');
@@ -285,9 +300,15 @@ function latest(sets, names) {
 /**
  * Jedno żądanie do API.
  *
- * `done(problem, body)` — `problem` jest gotowym zdaniem dla użytkownika albo
- * `null`. Tłumaczenie kodów na zdania jest tutaj, a nie w wołających, bo to samo
- * 401 znaczy wszędzie to samo: token do wymiany.
+ * `done(problem, body, retryable)` — `problem` jest gotowym zdaniem dla
+ * użytkownika albo `null`. Tłumaczenie kodów na zdania jest tutaj, a nie
+ * w wołających, bo to samo 401 znaczy wszędzie to samo: token do wymiany.
+ *
+ * `retryable` mówi, czy powtórzenie **tego samego** żądania ma szansę się udać:
+ * cisza w sieci, przekroczony czas i awaria serwera (5xx) mijają same, więc
+ * warto spróbować jeszcze raz. Reszta nie mija — zła liczba w zdaniu, martwy
+ * token, wyłączone dyktowanie i zły adres oddadzą przy powtórzeniu dokładnie to
+ * samo, a przycisk obiecywałby wtedy coś, czego nie ma.
  */
 function request(method, path, payload, done) {
   var settings = readSettings();
@@ -309,30 +330,36 @@ function request(method, path, payload, done) {
     }
 
     if (xhr.status >= 200 && xhr.status < 300) {
-      done(null, body);
+      done(null, body, false);
       return;
     }
     if (xhr.status === 401 || xhr.status === 403) {
-      done('The API token was rejected — make a new one in the phone app.', null);
+      done('The API token was rejected — make a new one in the phone app.', null, false);
       return;
     }
+    // 503 jest tu decyzją administratora („dyktowanie wyłączone"), a nie awarią,
+    // która minie — dlatego jedyne 5xx bez ponowienia.
     if (xhr.status === 503) {
-      done('Dictation is switched off on the server.', null);
+      done('Dictation is switched off on the server.', null, false);
       return;
     }
 
     // Komunikat serwera jest po polsku i pisany dla ludzi, więc przy błędzie
     // walidacji mówi więcej niż sam kod. Przy pozostałych zostaje kod.
     var message = body && body.error && body.error.message;
-    done(xhr.status === 400 && message ? message : 'The server answered ' + xhr.status + '.', null);
+    done(
+      xhr.status === 400 && message ? message : 'The server answered ' + xhr.status + '.',
+      null,
+      xhr.status >= 500
+    );
   };
 
   xhr.ontimeout = function () {
-    done('The server took too long to answer.', null);
+    done('The server took too long to answer.', null, true);
   };
 
   xhr.onerror = function () {
-    done('No answer from the server — is the phone on the VPN?', null);
+    done('No answer from the server — is the phone on the VPN?', null, true);
   };
 
   xhr.send(payload ? JSON.stringify(payload) : null);
@@ -394,6 +421,30 @@ function todaysSets(done) {
   });
 }
 
+/**
+ * Nieudana wysyłka na ekranie zegarka.
+ *
+ * Gdy zawiódł serwer albo sieć, zapamiętujemy samą operację i zegarek dostaje
+ * ekran z ponowieniem: powtórzenie za chwilę ma szansę przejść, a bez niego
+ * trzeba było dyktować serię od nowa, chociaż nikt nie pomylił się w zdaniu.
+ * Przy błędzie, który powtórzenie oddałoby słowo w słowo, zostaje zwykły ekran
+ * błędu — obiecany, a nic nie zmieniający przycisk jest gorszy niż jego brak.
+ *
+ * Co dokładnie robi ponowienie, mówi hasło pod ekranem („SELECT retry"), więc
+ * treść zostaje sama nieskrócona — na zegarku jest jej na tyle mało, że każde
+ * zdanie zabiera miejsce temu, co się naprawdę zepsuło.
+ */
+function failed(title, problem, retryable, again) {
+  if (!retryable) {
+    retry = null;
+    reply(STATUS.ERROR, title, problem);
+    return;
+  }
+
+  retry = again;
+  reply(STATUS.RETRY, title, problem);
+}
+
 function save(match) {
   reply(STATUS.WORKING, 'Saving…', describe(match));
 
@@ -412,10 +463,14 @@ function save(match) {
       bodyweightG: match.bodyweightG,
       note: match.note,
     },
-    function (problem) {
+    function (problem, _body, retryable) {
       pending = null;
       if (problem) {
-        reply(STATUS.ERROR, 'Not saved', problem);
+        // Serię trzyma domknięcie ponowienia, więc nieudany zapis nie kosztuje
+        // już podyktowania jej od nowa.
+        failed('Not saved', problem, retryable, function () {
+          save(match);
+        });
         return;
       }
       reply(STATUS.SAVED, 'Saved', describe(match));
@@ -431,15 +486,22 @@ function recognise(text) {
   }
 
   pending = null;
+  retry = null;
   reply(STATUS.WORKING, 'Recognising…', text);
 
   // Dzień jedzie razem ze zdaniem, a nie dopiero przy zapisie: po nim serwer
   // poznaje, czy sama liczba powtórzeń („osiem") należy jeszcze do tego samego
   // treningu, co poprzednia seria — i tylko wtedy dopisuje do niej ćwiczenie
   // i ciężar. Jest to ten sam dzień, który za chwilę pojedzie w `POST /sets`.
-  request('POST', '/voice/text', { text: text, performedOn: today() }, function (problem, body) {
+  var heard = { text: text, performedOn: today() };
+
+  request('POST', '/voice/text', heard, function (problem, body, retryable) {
     if (problem) {
-      reply(STATUS.ERROR, 'No answer', problem);
+      // Zdanie jest już podyktowane i nic mu nie brakuje — powtarzamy samo
+      // żądanie, zamiast odsyłać użytkownika do mikrofonu.
+      failed('No answer', problem, retryable, function () {
+        recognise(text);
+      });
       return;
     }
 
@@ -534,6 +596,21 @@ Pebble.addEventListener('appmessage', function (event) {
       // Zegarek prosi o zapis czegoś, czego już nie trzymamy — po restarcie
       // aplikacji telefonu albo po odrzuceniu. Cofnięcie do spoczynku jest
       // uczciwsze niż zapisanie „czegoś".
+      replyIdle();
+    }
+    return;
+  }
+
+  if (payload.COMMAND === COMMAND.RETRY) {
+    if (retry) {
+      var again = retry;
+      // Zdejmujemy je przed wywołaniem, bo powtórzenie ustawia je sobie samo,
+      // gdy znów się nie uda — inaczej nieudane ponowienie zostawiałoby dwa.
+      retry = null;
+      again();
+    } else {
+      // Zegarek prosi o powtórzenie czegoś, czego już nie trzymamy — tak samo
+      // jak przy zapisie bez czekającej serii, wracamy do spoczynku.
       replyIdle();
     }
     return;

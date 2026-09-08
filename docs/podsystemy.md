@@ -275,6 +275,13 @@ potwierdzenia jest ustawieniem, które trzeba włączyć. Serii niekompletnej ni
 zapisze w żadnym trybie — formularza na zegarku nie ma, więc jedynym wyjściem
 jest powtórzenie zdania.
 
+Nieudana wysyłka dzieli się na dwie: tę, którą użytkownik może poprawić, i tę,
+która minie sama. Przy drugiej — cisza w sieci, przekroczony czas, 5xx — telefon
+zatrzymuje nieudaną operację, a zegarek pokazuje ekran z ponowieniem pod
+`SELECT`: powtarza się to samo żądanie, tym samym zdaniem albo tą samą serią,
+bez wracania do mikrofonu. Przy błędzie walidacji, martwym tokenie i wyłączonym
+dyktowaniu ponowienia nie ma, bo oddałoby dokładnie tę samą odpowiedź.
+
 Testy ma **połowa telefonowa** — to w niej siedzi cała decyzyjność, a chodzi
 w Node, więc idzie osobnym zadaniem w `ci.yml` (`node --test`, na atrapach
 `Pebble`, `localStorage` i XHR-a). Watchappa w C nie sprawdza żaden test, ale
