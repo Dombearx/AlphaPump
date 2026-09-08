@@ -20,6 +20,18 @@ const set = (id: string, performedOn: string, position: number, weightG: number,
   bodyweightG: null,
 });
 
+/** Seria ćwiczenia opartego o masę ciała — bez ciężaru, za to z masą własną. */
+const bodyweightSet = (id: string, performedOn: string, reps: number, bodyweightG: number) => ({
+  id,
+  performedOn,
+  position: 0,
+  weightG: null,
+  reps,
+  durationS: null,
+  distanceM: null,
+  bodyweightG,
+});
+
 describe('podpowiadanie wartości', () => {
   // Przykład wprost ze specyfikacji: poniedziałek 10, 9, 6, 4 → środa podpowiada 10.
   const monday = [
@@ -54,6 +66,38 @@ describe('podpowiadanie wartości', () => {
   it('nie podpowiada z przyszłości przy uzupełnianiu historii', () => {
     const draft = suggestedDraft('weight_reps', monday, '2026-08-01');
     expect(draft.reason).toBeNull();
+  });
+
+  const pullUps = [bodyweightSet('a', '2026-08-10', 12, 80_000)];
+
+  it('podstawia masę ciała z ustawień w ćwiczeniu opartym o masę ciała', () => {
+    const draft = suggestedDraft('bodyweight_reps', [], '2026-08-12', 78_000);
+
+    expect(draft.values.bodyweightG).toBe('78');
+    // Nadal nie ma z czego podpowiedzieć powtórzeń — masa ciała nie udaje
+    // podpowiedzi z poprzedniej serii.
+    expect(draft.reason).toBeNull();
+  });
+
+  it('masa z ustawień wygrywa z masą przepisaną z poprzedniej serii', () => {
+    // Wpisanie nowej masy w ustawieniach ma być widać w formularzu; wartość
+    // sprzed tygodni podpowiadałaby w kółko masę, której już nie ma.
+    const draft = suggestedDraft('bodyweight_reps', pullUps, '2026-08-12', 78_000);
+
+    expect(draft.values.bodyweightG).toBe('78');
+    expect(draft.values.reps).toBe('12');
+  });
+
+  it('bez ustawienia zostaje masa z poprzedniej serii', () => {
+    expect(suggestedDraft('bodyweight_reps', pullUps, '2026-08-12').values.bodyweightG).toBe('80');
+  });
+
+  it('nie podstawia masy ciała tam, gdzie ćwiczenie o nią nie pyta', () => {
+    // Ciężar wyciskanej sztangi nie ma nic wspólnego z masą ciała — pole
+    // `bodyweightG` w tym typie logowania w ogóle nie istnieje.
+    const draft = suggestedDraft('weight_reps', [], '2026-08-12', 78_000);
+
+    expect(draft.values).toEqual({});
   });
 
   it('nie przenosi notatki na kolejną serię', () => {

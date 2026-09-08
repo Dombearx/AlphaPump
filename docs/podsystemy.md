@@ -655,6 +655,31 @@ rysowaniu ekranu, z serii leżących w bazie lokalnej. Tabela pochodna byłaby
 drugim źródłem prawdy o czymś, co i tak liczy się w milisekundach, i wymagałaby
 przeliczania po każdej edycji, każdym usunięciu i każdym pullu.
 
+### Masa ciała
+
+Ćwiczenia oparte o masę ciała mają przy serii własne, opcjonalne pole na tę masę,
+a w koncie stoi jedno pole na masę **aktualną** (`src/ui/bodyweight.tsx`). Podana
+raz wchodzi do formularza jako wartość startowa i zostaje edytowalna jak każde
+inne pole serii — z dodatkowym obciążeniem robi się z tego seria poprawiona
+ręcznie, a nie osobny tryb. Bez ustawienia formularz zachowuje się dokładnie tak,
+jak zachowywał się wcześniej.
+
+**Ustawienie wygrywa z masą przepisaną z poprzedniej serii.** Podpowiedź bierze
+z historii wszystko poza masą ciała, bo ta jedna wartość ma źródło lepsze niż
+historia: użytkownik sam ją utrzymuje. Gdyby wygrywała historia, wpisanie nowej
+masy w ustawieniach nie zmieniłoby w formularzu niczego aż do ręcznej poprawki.
+Wyjątkiem jest masa **powiedziana w dyktowaniu** — dotyczy tej jednej serii
+i jest świeższa niż cokolwiek zapisanego wcześniej, więc zostaje.
+
+Wartość leży **per urządzenie**, w pliku obok tapety i języka (`src/bodyweight/`),
+i trzymana jest w gramach — tak jak każdy ciężar w bazie. Zgłoszenie mówi o jednej,
+aktualnej wartości, a nie o historii masy ciała, więc nie ma tu ani kolumny
+w tabeli użytkowników, ani pola w protokole synchronizacji. Reguły (zakres,
+uszkodzony rejestr) siedzą w czystym `src/bodyweight/state.ts` i mają testy
+w Node; `src/bodyweight/expo.ts` tylko je wykonuje. Masę czyta **trasa**
+formularza serii i podaje ekranowi liczbą — dzięki temu ekran nie ciągnie za sobą
+`expo-file-system` i renderuje się w testach poza telefonem.
+
 ### Kalendarz i wykresy
 
 Kalendarz (`src/screens/calendar.tsx`) pokazuje miesiąc albo tydzień z liczbą

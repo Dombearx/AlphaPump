@@ -13,15 +13,28 @@
 
 import { isIsoDate, isUuid } from '@alphapump/core';
 import { Redirect, useLocalSearchParams } from 'expo-router';
+import { expoBodyweightStore } from '../../../../src/bodyweight/expo';
+import { useBodyweight } from '../../../../src/bodyweight/use-bodyweight';
 import { LogScreen } from '../../../../src/screens/log';
 import { readDictationParams } from '../../../../src/voice-draft';
 
 export default function LogRoute() {
   const params = useLocalSearchParams<{ date: string; exerciseId: string }>();
+  // Masa ciała z ustawień urządzenia czytana jest **tutaj**, a nie w ekranie:
+  // magazyn siedzi na `expo-file-system`, a ekran ma się renderować także poza
+  // telefonem. Do formularza wchodzi już samą liczbą, jak dzień i ćwiczenie.
+  const { bodyweightG } = useBodyweight(expoBodyweightStore);
   const { date, exerciseId } = params;
 
   if (!isIsoDate(date)) return <Redirect href="/" />;
   if (!isUuid(exerciseId)) return <Redirect href={`/day/${date}`} />;
 
-  return <LogScreen day={date} exerciseId={exerciseId} dictated={readDictationParams(params)} />;
+  return (
+    <LogScreen
+      day={date}
+      exerciseId={exerciseId}
+      dictated={readDictationParams(params)}
+      bodyweightG={bodyweightG}
+    />
+  );
 }
