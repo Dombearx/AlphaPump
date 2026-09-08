@@ -162,7 +162,11 @@ export function formatRange(
   today: string,
 ): string {
   const start = formatDate(cycle.startsOn, today);
-  return cycle.endsOn === null
-    ? `from ${start}, no end`
-    : `${start} – ${formatDate(cycle.endsOn, today)}`;
+  if (cycle.endsOn === null) return `from ${start}, no end`;
+
+  const range = `${start} – ${formatDate(cycle.endsOn, today)}`;
+  // Bez resetu czy archiwizacji cykl po minięciu daty końca wisi dalej na
+  // liście aktywnych i pokazuje zamrożony procent — dopisek ma powiedzieć
+  // wprost, że to już wynik końcowy, a nie coś, co się jeszcze liczy.
+  return cycle.endsOn < today ? `${range} · ended` : range;
 }
