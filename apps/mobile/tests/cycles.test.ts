@@ -93,7 +93,7 @@ describe('cykle w bazie lokalnej', () => {
   const load = async (archived = false) => {
     const rows = await cycleList(local.db, TEST_USER.id, archived);
     const goals = await cycleGoalList(local.db, TEST_USER.id);
-    const withTheirGoals = withGoals(rows, goals);
+    const withTheirGoals = withGoals(rows, goals, DAY);
     const sets = await setsForCycles(
       local.db,
       TEST_USER.id,
@@ -268,7 +268,7 @@ describe('cykle w bazie lokalnej', () => {
       const rows = [
         { id: 'c-1', name: 'Pusty', startsOn: '2026-08-01', endsOn: null, archivedAt: null },
       ];
-      expect(withGoals(rows, [])).toEqual([]);
+      expect(withGoals(rows, [], DAY)).toEqual([]);
     });
   });
 
@@ -291,6 +291,39 @@ describe('cykle w bazie lokalnej', () => {
       // Okno sprzed resetu, odtworzone z długości cyklu — bez żadnej tabeli
       // realizacji, bo historia siedzi w seriach.
       expect(previous?.period).toEqual({ startsOn: '2026-08-01', endsOn: '2026-08-31' });
+      expect(previous?.progress.goals[0]?.current).toBe(1);
+    });
+
+    it('cykl kontynuuje się sam po minięciu końca, bez ręcznego resetu', async () => {
+      const id = await createCycle(local.db, {
+        ...AUTHOR,
+        name: 'Dwa tygodnie na klatkę',
+        startsOn: '2026-08-01',
+        endsOn: '2026-08-14',
+        goals: [CHEST_GOAL],
+      });
+
+      // Seria w okresie bezpośrednio poprzedzającym bieżący (15–28 sierpnia).
+      await addBench('2026-08-20');
+      // Seria w oknie, do którego cykl przeskoczył sam (29 sierpnia – 11 września).
+      await addBench('2026-09-01');
+
+      const today = '2026-09-08';
+      const rows = await cycleList(local.db, TEST_USER.id, false);
+      const goals = await cycleGoalList(local.db, TEST_USER.id);
+      const cycles = withGoals(rows, goals, today);
+      const sets = await setsForCycles(local.db, TEST_USER.id, earliestRelevantDay(cycles, today));
+      const summaries = cycleSummaries(cycles, sets);
+
+      const summary = summaries.find((item) => item.cycle.id === id);
+      // Zakres przeskoczył sam do trzeciego okresu — bez wywołania resetCycle.
+      expect(summary?.cycle.startsOn).toBe('2026-08-29');
+      expect(summary?.cycle.endsOn).toBe('2026-09-11');
+      expect(summary?.progress.goals[0]?.current).toBe(1);
+
+      // Poprzedni okres jest wyprowadzony automatycznie z nowego okna.
+      const previous = previousPeriodProgress(summary?.cycle as CycleWithGoals, sets);
+      expect(previous?.period).toEqual({ startsOn: '2026-08-15', endsOn: '2026-08-28' });
       expect(previous?.progress.goals[0]?.current).toBe(1);
     });
 
@@ -388,7 +421,7 @@ describe('cykle w bazie lokalnej', () => {
 
       const rows = await cycleList(local.db, TEST_USER.id, true);
       const goals = await cycleGoalList(local.db, TEST_USER.id);
-      const summaries = cycleSummaries(withGoals(rows, goals), []);
+      const summaries = cycleSummaries(withGoals(rows, goals, DAY), []);
 
       expect(remainingTargets(summaries, DAY)).toEqual([]);
     });

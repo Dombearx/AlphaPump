@@ -15,6 +15,7 @@
 
 import {
   computeCycleProgress,
+  currentCyclePeriod,
   previousCyclePeriod,
   remainingGoals,
   type CycleMatchable,
@@ -38,14 +39,26 @@ export interface CycleSummary {
   progress: CycleProgress;
 }
 
-/** Łączy wiersze cykli z ich pozycjami. Cykl bez pozycji celu zostaje pominięty. */
+/**
+ * Łączy wiersze cykli z ich pozycjami. Cykl bez pozycji celu zostaje pominięty.
+ *
+ * Cykl aktywny o stałej długości jest tu też przewijany do bieżącego okresu
+ * (`currentCyclePeriod`), więc miniony koniec sam ustępuje miejsca kolejnym
+ * dwóm tygodniom — bez klikania „Reset from today". Zapisany w bazie zakres
+ * zostaje nietknięty: przewijanie liczy się na nowo przy każdym odczycie,
+ * tak samo jak reszta postępu. Cykl zarchiwizowany nie jest przewijany —
+ * archiwizacja jest świadomym zatrzymaniem, a nie pauzą do wznowienia samą
+ * upływem czasu.
+ */
 export function withGoals(
   cycles: readonly CycleListRow[],
   goals: readonly CycleGoalRow[],
+  today: IsoDate,
 ): CycleWithGoals[] {
   return cycles
     .map((cycle) => ({
       ...cycle,
+      ...(cycle.archivedAt === null ? currentCyclePeriod(cycle, today) : null),
       goals: goals.filter((goal) => goal.cycleId === cycle.id),
     }))
     .filter((cycle) => cycle.goals.length > 0);
