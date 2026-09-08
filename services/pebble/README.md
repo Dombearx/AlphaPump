@@ -35,6 +35,20 @@ Dwa wywołania zamiast jednego, bo obydwa już istniały i żadne nie powstało 
 zegarka: pierwsze zamienia zdanie w serię, drugie zapisuje serię tokenem API —
 tą samą drogą, dla której powstały tokeny („dla bota Discord").
 
+## Ekran główny
+
+Poza „Ready" widać na nim **dzisiejsze serie**: tytuł mówi, ile ich dziś jest,
+a niżej stoją ostatnie trzy, od najnowszej. Są to serie z dziennika, a nie same
+podyktowane z zegarka — dzień treningowy jest jeden, niezależnie od tego, czym
+został zapisany. Kolejność liczy się po czasie zapisu, bo pozycja z API numeruje
+serie w obrębie jednego ćwiczenia.
+
+Lista dochodzi **po** ekranie gotowości, osobną wiadomością, i niczego nie
+blokuje: dyktowanie jest tak samo szybkie jak przedtem, a gdy telefon nie
+dosięgnie serwera, zostaje ekran sprzed tej listy. Przewijania nie ma świadomie —
+ekran główny ma się czytać jednym rzutem oka, a ile serii jest naprawdę, mówi
+tytuł.
+
 ## Przyciski
 
 | Przycisk | Co robi                                                               |

@@ -50,6 +50,21 @@ var COMMAND = { SAVE: 1, DISCARD: 2, CHECK: 3 };
 var SETTINGS_KEY = 'alphapump-settings';
 
 /**
+ * Nazwy ćwiczeń, po identyfikatorze.
+ *
+ * `GET /sets` oddaje same identyfikatory, a `GET /exercises` nie umie filtrować
+ * po nich — więc biblioteka jedzie w całości i zostaje tutaj. Dociągamy ją
+ * dopiero wtedy, gdy w dzisiejszych seriach jest ćwiczenie, którego nie znamy:
+ * ekran spoczynku pokazuje się przy każdym otwarciu aplikacji i całej biblioteki
+ * co otwarcie nikt nie potrzebuje. Kosztem jest nazwa zmieniona w bibliotece,
+ * która na zegarku zostaje stara — do pierwszej serii z nowym ćwiczeniem.
+ */
+var NAMES_KEY = 'alphapump-exercise-names';
+
+/** Ile serii z dziś mieści się na ekranie zegarka bez przewijania. */
+var TODAY_LINES = 3;
+
+/**
  * Limit czasu jednego żądania. Krótszy niż limit zegarka (40 s), żeby to **my**
  * powiedzieli, co się stało — komunikat „serwer nie odpowiada" jest wart więcej
  * niż cisza, po której zegarek sam się poddaje.
@@ -90,20 +105,54 @@ function configured(settings) {
   return settings.apiUrl.length > 0 && settings.apiKey.length > 0;
 }
 
+function readNames() {
+  var raw = localStorage.getItem(NAMES_KEY);
+  if (!raw) return {};
+
+  try {
+    return JSON.parse(raw) || {};
+  } catch (_error) {
+    return {};
+  }
+}
+
 /* ------------------------------------------------------------------ zegarek */
 
+/**
+ * Licznik wysłanych ekranów. Po nim poznajemy, że odpowiedź, na którą czekamy,
+ * dotyczy ekranu, którego już nie ma — patrz `replyIdle`.
+ */
+var screens = 0;
+
 function reply(status, title, body) {
+  screens += 1;
   Pebble.sendAppMessage({ STATUS: status, TITLE: title, BODY: body || '' });
 }
 
-/** Stan spoczynku zależy od tego, czy jest dokąd wysyłać. */
+/**
+ * Stan spoczynku zależy od tego, czy jest dokąd wysyłać.
+ *
+ * Gotowość idzie **od razu**, a dzisiejsze serie dochodzą drugą wiadomością,
+ * kiedy przyjdą: dyktowanie ma być dokładnie tak samo szybkie jak przedtem,
+ * więc nic w tym przepływie nie czeka na listę — a jak nie przyjdzie, zostaje
+ * ekran sprzed tej zmiany.
+ */
 function replyIdle() {
   var settings = readSettings();
   if (!configured(settings)) {
     reply(STATUS.SETUP, 'Set me up', 'Open the app settings in the Pebble phone app.');
     return;
   }
+
   reply(STATUS.READY, 'Ready', 'Hold the watch close and say the exercise with the numbers.');
+  var shown = screens;
+
+  todaysSets(function (sets, names) {
+    // Ekran zdążył się zmienić — użytkownik już dyktuje albo potwierdza serię,
+    // a spóźniona lista nie ma prawa zabrać mu tego, co widzi.
+    if (sets === null || screens !== shown) return;
+    reply(STATUS.READY, headline(sets.length), latest(sets, names));
+  });
 }
 
 /* ------------------------------------------------------------------ format */
@@ -191,6 +240,46 @@ function today() {
   );
 }
 
+/** Tytuł ekranu spoczynku: ile serii dziś już jest. */
+function headline(count) {
+  return 'Today: ' + count + (count === 1 ? ' set' : ' sets');
+}
+
+/**
+ * Kilka ostatnich serii dnia, od najnowszej, po jednej w wierszu.
+ *
+ * Kolejnością jest `createdAt`, a nie `position` z odpowiedzi: pozycja numeruje
+ * serie **w obrębie jednego ćwiczenia**, więc posortowana po niej lista miesza
+ * przysiady z wyciskaniem i „ostatnia" nie jest tą ostatnio zrobioną.
+ *
+ * Wierszy jest tyle, ile mieści ekran zegarka — przewijania tu nie ma, bo
+ * ekran spoczynku ma się czytać jednym rzutem oka, a nie być dziennikiem.
+ * Ile serii jest naprawdę, mówi tytuł.
+ */
+function latest(sets, names) {
+  var sorted = sets.slice().sort(function (a, b) {
+    if (a.createdAt === b.createdAt) return 0;
+    return a.createdAt < b.createdAt ? 1 : -1;
+  });
+
+  var lines = [];
+  for (var i = 0; i < sorted.length && i < TODAY_LINES; i++) {
+    lines.push(
+      describe({
+        // Ćwiczenia spoza pamięci podręcznej nie da się nazwać, ale liczby
+        // z serii są wtedy wciąż warte pokazania.
+        name: names[sorted[i].exerciseId] || 'Exercise',
+        weightG: sorted[i].weightG,
+        reps: sorted[i].reps,
+        distanceM: sorted[i].distanceM,
+        durationS: sorted[i].durationS,
+      })
+    );
+  }
+
+  return lines.join('\n');
+}
+
 /* ------------------------------------------------------------------- sieć */
 
 /**
@@ -250,6 +339,60 @@ function request(method, path, payload, done) {
 }
 
 /* ---------------------------------------------------------------- przepływ */
+
+/**
+ * Nazwy ćwiczeń dla podanych serii.
+ *
+ * Biblioteka dociąga się wyłącznie wtedy, gdy w seriach jest identyfikator,
+ * którego pamięć podręczna nie zna — czyli raz na nowe ćwiczenie, a nie raz na
+ * otwarcie aplikacji. Gdy dociągnięcie się nie uda, oddajemy to, co mamy:
+ * seria bez nazwy jest gorsza niż z nazwą, ale lepsza niż pusty ekran.
+ */
+function withNames(sets, done) {
+  var names = readNames();
+
+  var known = true;
+  for (var i = 0; i < sets.length; i++) {
+    if (!names[sets[i].exerciseId]) known = false;
+  }
+  if (known) {
+    done(sets, names);
+    return;
+  }
+
+  request('GET', '/exercises', null, function (problem, body) {
+    if (problem || !body || !body.length) {
+      done(sets, names);
+      return;
+    }
+
+    var fresh = {};
+    for (var j = 0; j < body.length; j++) fresh[body[j].id] = body[j].name;
+    localStorage.setItem(NAMES_KEY, JSON.stringify(fresh));
+    done(sets, fresh);
+  });
+}
+
+/**
+ * Dzisiejsze serie — te same, które widać w aplikacji na telefonie, a nie tylko
+ * podyktowane z zegarka: dzień treningowy jest jeden, niezależnie od tego,
+ * którym urządzeniem został zapisany.
+ *
+ * `done(null)` znaczy „nie ma czego pokazać" — pusty dzień albo nieudane
+ * żądanie. Jedno i drugie zostawia ekran spoczynku takim, jaki był, bo lista
+ * jest tu dodatkiem, a nie warunkiem dyktowania.
+ */
+function todaysSets(done) {
+  var day = today();
+
+  request('GET', '/sets?from=' + day + '&to=' + day, null, function (problem, body) {
+    if (problem || !body || !body.length) {
+      done(null, null);
+      return;
+    }
+    withNames(body, done);
+  });
+}
 
 function save(match) {
   reply(STATUS.WORKING, 'Saving…', describe(match));

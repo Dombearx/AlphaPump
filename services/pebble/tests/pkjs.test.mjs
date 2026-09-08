@@ -37,6 +37,16 @@ const MATCH = {
 
 const SETTINGS = { apiUrl: 'http://api.test', apiKey: 'ap_token', confirm: true };
 
+/** Dzień kalendarzowy telefonu — liczony tak samo jak `today()` w kodzie. */
+const TODAY = (() => {
+  const now = new Date();
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+})();
+
+/** O dzisiejsze serie ekran spoczynku pyta obustronnie domkniętym zakresem. */
+const SETS_TODAY = `GET http://api.test/sets?from=${TODAY}&to=${TODAY}`;
+
 /** Odpowiedzi, na których stoi większość testów: rozpoznanie i zapis się udają. */
 const HAPPY_ROUTES = () => ({
   'POST http://api.test/voice/text': {
@@ -46,6 +56,13 @@ const HAPPY_ROUTES = () => ({
   'POST http://api.test/sets': { status: 201, body: { id: 'set-1' } },
   'GET http://api.test/health': { status: 200, body: { status: 'ok' } },
   'GET http://api.test/me': { status: 200, body: { id: 'user-1' } },
+  // Ekran spoczynku pyta o dzisiejsze serie przy każdym wejściu; domyślnie
+  // dzień jest pusty, więc ekran wygląda tak, jak przed tą listą.
+  [SETS_TODAY]: { status: 200, body: [] },
+  'GET http://api.test/exercises': {
+    status: 200,
+    body: [{ id: MATCH.exerciseId, name: MATCH.name }],
+  },
 });
 
 /**
@@ -109,6 +126,8 @@ function sandbox(stored = null) {
     routes: state.routes,
     last: () => sent[sent.length - 1],
     lastCall: () => calls[calls.length - 1],
+    /** Ile razy poszedł zapis serii — ekran spoczynku pyta o swoje osobno. */
+    saves: () => calls.filter((call) => call.key === 'POST http://api.test/sets').length,
     fire: (name, event) => (listeners[name] ?? []).forEach((handler) => handler(event)),
     /**
      * Domyka łańcuch żądań. Wszystko, co robi atrapa, jest mikrozadaniem, więc
@@ -210,12 +229,12 @@ describe('rozpoznanie serii', () => {
     await phone.settle();
     phone.fire('appmessage', { payload: { COMMAND: COMMAND.SAVE } });
     await phone.settle();
-    const afterSave = phone.calls.length;
+    const afterSave = phone.saves();
 
     phone.fire('appmessage', { payload: { COMMAND: COMMAND.SAVE } });
     await phone.settle();
 
-    assert.equal(phone.calls.length, afterSave);
+    assert.equal(phone.saves(), afterSave);
     assert.equal(phone.last().STATUS, STATUS.READY);
   });
 
@@ -224,11 +243,11 @@ describe('rozpoznanie serii', () => {
     await phone.settle();
 
     phone.fire('appmessage', { payload: { COMMAND: COMMAND.DISCARD } });
-    const afterDiscard = phone.calls.length;
+    const afterDiscard = phone.saves();
     phone.fire('appmessage', { payload: { COMMAND: COMMAND.SAVE } });
     await phone.settle();
 
-    assert.equal(phone.calls.length, afterDiscard);
+    assert.equal(phone.saves(), afterDiscard);
   });
 
   it('bez potwierdzania zapisuje od razu', async () => {
@@ -403,5 +422,152 @@ describe('opis serii na ekranie zegarka', () => {
       durationS: 1500,
     };
     assert.equal(await describeSet(run), 'Run: 5000 m 25:00');
+  });
+});
+
+describe('dzisiejsze serie na ekranie spoczynku', () => {
+  const SQUAT_ID = '00000000-0000-7000-8000-000000000002';
+
+  /** Seria w kształcie, w jakim oddaje ją `GET /sets` — bez nazwy ćwiczenia. */
+  const set = (fields) => ({
+    id: 'set-1',
+    userId: 'user-1',
+    exerciseId: MATCH.exerciseId,
+    performedOn: TODAY,
+    position: 0,
+    weightG: 82_500,
+    reps: 8,
+    durationS: null,
+    distanceM: null,
+    bodyweightG: null,
+    note: null,
+    createdAt: '2026-09-08T10:00:00.000Z',
+    updatedAt: '2026-09-08T10:00:00.000Z',
+    deletedAt: null,
+    ...fields,
+  });
+
+  const LIBRARY = [
+    { id: MATCH.exerciseId, name: 'Bench press' },
+    { id: SQUAT_ID, name: 'Squat' },
+  ];
+
+  const withSets = (sets) => {
+    const phone = sandbox(SETTINGS);
+    phone.routes[SETS_TODAY] = { status: 200, body: sets };
+    phone.routes['GET http://api.test/exercises'] = { status: 200, body: LIBRARY };
+    return phone;
+  };
+
+  it('pokazuje serie zapisane dziś, bez naciskania czegokolwiek', async () => {
+    const phone = withSets([
+      set({}),
+      set({ id: 'set-2', reps: 6, position: 1, createdAt: '2026-09-08T10:04:00.000Z' }),
+    ]);
+
+    phone.fire('ready');
+    await phone.settle();
+
+    assert.equal(phone.last().STATUS, STATUS.READY);
+    assert.equal(phone.last().TITLE, 'Today: 2 sets');
+    assert.equal(phone.last().BODY, 'Bench press: 82.5 kg x 6\nBench press: 82.5 kg x 8');
+  });
+
+  it('gotowość jest na ekranie od razu, a lista dochodzi dopiero po niej', () => {
+    // Dyktowanie ma być tak samo szybkie jak przedtem: ekran gotowości nie
+    // czeka na żadne żądanie, bo bez sieci nadal wolno mówić.
+    const phone = withSets([set({})]);
+
+    phone.fire('ready');
+
+    assert.equal(phone.last().STATUS, STATUS.READY);
+    assert.equal(phone.last().TITLE, 'Ready');
+  });
+
+  it('od najnowszej, bo pozycja numeruje serie w obrębie ćwiczenia', async () => {
+    // Obie serie mają pozycję 0 — są pierwsze, każda w swoim ćwiczeniu.
+    const phone = withSets([
+      set({ createdAt: '2026-09-08T10:00:00.000Z' }),
+      set({
+        id: 'set-2',
+        exerciseId: SQUAT_ID,
+        createdAt: '2026-09-08T11:00:00.000Z',
+        weightG: 100_000,
+        reps: 5,
+      }),
+    ]);
+
+    phone.fire('ready');
+    await phone.settle();
+
+    assert.equal(phone.last().BODY, 'Squat: 100 kg x 5\nBench press: 82.5 kg x 8');
+  });
+
+  it('mieści tyle serii, ile mieści ekran — resztę mówi tytuł', async () => {
+    const phone = withSets([1, 2, 3, 4, 5].map((n) => set({ id: 'set-' + n, reps: n })));
+
+    phone.fire('ready');
+    await phone.settle();
+
+    assert.equal(phone.last().TITLE, 'Today: 5 sets');
+    assert.equal(phone.last().BODY.split('\n').length, 3);
+  });
+
+  it('pusty dzień zostawia ekran spoczynku takim, jaki był', async () => {
+    const phone = withSets([]);
+
+    phone.fire('ready');
+    await phone.settle();
+
+    assert.equal(phone.last().TITLE, 'Ready');
+    assert.equal(phone.sent.length, 1);
+  });
+
+  it('nieudane pytanie o serie niczego nie psuje', async () => {
+    // Lista jest dodatkiem, a nie warunkiem dyktowania — błąd na ekranie
+    // spoczynku wyglądałby jak awaria aplikacji, którą można normalnie użyć.
+    const phone = withSets([]);
+    phone.routes[SETS_TODAY] = { status: 500, body: {} };
+
+    phone.fire('ready');
+    await phone.settle();
+
+    assert.equal(phone.last().STATUS, STATUS.READY);
+    assert.equal(phone.last().TITLE, 'Ready');
+    assert.equal(phone.sent.length, 1);
+  });
+
+  it('biblioteka jedzie raz, a nie przy każdym wejściu na ekran', async () => {
+    const phone = withSets([set({})]);
+
+    phone.fire('ready');
+    await phone.settle();
+    phone.fire('ready');
+    await phone.settle();
+
+    const library = phone.calls.filter((call) => call.key === 'GET http://api.test/exercises');
+    assert.equal(library.length, 1);
+    assert.equal(phone.last().TITLE, 'Today: 1 set');
+  });
+
+  it('ćwiczenie spoza biblioteki pokazuje same liczby, zamiast znikać', async () => {
+    const phone = withSets([set({})]);
+    phone.routes['GET http://api.test/exercises'] = { status: 500, body: {} };
+
+    phone.fire('ready');
+    await phone.settle();
+
+    assert.equal(phone.last().BODY, 'Exercise: 82.5 kg x 8');
+  });
+
+  it('spóźniona lista nie zabiera ekranu temu, kto już dyktuje', async () => {
+    const phone = withSets([set({})]);
+
+    phone.fire('ready');
+    phone.fire('appmessage', { payload: { TRANSCRIPT: 'bench press 82.5 for 8' } });
+    await phone.settle();
+
+    assert.equal(phone.last().STATUS, STATUS.CONFIRM);
+    assert.equal(phone.last().BODY, 'Bench press: 82.5 kg x 8');
   });
 });
