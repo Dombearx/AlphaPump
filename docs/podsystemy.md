@@ -232,13 +232,14 @@ od cudzej usługi, ani od klucza w sekretach.
 ### Dyktowanie z zegarka Pebble
 
 Osobna aplikacja (`services/pebble/`), która **nie dokłada do API niczego** —
-korzysta z dwóch endpointów, które już były, i z tokenów API, które powstały dla
-bota Discord:
+korzysta z endpointów, które już były, i z tokenów API, które powstały dla bota
+Discord:
 
 ```
 Pebble ──dictation──▶ tekst ──AppMessage──▶ PebbleKit JS (w aplikacji Pebble na telefonie)
                                                   │ POST /voice/text   → rozpoznana seria
                                                   │ POST /sets         → zapis
+                                                  │ GET  /sets         → dzisiejsze serie
                                             AlphaPump API ──sync──▶ telefon
 ```
 
@@ -247,6 +248,15 @@ Dictation API daje gotowy tekst, a dźwięku aplikacja na zegarku nie widzi w og
 — transkrypcja dzieje się w aplikacji Pebble i u dostawcy mowy (Rebble albo Core
 Devices), poza naszym kodem i poza naszym rachunkiem. Dlatego zegarek wpina się
 w wejście **tekstowe**, które i tak powstało dla klawiatury.
+
+Ekran spoczynku pokazuje **serie zapisane dzisiaj** — wszystkie, a nie tylko
+podyktowane z zegarka, bo dzień treningowy jest jeden niezależnie od urządzenia.
+Lista dochodzi **drugą wiadomością**, już po ekranie gotowości: dyktowanie nie
+ma prawa czekać na sieć, więc gdy `GET /sets` nie odpowie, zegarek wygląda tak
+jak przed tą listą i tak samo działa. Nazwy ćwiczeń trzyma pamięć podręczna
+w telefonie, uzupełniana z `GET /exercises` dopiero przy ćwiczeniu, którego nie
+zna — `GET /sets` oddaje same identyfikatory, a filtrowania biblioteki po nich
+nie ma.
 
 Zegarek ma własny przycisk sprawdzenia połączenia: `GET /health` bez tokenu
 (czy telefon w ogóle dosięga API), a potem `GET /me` z tokenem (czy token żyje).
