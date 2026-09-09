@@ -109,6 +109,17 @@ function sandbox(stored = null) {
       const route = state.routes[key];
       assert.ok(route, `brak atrapy dla ${key}`);
       calls.push({ key, body: body ? JSON.parse(body) : null, headers: this.headers });
+
+      // Atrapa umie też **nie** odpowiedzieć: `fail` odpala tę samą ścieżkę,
+      // którą XHR wybiera przy ciszy w sieci i przy przekroczonym czasie —
+      // czyli oba przypadki, w których winy nie ma po stronie użytkownika.
+      if (route.fail) {
+        void Promise.resolve().then(() =>
+          route.fail === 'timeout' ? this.ontimeout() : this.onerror(),
+        );
+        return;
+      }
+
       this.status = route.status;
       this.responseText = JSON.stringify(route.body ?? {});
       // Odpowiedź przychodzi po zdaniu sterowania, tak jak prawdziwa.
@@ -141,8 +152,17 @@ function sandbox(stored = null) {
 }
 
 /** Stany czytane przez `src/c/main.c`. */
-const STATUS = { SETUP: 0, READY: 1, WORKING: 2, CONFIRM: 3, SAVED: 4, UNKNOWN: 5, ERROR: 6 };
-const COMMAND = { SAVE: 1, DISCARD: 2, CHECK: 3 };
+const STATUS = {
+  SETUP: 0,
+  READY: 1,
+  WORKING: 2,
+  CONFIRM: 3,
+  SAVED: 4,
+  UNKNOWN: 5,
+  ERROR: 6,
+  RETRY: 7,
+};
+const COMMAND = { SAVE: 1, DISCARD: 2, CHECK: 3, RETRY: 4 };
 
 describe('ustawienia', () => {
   it('bez adresu i tokenu prosi o konfigurację, a nie udaje gotowości', () => {
@@ -326,6 +346,146 @@ describe('rozpoznanie serii', () => {
     await phone.settle();
 
     assert.match(phone.last().BODY, /token/i);
+  });
+});
+
+describe('ponowienie nieudanej wysyłki', () => {
+  /** Doprowadza do ekranu potwierdzenia — stąd zaczyna się każdy zapis. */
+  const recognised = async (phone) => {
+    phone.fire('appmessage', { payload: { TRANSCRIPT: 'bench press 82.5 for 8' } });
+    await phone.settle();
+    return phone;
+  };
+
+  it('zapis przewrócony przez serwer daje ponowienie, a nie koniec drogi', async () => {
+    // Zgłoszenie #115: przy błędzie nie z winy użytkownika trzeba było dyktować
+    // serię od nowa, chociaż w zdaniu nikt się nie pomylił.
+    const phone = await recognised(sandbox(SETTINGS));
+    phone.routes['POST http://api.test/sets'] = { status: 500, body: {} };
+
+    phone.fire('appmessage', { payload: { COMMAND: COMMAND.SAVE } });
+    await phone.settle();
+
+    assert.equal(phone.last().STATUS, STATUS.RETRY);
+    assert.equal(phone.last().TITLE, 'Not saved');
+  });
+
+  it('powtarza tę samą serię, bez dyktowania jej jeszcze raz', async () => {
+    const phone = await recognised(sandbox(SETTINGS));
+    phone.routes['POST http://api.test/sets'] = { status: 502, body: {} };
+    phone.fire('appmessage', { payload: { COMMAND: COMMAND.SAVE } });
+    await phone.settle();
+
+    // Serwer wstał — powtórzenie idzie tą samą serią, której nikt nie wpisywał
+    // po raz drugi.
+    phone.routes['POST http://api.test/sets'] = { status: 201, body: { id: 'set-1' } };
+    phone.fire('appmessage', { payload: { COMMAND: COMMAND.RETRY } });
+    await phone.settle();
+
+    assert.equal(phone.saves(), 2);
+    assert.equal(phone.lastCall().body.weightG, 82_500);
+    assert.equal(phone.lastCall().body.reps, 8);
+    assert.equal(phone.last().STATUS, STATUS.SAVED);
+    // Rozpoznanie poszło raz, na początku: mikrofon w tym przepływie nie wraca.
+    assert.equal(
+      phone.calls.filter((call) => call.key === 'POST http://api.test/voice/text').length,
+      1,
+    );
+  });
+
+  it('cisza w sieci przy rozpoznaniu powtarza to samo zdanie', async () => {
+    const phone = sandbox(SETTINGS);
+    phone.routes['POST http://api.test/voice/text'] = { fail: 'network' };
+
+    phone.fire('appmessage', { payload: { TRANSCRIPT: 'bench press 82.5 for 8' } });
+    await phone.settle();
+    assert.equal(phone.last().STATUS, STATUS.RETRY);
+
+    phone.routes['POST http://api.test/voice/text'] =
+      HAPPY_ROUTES()['POST http://api.test/voice/text'];
+    phone.fire('appmessage', { payload: { COMMAND: COMMAND.RETRY } });
+    await phone.settle();
+
+    const voice = phone.calls.filter((call) => call.key === 'POST http://api.test/voice/text');
+    assert.equal(voice.length, 2);
+    assert.equal(voice[1].body.text, 'bench press 82.5 for 8');
+    assert.equal(phone.last().STATUS, STATUS.CONFIRM);
+  });
+
+  it('przekroczony czas serwera też jest do powtórzenia', async () => {
+    const phone = await recognised(sandbox(SETTINGS));
+    phone.routes['POST http://api.test/sets'] = { fail: 'timeout' };
+
+    phone.fire('appmessage', { payload: { COMMAND: COMMAND.SAVE } });
+    await phone.settle();
+
+    assert.equal(phone.last().STATUS, STATUS.RETRY);
+    assert.match(phone.last().BODY, /too long/);
+  });
+
+  it('błędu walidacji nie ma po co powtarzać — odpowiedź byłaby ta sama', async () => {
+    const phone = await recognised(sandbox(SETTINGS));
+    phone.routes['POST http://api.test/sets'] = {
+      status: 400,
+      body: { error: { message: 'Ćwiczenie nie przyjmuje ciężaru' } },
+    };
+
+    phone.fire('appmessage', { payload: { COMMAND: COMMAND.SAVE } });
+    await phone.settle();
+
+    assert.equal(phone.last().STATUS, STATUS.ERROR);
+    assert.equal(phone.last().BODY, 'Ćwiczenie nie przyjmuje ciężaru');
+  });
+
+  it('martwy token i wyłączone dyktowanie prowadzą do ustawień, a nie do ponowień', async () => {
+    const rejected = sandbox(SETTINGS);
+    rejected.routes['POST http://api.test/voice/text'] = { status: 401, body: {} };
+    rejected.fire('appmessage', { payload: { TRANSCRIPT: 'cokolwiek' } });
+    await rejected.settle();
+    assert.equal(rejected.last().STATUS, STATUS.ERROR);
+
+    // 503 jest tu decyzją administratora, a nie awarią, która minie sama.
+    const off = sandbox(SETTINGS);
+    off.routes['POST http://api.test/voice/text'] = { status: 503, body: {} };
+    off.fire('appmessage', { payload: { TRANSCRIPT: 'cokolwiek' } });
+    await off.settle();
+    assert.equal(off.last().STATUS, STATUS.ERROR);
+  });
+
+  it('po błędzie bez ponowienia przycisk nie wskrzesza starej wysyłki', async () => {
+    const phone = await recognised(sandbox(SETTINGS));
+    phone.routes['POST http://api.test/sets'] = { status: 500, body: {} };
+    phone.fire('appmessage', { payload: { COMMAND: COMMAND.SAVE } });
+    await phone.settle();
+
+    // Nowe zdanie kończy się błędem, którego powtarzać nie ma sensu — a stary
+    // zapis nie może się po nim odezwać.
+    phone.routes['POST http://api.test/voice/text'] = { status: 400, body: {} };
+    phone.fire('appmessage', { payload: { TRANSCRIPT: 'coś tam' } });
+    await phone.settle();
+    const afterSecond = phone.saves();
+
+    phone.fire('appmessage', { payload: { COMMAND: COMMAND.RETRY } });
+    await phone.settle();
+
+    assert.equal(phone.saves(), afterSecond);
+    assert.equal(phone.last().TITLE, 'Ready');
+  });
+
+  it('odrzucenie ponowienia wraca do spoczynku i niczego nie wysyła', async () => {
+    const phone = await recognised(sandbox(SETTINGS));
+    phone.routes['POST http://api.test/sets'] = { status: 500, body: {} };
+    phone.fire('appmessage', { payload: { COMMAND: COMMAND.SAVE } });
+    await phone.settle();
+    const afterFailure = phone.saves();
+
+    phone.fire('appmessage', { payload: { COMMAND: COMMAND.DISCARD } });
+    await phone.settle();
+    phone.fire('appmessage', { payload: { COMMAND: COMMAND.RETRY } });
+    await phone.settle();
+
+    assert.equal(phone.saves(), afterFailure);
+    assert.equal(phone.last().STATUS, STATUS.READY);
   });
 });
 

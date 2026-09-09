@@ -47,6 +47,12 @@ typedef enum {
   /** Model nie wskazał ćwiczenia albo zabrakło liczb — trzeba powtórzyć. */
   StatusUnknown = 5,
   StatusError = 6,
+  /**
+   * Błąd, za którym nie stoi użytkownik — serwer milczy albo się przewrócił.
+   * Telefon trzyma wtedy nieudaną wysyłkę, a `SELECT` powtarza ją bez dyktowania
+   * zdania od nowa.
+   */
+  StatusRetry = 7,
 } Status;
 
 /** Polecenia w drugą stronę: telefon trzyma rozpoznaną serię, zegarek decyduje. */
@@ -54,6 +60,7 @@ typedef enum {
   CommandSave = 1,
   CommandDiscard = 2,
   CommandCheck = 3,
+  CommandRetry = 4,
 } Command;
 
 static Window *s_window;
@@ -95,6 +102,9 @@ static void update_hint(void) {
   switch (s_status) {
     case StatusConfirm:
       strncpy(s_hint, "SELECT save  BACK drop", sizeof(s_hint) - 1);
+      break;
+    case StatusRetry:
+      strncpy(s_hint, "SELECT retry  BACK drop", sizeof(s_hint) - 1);
       break;
     case StatusWorking:
       strncpy(s_hint, "waiting for the phone", sizeof(s_hint) - 1);
@@ -197,7 +207,7 @@ static void inbox_received(DictionaryIterator *iterator, void *context) {
   // zapisana w trakcie serii następnej nie wymaga wtedy spojrzenia na zegarek.
   if (s_status == StatusSaved) {
     vibes_short_pulse();
-  } else if (s_status == StatusError || s_status == StatusUnknown) {
+  } else if (s_status == StatusError || s_status == StatusUnknown || s_status == StatusRetry) {
     vibes_double_pulse();
   }
 }
@@ -280,6 +290,13 @@ static void select_clicked(ClickRecognizerRef recognizer, void *context) {
     return;
   }
 
+  // Po błędzie, którego nie da się poprawić mówieniem, `SELECT` powtarza samą
+  // wysyłkę: zdanie jest już podyktowane i telefon wciąż je trzyma.
+  if (s_status == StatusRetry) {
+    send_command(CommandRetry, "Retrying…");
+    return;
+  }
+
   start_dictation();
 }
 
@@ -291,10 +308,12 @@ static void up_clicked(ClickRecognizerRef recognizer, void *context) {
 /**
  * `BACK` w stanie potwierdzenia **odrzuca** rozpoznaną serię zamiast wyjść
  * z aplikacji: wyjście zostawiłoby ją wiszącą po stronie telefonu, a użytkownik
- * i tak nacisnął ten przycisk, żeby powiedzieć „nie to".
+ * i tak nacisnął ten przycisk, żeby powiedzieć „nie to". Tak samo przy
+ * ponowieniu — kto go nie chce, mówi to tym samym przyciskiem i wraca do
+ * ekranu, z którego wolno dyktować dalej.
  */
 static void back_clicked(ClickRecognizerRef recognizer, void *context) {
-  if (s_status == StatusConfirm) {
+  if (s_status == StatusConfirm || s_status == StatusRetry) {
     send_command(CommandDiscard, "Dropping…");
     return;
   }
