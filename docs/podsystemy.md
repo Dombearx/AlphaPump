@@ -239,7 +239,8 @@ Discord:
 Pebble ──dictation──▶ tekst ──AppMessage──▶ PebbleKit JS (w aplikacji Pebble na telefonie)
                                                   │ POST /voice/text   → rozpoznana seria
                                                   │ POST /sets         → zapis
-                                                  │ GET  /sets         → dzisiejsze serie
+                                                  │ GET  /cycles       → co zostało w cyklu
+                                                  │ GET  /sets         → serie bieżącego okresu
                                             AlphaPump API ──sync──▶ telefon
 ```
 
@@ -249,14 +250,28 @@ Dictation API daje gotowy tekst, a dźwięku aplikacja na zegarku nie widzi w og
 Devices), poza naszym kodem i poza naszym rachunkiem. Dlatego zegarek wpina się
 w wejście **tekstowe**, które i tak powstało dla klawiatury.
 
-Ekran spoczynku pokazuje **serie zapisane dzisiaj** — wszystkie, a nie tylko
+Ekran spoczynku pokazuje **to, co w bieżącym cyklu jeszcze zostało** — ekran
+główny ma odpowiadać na pytanie „co teraz zrobić", a nie tylko „co już
+zrobiłem". Pozycja celu wskazująca ćwiczenie nazywa je wprost; pozycja
+wskazująca tag dokłada dwa ćwiczenia, którymi ten tag w tym cyklu bywał robiony
+najczęściej — sam tag nie mówi, co podyktować. Gdy cyklu nie ma albo jest
+domknięty w całości, zostają **serie zapisane dzisiaj** — wszystkie, a nie tylko
 podyktowane z zegarka, bo dzień treningowy jest jeden niezależnie od urządzenia.
-Lista dochodzi **drugą wiadomością**, już po ekranie gotowości: dyktowanie nie
-ma prawa czekać na sieć, więc gdy `GET /sets` nie odpowie, zegarek wygląda tak
-jak przed tą listą i tak samo działa. Nazwy ćwiczeń trzyma pamięć podręczna
-w telefonie, uzupełniana z `GET /exercises` dopiero przy ćwiczeniu, którego nie
-zna — `GET /sets` oddaje same identyfikatory, a filtrowania biblioteki po nich
-nie ma.
+
+Postęp liczy się na telefonie, z serii, tymi samymi regułami co
+`computeCycleProgress` w rdzeniu — przepisanymi do ES5, bo piaskowka PKJS nie
+dociągnie `@alphapump/core`. O serie pyta jedno żądanie, zakresem całego
+bieżącego okresu (cykl o stałej długości przewija się sam, tak samo jak
+w telefonie), więc dzisiejsze serie są w tej samej odpowiedzi i wariant zapasowy
+nie kosztuje drugiego pytania.
+
+Podsumowanie dochodzi **drugą wiadomością**, już po ekranie gotowości:
+dyktowanie nie ma prawa czekać na sieć, więc gdy `GET /sets` nie odpowie,
+zegarek wygląda tak jak przed tą listą i tak samo działa. Nazwy ćwiczeń
+(z tagiem głównym, bo to on rozstrzyga cele tagowe) i nazwy tagów trzyma pamięć
+podręczna w telefonie, uzupełniana z `GET /exercises` i `GET /tags` dopiero przy
+identyfikatorze, którego nie zna — `GET /sets` oddaje same identyfikatory,
+a filtrowania biblioteki po nich nie ma.
 
 Zegarek ma własny przycisk sprawdzenia połączenia: `GET /health` bez tokenu
 (czy telefon w ogóle dosięga API), a potem `GET /me` z tokenem (czy token żyje).

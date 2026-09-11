@@ -37,17 +37,32 @@ tą samą drogą, dla której powstały tokeny („dla bota Discord").
 
 ## Ekran główny
 
-Poza „Ready" widać na nim **dzisiejsze serie**: tytuł mówi, ile ich dziś jest,
-a niżej stoją ostatnie trzy, od najnowszej. Są to serie z dziennika, a nie same
-podyktowane z zegarka — dzień treningowy jest jeden, niezależnie od tego, czym
-został zapisany. Kolejność liczy się po czasie zapisu, bo pozycja z API numeruje
-serie w obrębie jednego ćwiczenia.
+Poza „Ready" widać na nim **to, co w bieżącym cyklu jeszcze zostało**: tytuł
+mówi, ile pozycji celu czeka, a niżej stoją trzy z nich, od najbliższej
+ukończenia. Ekran ma odpowiadać na pytanie „co teraz zrobić", a lista zrobionego
+odpowiada tylko na „co już zrobiłem" — dlatego pozostała robota idzie przed nią.
 
-Lista dochodzi **po** ekranie gotowości, osobną wiadomością, i niczego nie
-blokuje: dyktowanie jest tak samo szybkie jak przedtem, a gdy telefon nie
+Pozycja wskazująca ćwiczenie nazywa je wprost („Bench press: 2 sets").
+Pozycja wskazująca tag nie wskazuje ćwiczenia, więc obok tego, ile zostało,
+stoją dwa ćwiczenia, którymi ten tag **w tym cyklu** bywał robiony najczęściej
+(„Chest: 2 sets (Bench press, Dip)"). Podpowiedź bierze się z własnych serii,
+a nie z biblioteki: ćwiczenie, które ktoś w tym cyklu naprawdę robi, jest lepszą
+propozycją niż pierwsze alfabetycznie w tagu.
+
+Cykl o stałej długości liczy się sam — po minionym końcu ekran pokazuje kolejny
+okres, tak samo jak telefon. Kiedy cyklu nie ma, jeszcze się nie zaczął albo
+jest domknięty w całości, zostają **dzisiejsze serie**: tytuł mówi, ile ich dziś
+jest, a niżej stoją ostatnie trzy, od najnowszej. Są to serie z dziennika, a nie
+same podyktowane z zegarka — dzień treningowy jest jeden, niezależnie od tego,
+czym został zapisany. Kolejność liczy się po czasie zapisu, bo pozycja z API
+numeruje serie w obrębie jednego ćwiczenia.
+
+Podsumowanie dochodzi **po** ekranie gotowości, osobną wiadomością, i niczego
+nie blokuje: dyktowanie jest tak samo szybkie jak przedtem, a gdy telefon nie
 dosięgnie serwera, zostaje ekran sprzed tej listy. Przewijania nie ma świadomie —
-ekran główny ma się czytać jednym rzutem oka, a ile serii jest naprawdę, mówi
-tytuł.
+ekran główny ma się czytać jednym rzutem oka, a ile zostało naprawdę, mówi tytuł.
+O serie pyta jedno żądanie, zakresem całego bieżącego okresu: dzisiejsze serie
+są w nim zawarte, więc wariant zapasowy nie kosztuje drugiego pytania.
 
 ## Przyciski
 

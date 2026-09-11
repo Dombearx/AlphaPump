@@ -52,19 +52,35 @@ var COMMAND = { SAVE: 1, DISCARD: 2, CHECK: 3, RETRY: 4 };
 var SETTINGS_KEY = 'alphapump-settings';
 
 /**
- * Nazwy ćwiczeń, po identyfikatorze.
+ * Ćwiczenia z biblioteki, po identyfikatorze: nazwa i tag główny.
  *
  * `GET /sets` oddaje same identyfikatory, a `GET /exercises` nie umie filtrować
  * po nich — więc biblioteka jedzie w całości i zostaje tutaj. Dociągamy ją
- * dopiero wtedy, gdy w dzisiejszych seriach jest ćwiczenie, którego nie znamy:
+ * dopiero wtedy, gdy wśród potrzebnych ćwiczeń jest takie, którego nie znamy:
  * ekran spoczynku pokazuje się przy każdym otwarciu aplikacji i całej biblioteki
  * co otwarcie nikt nie potrzebuje. Kosztem jest nazwa zmieniona w bibliotece,
- * która na zegarku zostaje stara — do pierwszej serii z nowym ćwiczeniem.
+ * która na zegarku zostaje stara — do pierwszego ćwiczenia spoza pamięci.
+ *
+ * Tag główny leży tu razem z nazwą, bo to on rozstrzyga cele tagowe cyklu —
+ * dokładnie tak samo jak w rdzeniu, gdzie tagi dodatkowe serii nie zaliczają.
  */
 var NAMES_KEY = 'alphapump-exercise-names';
 
-/** Ile serii z dziś mieści się na ekranie zegarka bez przewijania. */
-var TODAY_LINES = 3;
+/** Nazwy tagów, po identyfikatorze — pod te same cele tagowe, tą samą drogą. */
+var TAGS_KEY = 'alphapump-tag-names';
+
+/** Ile wierszy mieści się na ekranie zegarka bez przewijania. */
+var BODY_LINES = 3;
+
+/** Tyle samo znaków bierze `s_body` w `src/c/main.c`; reszta jest ucinana. */
+var BODY_CHARS = 128;
+
+/**
+ * Ile ćwiczeń pokazać przy celu tagowym. Cel wskazujący tag nie mówi, czym ten
+ * tag zrobić — więc mówi to za niego kilka ćwiczeń, które w tym cyklu padały
+ * najczęściej.
+ */
+var TAG_EXAMPLES = 2;
 
 /**
  * Limit czasu jednego żądania. Krótszy niż limit zegarka (40 s), żeby to **my**
@@ -116,8 +132,9 @@ function configured(settings) {
   return settings.apiUrl.length > 0 && settings.apiKey.length > 0;
 }
 
-function readNames() {
-  var raw = localStorage.getItem(NAMES_KEY);
+/** Pamięć podręczna spod podanego klucza; zepsuty wpis jest pustą pamięcią. */
+function readCache(key) {
+  var raw = localStorage.getItem(key);
   if (!raw) return {};
 
   try {
@@ -143,10 +160,10 @@ function reply(status, title, body) {
 /**
  * Stan spoczynku zależy od tego, czy jest dokąd wysyłać.
  *
- * Gotowość idzie **od razu**, a dzisiejsze serie dochodzą drugą wiadomością,
- * kiedy przyjdą: dyktowanie ma być dokładnie tak samo szybkie jak przedtem,
- * więc nic w tym przepływie nie czeka na listę — a jak nie przyjdzie, zostaje
- * ekran sprzed tej zmiany.
+ * Gotowość idzie **od razu**, a podsumowanie dochodzi drugą wiadomością, kiedy
+ * przyjdzie: dyktowanie ma być dokładnie tak samo szybkie jak przedtem, więc
+ * nic w tym przepływie nie czeka na listę — a jak nie przyjdzie, zostaje ekran
+ * sprzed tej zmiany.
  */
 function replyIdle() {
   // Powrót do spoczynku znaczy, że nie ma już czego powtarzać: ekran
@@ -162,11 +179,11 @@ function replyIdle() {
   reply(STATUS.READY, 'Ready', 'Hold the watch close and say the exercise with the numbers.');
   var shown = screens;
 
-  todaysSets(function (sets, names) {
+  idleSummary(function (title, body) {
     // Ekran zdążył się zmienić — użytkownik już dyktuje albo potwierdza serię,
     // a spóźniona lista nie ma prawa zabrać mu tego, co widzi.
-    if (sets === null || screens !== shown) return;
-    reply(STATUS.READY, headline(sets.length), latest(sets, names));
+    if (title === null || screens !== shown) return;
+    reply(STATUS.READY, title, body);
   });
 }
 
@@ -245,19 +262,50 @@ function missingMeasurements(match) {
   return names.join(' and ');
 }
 
+/** Dzień kalendarzowy jako `RRRR-MM-DD` — porównywalny zwykłym `<`. */
+function isoDay(year, month, day) {
+  return year + '-' + (month < 10 ? '0' : '') + month + '-' + (day < 10 ? '0' : '') + day;
+}
+
 /** Dzień kalendarzowy telefonu — seria należy do dnia, nie do chwili. */
 function today() {
   var now = new Date();
-  var month = now.getMonth() + 1;
-  var day = now.getDate();
-  return (
-    now.getFullYear() + '-' + (month < 10 ? '0' : '') + month + '-' + (day < 10 ? '0' : '') + day
+  return isoDay(now.getFullYear(), now.getMonth() + 1, now.getDate());
+}
+
+/**
+ * Dzień przesunięty o tyle dni. Liczone w UTC, bo dzień treningowy jest bez
+ * strefy — inaczej zmiana czasu przesuwałaby granicę okresu cyklu o dobę.
+ */
+function addDays(day, count) {
+  var parts = day.split('-');
+  var shifted = new Date(
+    Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]) + count)
   );
+  return isoDay(shifted.getUTCFullYear(), shifted.getUTCMonth() + 1, shifted.getUTCDate());
+}
+
+/** Ile dni dzieli dwa dni kalendarzowe; ujemnie, gdy drugi jest wcześniejszy. */
+function daysBetween(from, to) {
+  var a = from.split('-');
+  var b = to.split('-');
+  var start = Date.UTC(Number(a[0]), Number(a[1]) - 1, Number(a[2]));
+  var end = Date.UTC(Number(b[0]), Number(b[1]) - 1, Number(b[2]));
+  return Math.round((end - start) / 86400000);
 }
 
 /** Tytuł ekranu spoczynku: ile serii dziś już jest. */
 function headline(count) {
   return 'Today: ' + count + (count === 1 ? ' set' : ' sets');
+}
+
+/**
+ * Nazwa ćwiczenia z pamięci podręcznej. Ćwiczenia spoza niej nie da się nazwać,
+ * ale liczby z serii są wtedy wciąż warte pokazania.
+ */
+function nameOf(names, exerciseId) {
+  var known = names[exerciseId];
+  return known && known.name ? known.name : 'Exercise';
 }
 
 /**
@@ -278,18 +326,208 @@ function latest(sets, names) {
   });
 
   var lines = [];
-  for (var i = 0; i < sorted.length && i < TODAY_LINES; i++) {
+  for (var i = 0; i < sorted.length && i < BODY_LINES; i++) {
     lines.push(
       describe({
-        // Ćwiczenia spoza pamięci podręcznej nie da się nazwać, ale liczby
-        // z serii są wtedy wciąż warte pokazania.
-        name: names[sorted[i].exerciseId] || 'Exercise',
+        name: nameOf(names, sorted[i].exerciseId),
         weightG: sorted[i].weightG,
         reps: sorted[i].reps,
         distanceM: sorted[i].distanceM,
         durationS: sorted[i].durationS,
       })
     );
+  }
+
+  return lines.join('\n');
+}
+
+/* -------------------------------------------------------------------- cykl */
+
+/*
+ * Co zostało do zrobienia w bieżącym cyklu.
+ *
+ * Jest to czwarta implementacja reguł z `cycles.ts` w rdzeniu — po telefonie,
+ * serwerze i panelu — i ten sam powód, co przy `describe`: paczka bez bundlera,
+ * chodząca w cudzej piaskowce, nie dociągnie `@alphapump/core`. Liczymy tu więc
+ * dokładnie tyle, ile ekran pokazuje: ile zostało do celu i czym ten cel bywa
+ * robiony. Rozjazd kosztuje napis na zegarku, a nie zapisaną serię — postępu
+ * nigdzie nie zapisujemy.
+ */
+
+/**
+ * Bieżący okres cyklu — to samo, co `currentCyclePeriod` w rdzeniu. Cykl
+ * o stałej długości liczy się sam: gdy minie jego koniec, kolejny okres tej
+ * samej długości zaczyna się bez żadnego resetu, a zapisany początek zostaje
+ * kotwicą. Cykl bez daty końca nie ma czego przewijać.
+ */
+function currentPeriod(cycle, day) {
+  if (cycle.endsOn === null || day <= cycle.endsOn) {
+    return { startsOn: cycle.startsOn, endsOn: cycle.endsOn };
+  }
+
+  var length = daysBetween(cycle.startsOn, cycle.endsOn) + 1;
+  var elapsed = Math.floor(daysBetween(cycle.startsOn, day) / length);
+  var startsOn = addDays(cycle.startsOn, elapsed * length);
+  return { startsOn: startsOn, endsOn: addDays(startsOn, length - 1) };
+}
+
+/**
+ * Cykle obejmujące dany dzień, każdy ze swoim bieżącym okresem. Cykl jeszcze
+ * nierozpoczęty odpada — nie ma czego przewijać do przodu — a cykl bez pozycji
+ * celu nie ma czego zliczać. Zarchiwizowanych `GET /cycles` nie oddaje.
+ */
+function activePeriods(cycles, day) {
+  var active = [];
+
+  for (var i = 0; i < cycles.length; i++) {
+    var cycle = cycles[i];
+    if (!cycle.goals || cycle.goals.length === 0) continue;
+
+    var period = currentPeriod(cycle, day);
+    if (day < period.startsOn) continue;
+    active.push({ cycle: cycle, period: period });
+  }
+
+  return active;
+}
+
+/** Zakres dat jednym żądaniem o serie — od najwcześniejszego okresu po dziś. */
+function setsRange(active, day) {
+  var from = day;
+  var to = day;
+
+  for (var i = 0; i < active.length; i++) {
+    var period = active[i].period;
+    if (period.startsOn < from) from = period.startsOn;
+    if (period.endsOn !== null && period.endsOn > to) to = period.endsOn;
+  }
+
+  return { from: from, to: to };
+}
+
+function withinPeriod(period, set) {
+  if (set.performedOn < period.startsOn) return false;
+  return period.endsOn === null || set.performedOn <= period.endsOn;
+}
+
+/**
+ * Ile dana seria wnosi do pozycji celu; zero znaczy „nie zalicza się".
+ *
+ * W celach tagowych liczy się wyłącznie **tag główny** ćwiczenia — tagi
+ * dodatkowe są etykietami biblioteki i serii nie zaliczają.
+ */
+function contribution(period, goal, set, names) {
+  if (!withinPeriod(period, set)) return 0;
+
+  if (goal.exerciseId !== null) {
+    if (goal.exerciseId !== set.exerciseId) return 0;
+  } else {
+    var exercise = names[set.exerciseId];
+    if (!exercise || exercise.tagId !== goal.tagId) return 0;
+  }
+
+  if (goal.metric === 'duration') return set.durationS || 0;
+  if (goal.metric === 'distance') return set.distanceM || 0;
+  return 1;
+}
+
+/**
+ * Ćwiczenia, którymi ten tag bywał robiony w tym okresie — od najczęstszego.
+ *
+ * Cel tagowy nie wskazuje ćwiczenia, więc sam napis „klatka: 2 serie" nie mówi,
+ * co właściwie podyktować. Podpowiedź bierze się z własnych serii użytkownika
+ * z bieżącego cyklu, a nie z biblioteki: ćwiczenie, które ktoś w tym cyklu robi,
+ * jest lepszą propozycją niż pierwsze alfabetycznie w tagu.
+ */
+function tagExamples(tagId, period, sets, names) {
+  var counted = {};
+
+  for (var i = 0; i < sets.length; i++) {
+    var set = sets[i];
+    if (!withinPeriod(period, set)) continue;
+
+    var exercise = names[set.exerciseId];
+    if (!exercise || exercise.tagId !== tagId) continue;
+    counted[set.exerciseId] = (counted[set.exerciseId] || 0) + 1;
+  }
+
+  var ids = Object.keys(counted);
+  ids.sort(function (a, b) {
+    if (counted[a] !== counted[b]) return counted[b] - counted[a];
+    return nameOf(names, a) < nameOf(names, b) ? -1 : 1;
+  });
+
+  var picked = [];
+  for (var j = 0; j < ids.length && j < TAG_EXAMPLES; j++) picked.push(nameOf(names, ids[j]));
+  return picked;
+}
+
+/**
+ * Pozycje celu, w których coś jeszcze zostało — od najbliższej ukończenia.
+ *
+ * Kolejność jest ta sama, co w `remainingTargets` na telefonie: najpierw to, co
+ * zostało dokończyć, bo z trzech wierszy na ekranie najwięcej warta jest pozycja,
+ * którą da się domknąć jedną serią.
+ */
+function remainingWork(active, sets, names, tagNames) {
+  var work = [];
+
+  for (var i = 0; i < active.length; i++) {
+    var goals = active[i].cycle.goals;
+    var period = active[i].period;
+
+    for (var g = 0; g < goals.length; g++) {
+      var goal = goals[g];
+      var current = 0;
+      for (var s = 0; s < sets.length; s++) current += contribution(period, goal, sets[s], names);
+      if (current >= goal.target) continue;
+
+      work.push({
+        label:
+          goal.exerciseId !== null
+            ? nameOf(names, goal.exerciseId)
+            : tagNames[goal.tagId] || 'Goal',
+        metric: goal.metric,
+        remaining: goal.target - current,
+        examples: goal.exerciseId !== null ? [] : tagExamples(goal.tagId, period, sets, names),
+      });
+    }
+  }
+
+  return work.sort(function (a, b) {
+    if (a.remaining !== b.remaining) return a.remaining - b.remaining;
+    return a.label < b.label ? -1 : a.label > b.label ? 1 : 0;
+  });
+}
+
+/** Ile zostało, w jednostce metryki: „3 sets", „12:00", „800 m". */
+function amountLeft(metric, value) {
+  if (metric === 'duration') return duration(value);
+  if (metric === 'distance') return value + ' m';
+  return value + (value === 1 ? ' set' : ' sets');
+}
+
+/** Tytuł ekranu spoczynku, gdy w cyklu coś jeszcze zostało. */
+function cycleHeadline(count) {
+  return 'Cycle: ' + count + ' to do';
+}
+
+/**
+ * Pozostałe pozycje, po jednej w wierszu. Wierszy jest tyle, ile mieści ekran,
+ * a wiersz, który by się na nim nie zmieścił w całości, nie wchodzi wcale —
+ * zegarek ucina treść w pół słowa i pół pozycji celu nie mówi nic.
+ */
+function cycleLines(work) {
+  var lines = [];
+  var used = 0;
+
+  for (var i = 0; i < work.length && i < BODY_LINES; i++) {
+    var line = work[i].label + ': ' + amountLeft(work[i].metric, work[i].remaining);
+    if (work[i].examples.length > 0) line += ' (' + work[i].examples.join(', ') + ')';
+    if (lines.length > 0 && used + line.length > BODY_CHARS) break;
+
+    lines.push(line);
+    used += line.length + 1;
   }
 
   return lines.join('\n');
@@ -368,56 +606,181 @@ function request(method, path, payload, done) {
 /* ---------------------------------------------------------------- przepływ */
 
 /**
- * Nazwy ćwiczeń dla podanych serii.
+ * Ćwiczenia o podanych identyfikatorach — nazwa i tag główny.
  *
- * Biblioteka dociąga się wyłącznie wtedy, gdy w seriach jest identyfikator,
+ * Biblioteka dociąga się wyłącznie wtedy, gdy wśród nich jest identyfikator,
  * którego pamięć podręczna nie zna — czyli raz na nowe ćwiczenie, a nie raz na
  * otwarcie aplikacji. Gdy dociągnięcie się nie uda, oddajemy to, co mamy:
  * seria bez nazwy jest gorsza niż z nazwą, ale lepsza niż pusty ekran.
  */
-function withNames(sets, done) {
-  var names = readNames();
+function withNames(exerciseIds, done) {
+  var names = readCache(NAMES_KEY);
 
+  // Wpis bez nazwy to także wpis w starym kształcie — pamięć podręczna trzymała
+  // kiedyś samą nazwę, bez tagu głównego. Wtedy biblioteka jedzie raz jeszcze
+  // i przepisuje ją całą, zamiast zostawiać ekran cyklu bez tagów do końca życia
+  // instalacji.
   var known = true;
-  for (var i = 0; i < sets.length; i++) {
-    if (!names[sets[i].exerciseId]) known = false;
+  for (var i = 0; i < exerciseIds.length; i++) {
+    var cached = names[exerciseIds[i]];
+    if (!cached || !cached.name) known = false;
   }
   if (known) {
-    done(sets, names);
+    done(names);
     return;
   }
 
   request('GET', '/exercises', null, function (problem, body) {
     if (problem || !body || !body.length) {
-      done(sets, names);
+      done(names);
+      return;
+    }
+
+    var fresh = {};
+    for (var j = 0; j < body.length; j++) {
+      fresh[body[j].id] = { name: body[j].name, tagId: body[j].primaryTagId };
+    }
+    localStorage.setItem(NAMES_KEY, JSON.stringify(fresh));
+    done(fresh);
+  });
+}
+
+/** Nazwy tagów — tą samą drogą i z tego samego powodu, co nazwy ćwiczeń. */
+function withTagNames(tagIds, done) {
+  var tagNames = readCache(TAGS_KEY);
+
+  var known = true;
+  for (var i = 0; i < tagIds.length; i++) {
+    if (!tagNames[tagIds[i]]) known = false;
+  }
+  if (known) {
+    done(tagNames);
+    return;
+  }
+
+  request('GET', '/tags', null, function (problem, body) {
+    if (problem || !body || !body.length) {
+      done(tagNames);
       return;
     }
 
     var fresh = {};
     for (var j = 0; j < body.length; j++) fresh[body[j].id] = body[j].name;
-    localStorage.setItem(NAMES_KEY, JSON.stringify(fresh));
-    done(sets, fresh);
+    localStorage.setItem(TAGS_KEY, JSON.stringify(fresh));
+    done(fresh);
   });
+}
+
+function setExercises(sets) {
+  var ids = [];
+  for (var i = 0; i < sets.length; i++) ids.push(sets[i].exerciseId);
+  return ids;
+}
+
+/** Ćwiczenia, których ekran potrzebuje nazwać albo dopasować do celu tagowego. */
+function neededExercises(active, sets) {
+  var ids = setExercises(sets);
+
+  for (var c = 0; c < active.length; c++) {
+    var goals = active[c].cycle.goals;
+    for (var g = 0; g < goals.length; g++) {
+      if (goals[g].exerciseId !== null) ids.push(goals[g].exerciseId);
+    }
+  }
+
+  return ids;
+}
+
+/** Tagi wskazane przez cele — tylko one potrzebują nazwy. */
+function goalTags(active) {
+  var ids = [];
+
+  for (var c = 0; c < active.length; c++) {
+    var goals = active[c].cycle.goals;
+    for (var g = 0; g < goals.length; g++) {
+      if (goals[g].tagId !== null) ids.push(goals[g].tagId);
+    }
+  }
+
+  return ids;
+}
+
+function setsOn(sets, day) {
+  var kept = [];
+  for (var i = 0; i < sets.length; i++) {
+    if (sets[i].performedOn === day) kept.push(sets[i]);
+  }
+  return kept;
 }
 
 /**
  * Dzisiejsze serie — te same, które widać w aplikacji na telefonie, a nie tylko
  * podyktowane z zegarka: dzień treningowy jest jeden, niezależnie od tego,
  * którym urządzeniem został zapisany.
- *
- * `done(null)` znaczy „nie ma czego pokazać" — pusty dzień albo nieudane
- * żądanie. Jedno i drugie zostawia ekran spoczynku takim, jaki był, bo lista
- * jest tu dodatkiem, a nie warunkiem dyktowania.
  */
-function todaysSets(done) {
-  var day = today();
-
+function todaysSummary(day, done) {
   request('GET', '/sets?from=' + day + '&to=' + day, null, function (problem, body) {
     if (problem || !body || !body.length) {
       done(null, null);
       return;
     }
-    withNames(body, done);
+    withNames(setExercises(body), function (names) {
+      done(headline(body.length), latest(body, names));
+    });
+  });
+}
+
+/**
+ * Co postawić pod gotowością na ekranie głównym.
+ *
+ * Najpierw **to, co w bieżącym cyklu jeszcze zostało**: ekran ma odpowiadać na
+ * pytanie „co teraz zrobić", a lista zrobionego odpowiada tylko na „co już
+ * zrobiłem". Gdy cyklu nie ma albo jest domknięty w całości, zostają dzisiejsze
+ * serie — czyli dokładnie to, co ekran pokazywał przedtem.
+ *
+ * O serie pytamy raz, zakresem obejmującym wszystkie bieżące okresy: dzisiejsze
+ * serie są w nim zawarte, więc wariant zapasowy nie kosztuje drugiego żądania.
+ *
+ * `done(null)` znaczy „nie ma czego pokazać" — pusty dzień, pusty cykl albo
+ * nieudane żądanie. Każde z nich zostawia ekran spoczynku takim, jaki był, bo
+ * lista jest tu dodatkiem, a nie warunkiem dyktowania.
+ */
+function idleSummary(done) {
+  var day = today();
+
+  request('GET', '/cycles', null, function (problem, cycles) {
+    var active = problem || !cycles || !cycles.length ? [] : activePeriods(cycles, day);
+    if (active.length === 0) {
+      todaysSummary(day, done);
+      return;
+    }
+
+    var range = setsRange(active, day);
+    var path = '/sets?from=' + range.from + '&to=' + range.to;
+
+    request('GET', path, null, function (setsProblem, sets) {
+      if (setsProblem || !sets) {
+        done(null, null);
+        return;
+      }
+
+      withNames(neededExercises(active, sets), function (names) {
+        withTagNames(goalTags(active), function (tagNames) {
+          var work = remainingWork(active, sets, names, tagNames);
+          if (work.length > 0) {
+            done(cycleHeadline(work.length), cycleLines(work));
+            return;
+          }
+
+          var todays = setsOn(sets, day);
+          if (todays.length === 0) {
+            done(null, null);
+            return;
+          }
+          done(headline(todays.length), latest(todays, names));
+        });
+      });
+    });
   });
 }
 

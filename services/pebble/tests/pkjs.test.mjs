@@ -44,6 +44,14 @@ const TODAY = (() => {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 })();
 
+/** Dzień oddalony o tyle dni od dziś — okresy cyklu liczą się względem niego. */
+const shift = (days) => {
+  const [year, month, day] = TODAY.split('-').map(Number);
+  const moved = new Date(Date.UTC(year, month - 1, day + days));
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${moved.getUTCFullYear()}-${pad(moved.getUTCMonth() + 1)}-${pad(moved.getUTCDate())}`;
+};
+
 /** O dzisiejsze serie ekran spoczynku pyta obustronnie domkniętym zakresem. */
 const SETS_TODAY = `GET http://api.test/sets?from=${TODAY}&to=${TODAY}`;
 
@@ -56,8 +64,10 @@ const HAPPY_ROUTES = () => ({
   'POST http://api.test/sets': { status: 201, body: { id: 'set-1' } },
   'GET http://api.test/health': { status: 200, body: { status: 'ok' } },
   'GET http://api.test/me': { status: 200, body: { id: 'user-1' } },
-  // Ekran spoczynku pyta o dzisiejsze serie przy każdym wejściu; domyślnie
-  // dzień jest pusty, więc ekran wygląda tak, jak przed tą listą.
+  // Ekran spoczynku pyta najpierw o cykle, a gdy żadnego nie ma — o dzisiejsze
+  // serie. Domyślnie nie ma ani cyklu, ani serii, więc ekran wygląda tak, jak
+  // przed obiema listami.
+  'GET http://api.test/cycles': { status: 200, body: [] },
   [SETS_TODAY]: { status: 200, body: [] },
   'GET http://api.test/exercises': {
     status: 200,
@@ -163,6 +173,44 @@ const STATUS = {
   RETRY: 7,
 };
 const COMMAND = { SAVE: 1, DISCARD: 2, CHECK: 3, RETRY: 4 };
+
+/* ------------------------------------------ biblioteka i serie do obu ekranów */
+
+const SQUAT_ID = '00000000-0000-7000-8000-000000000002';
+const DIP_ID = '00000000-0000-7000-8000-000000000003';
+const CHEST_TAG = '00000000-0000-7000-8000-0000000000c1';
+const LEGS_TAG = '00000000-0000-7000-8000-0000000000c2';
+
+/** Ćwiczenia w kształcie, w jakim oddaje je `GET /exercises`. */
+const LIBRARY = [
+  { id: MATCH.exerciseId, name: 'Bench press', primaryTagId: CHEST_TAG },
+  { id: SQUAT_ID, name: 'Squat', primaryTagId: LEGS_TAG },
+  { id: DIP_ID, name: 'Dip', primaryTagId: CHEST_TAG },
+];
+
+const TAGS = [
+  { id: CHEST_TAG, name: 'Chest' },
+  { id: LEGS_TAG, name: 'Legs' },
+];
+
+/** Seria w kształcie, w jakim oddaje ją `GET /sets` — bez nazwy ćwiczenia. */
+const set = (fields) => ({
+  id: 'set-1',
+  userId: 'user-1',
+  exerciseId: MATCH.exerciseId,
+  performedOn: TODAY,
+  position: 0,
+  weightG: 82_500,
+  reps: 8,
+  durationS: null,
+  distanceM: null,
+  bodyweightG: null,
+  note: null,
+  createdAt: '2026-09-08T10:00:00.000Z',
+  updatedAt: '2026-09-08T10:00:00.000Z',
+  deletedAt: null,
+  ...fields,
+});
 
 describe('ustawienia', () => {
   it('bez adresu i tokenu prosi o konfigurację, a nie udaje gotowości', () => {
@@ -586,32 +634,6 @@ describe('opis serii na ekranie zegarka', () => {
 });
 
 describe('dzisiejsze serie na ekranie spoczynku', () => {
-  const SQUAT_ID = '00000000-0000-7000-8000-000000000002';
-
-  /** Seria w kształcie, w jakim oddaje ją `GET /sets` — bez nazwy ćwiczenia. */
-  const set = (fields) => ({
-    id: 'set-1',
-    userId: 'user-1',
-    exerciseId: MATCH.exerciseId,
-    performedOn: TODAY,
-    position: 0,
-    weightG: 82_500,
-    reps: 8,
-    durationS: null,
-    distanceM: null,
-    bodyweightG: null,
-    note: null,
-    createdAt: '2026-09-08T10:00:00.000Z',
-    updatedAt: '2026-09-08T10:00:00.000Z',
-    deletedAt: null,
-    ...fields,
-  });
-
-  const LIBRARY = [
-    { id: MATCH.exerciseId, name: 'Bench press' },
-    { id: SQUAT_ID, name: 'Squat' },
-  ];
-
   const withSets = (sets) => {
     const phone = sandbox(SETTINGS);
     phone.routes[SETS_TODAY] = { status: 200, body: sets };
@@ -720,6 +742,22 @@ describe('dzisiejsze serie na ekranie spoczynku', () => {
     assert.equal(phone.last().BODY, 'Exercise: 82.5 kg x 8');
   });
 
+  it('pamięć podręczna sprzed tagów odświeża się, zamiast gubić nazwy', async () => {
+    const phone = withSets([set({})]);
+    // Kształt sprzed dołożenia tagu głównego: pod identyfikatorem sama nazwa.
+    phone.store.set(
+      'alphapump-exercise-names',
+      JSON.stringify({ [MATCH.exerciseId]: 'Bench press' }),
+    );
+
+    phone.fire('ready');
+    await phone.settle();
+
+    const library = phone.calls.filter((call) => call.key === 'GET http://api.test/exercises');
+    assert.equal(library.length, 1);
+    assert.equal(phone.last().BODY, 'Bench press: 82.5 kg x 8');
+  });
+
   it('spóźniona lista nie zabiera ekranu temu, kto już dyktuje', async () => {
     const phone = withSets([set({})]);
 
@@ -729,5 +767,180 @@ describe('dzisiejsze serie na ekranie spoczynku', () => {
 
     assert.equal(phone.last().STATUS, STATUS.CONFIRM);
     assert.equal(phone.last().BODY, 'Bench press: 82.5 kg x 8');
+  });
+});
+
+describe('pozostała robota z cyklu na ekranie głównym', () => {
+  const goal = (fields) => ({
+    id: 'goal-1',
+    metric: 'sets',
+    target: 4,
+    exerciseId: null,
+    tagId: null,
+    position: 0,
+    ...fields,
+  });
+
+  /** Cykl w kształcie, w jakim oddaje go `GET /cycles` — domyślnie trwający. */
+  const cycle = (goals, fields) => ({
+    id: 'cycle-1',
+    userId: 'user-1',
+    name: 'September',
+    startsOn: shift(-3),
+    endsOn: shift(3),
+    archivedAt: null,
+    goals,
+    createdAt: '2026-09-01T10:00:00.000Z',
+    updatedAt: '2026-09-01T10:00:00.000Z',
+    deletedAt: null,
+    ...fields,
+  });
+
+  const setsIn = (from, to) => `GET http://api.test/sets?from=${from}&to=${to}`;
+
+  /** O serie bieżącego okresu ekran pyta jednym żądaniem, a nie po cyklu. */
+  const PERIOD_SETS = setsIn(shift(-3), shift(3));
+
+  const withCycle = (cycles, sets) => {
+    const phone = sandbox(SETTINGS);
+    phone.routes['GET http://api.test/cycles'] = { status: 200, body: cycles };
+    phone.routes[PERIOD_SETS] = { status: 200, body: sets };
+    phone.routes['GET http://api.test/exercises'] = { status: 200, body: LIBRARY };
+    phone.routes['GET http://api.test/tags'] = { status: 200, body: TAGS };
+    return phone;
+  };
+
+  it('cel na ćwiczenie mówi, ile serii zostało do zrobienia', async () => {
+    const phone = withCycle(
+      [cycle([goal({ exerciseId: MATCH.exerciseId, target: 4 })])],
+      [set({}), set({ id: 'set-2', performedOn: shift(-1) })],
+    );
+
+    phone.fire('ready');
+    await phone.settle();
+
+    assert.equal(phone.last().STATUS, STATUS.READY);
+    assert.equal(phone.last().TITLE, 'Cycle: 1 to do');
+    assert.equal(phone.last().BODY, 'Bench press: 2 sets');
+  });
+
+  it('cel tagowy podpowiada ćwiczenia, którymi ten tag w cyklu bywa robiony', async () => {
+    // Przysiad ma inny tag główny, więc ani nie zalicza celu, ani nie trafia
+    // między podpowiedzi — tag dodatkowy serii nie zalicza, tak samo jak w rdzeniu.
+    const phone = withCycle(
+      [cycle([goal({ tagId: CHEST_TAG, target: 6 })])],
+      [
+        set({ id: 'set-1' }),
+        set({ id: 'set-2' }),
+        set({ id: 'set-3' }),
+        set({ id: 'set-4', exerciseId: DIP_ID }),
+        set({ id: 'set-5', exerciseId: SQUAT_ID }),
+      ],
+    );
+
+    phone.fire('ready');
+    await phone.settle();
+
+    assert.equal(phone.last().TITLE, 'Cycle: 1 to do');
+    assert.equal(phone.last().BODY, 'Chest: 2 sets (Bench press, Dip)');
+  });
+
+  it('najbliżej ukończenia najpierw — z trzech wierszy najwięcej warta jest ta pozycja', async () => {
+    const phone = withCycle(
+      [
+        cycle([
+          goal({ id: 'goal-1', exerciseId: MATCH.exerciseId, target: 4 }),
+          goal({ id: 'goal-2', exerciseId: SQUAT_ID, target: 2 }),
+        ]),
+      ],
+      [set({}), set({ id: 'set-2', exerciseId: SQUAT_ID })],
+    );
+
+    phone.fire('ready');
+    await phone.settle();
+
+    assert.equal(phone.last().TITLE, 'Cycle: 2 to do');
+    assert.equal(phone.last().BODY, 'Squat: 1 set\nBench press: 3 sets');
+  });
+
+  it('cel czasowy mówi, ile czasu zostało', async () => {
+    const phone = withCycle(
+      [cycle([goal({ metric: 'duration', exerciseId: MATCH.exerciseId, target: 1800 })])],
+      [set({ durationS: 600 })],
+    );
+
+    phone.fire('ready');
+    await phone.settle();
+
+    assert.equal(phone.last().BODY, 'Bench press: 20:00');
+  });
+
+  it('cykl o stałej długości liczy bieżący okres, a nie miniony', async () => {
+    // Koniec minął cztery dni temu, więc kolejny okres tej samej długości
+    // zaczął się sam — seria z poprzedniego okresu już się do niego nie zalicza.
+    const phone = withCycle(
+      [
+        cycle([goal({ exerciseId: MATCH.exerciseId, target: 3 })], {
+          startsOn: shift(-10),
+          endsOn: shift(-4),
+        }),
+      ],
+      [set({}), set({ id: 'set-old', performedOn: shift(-5) })],
+    );
+
+    phone.fire('ready');
+    await phone.settle();
+
+    assert.equal(phone.last().BODY, 'Bench press: 2 sets');
+  });
+
+  it('domknięty cykl wraca do dzisiejszych serii, bez drugiego pytania o serie', async () => {
+    const phone = withCycle(
+      [cycle([goal({ exerciseId: MATCH.exerciseId, target: 1 })])],
+      [set({})],
+    );
+
+    phone.fire('ready');
+    await phone.settle();
+
+    assert.equal(phone.last().TITLE, 'Today: 1 set');
+    assert.equal(phone.last().BODY, 'Bench press: 82.5 kg x 8');
+    assert.equal(phone.calls.filter((call) => call.key === SETS_TODAY).length, 0);
+  });
+
+  it('cykl, który się jeszcze nie zaczął, nie wchodzi na ekran', async () => {
+    const phone = withCycle(
+      [cycle([goal({ exerciseId: MATCH.exerciseId })], { startsOn: shift(3), endsOn: shift(10) })],
+      [set({})],
+    );
+
+    phone.fire('ready');
+    await phone.settle();
+
+    assert.equal(phone.last().TITLE, 'Ready');
+  });
+
+  it('nieudane pytanie o cykle zostawia ekran z dzisiejszymi seriami', async () => {
+    const phone = withCycle([cycle([goal({ exerciseId: MATCH.exerciseId })])], [set({})]);
+    phone.routes['GET http://api.test/cycles'] = { status: 500, body: {} };
+    phone.routes[SETS_TODAY] = { status: 200, body: [set({})] };
+
+    phone.fire('ready');
+    await phone.settle();
+
+    assert.equal(phone.last().STATUS, STATUS.READY);
+    assert.equal(phone.last().TITLE, 'Today: 1 set');
+  });
+
+  it('nazwy tagów jadą raz, a nie przy każdym wejściu na ekran', async () => {
+    const phone = withCycle([cycle([goal({ tagId: CHEST_TAG })])], [set({})]);
+
+    phone.fire('ready');
+    await phone.settle();
+    phone.fire('ready');
+    await phone.settle();
+
+    assert.equal(phone.calls.filter((call) => call.key === 'GET http://api.test/tags').length, 1);
+    assert.equal(phone.last().BODY, 'Chest: 3 sets (Bench press)');
   });
 });
