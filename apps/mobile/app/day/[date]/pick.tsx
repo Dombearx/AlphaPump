@@ -8,11 +8,15 @@
 
 import { isIsoDate } from '@alphapump/core';
 import { Redirect, useLocalSearchParams } from 'expo-router';
+import { expoExerciseOrderStore } from '../../../src/exercise-order/expo';
 import { PickExerciseScreen } from '../../../src/screens/pick-exercise';
 
 export default function PickExerciseRoute() {
   const { date } = useLocalSearchParams<{ date: string }>();
 
   if (!isIsoDate(date)) return <Redirect href="/" />;
-  return <PickExerciseScreen day={date} />;
+  // Magazyn ustawienia wstrzykuje trasa, a nie ekran: to jedyna warstwa, która
+  // dotyka Expo, więc ekran zostaje sprawdzalny poza telefonem — tak samo jak
+  // przy języku i tapecie.
+  return <PickExerciseScreen day={date} orderStore={expoExerciseOrderStore} />;
 }
