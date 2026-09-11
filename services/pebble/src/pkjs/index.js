@@ -67,6 +67,18 @@ var NAMES_KEY = 'alphapump-exercise-names';
 var TODAY_LINES = 3;
 
 /**
+ * Ile bajtów treści przyjmie zegarek — tyle, ile ma `MAX_BODY` w `src/c/main.c`,
+ * bez miejsca na kończące zero. Liczą się **bajty**, a nie znaki: komunikaty
+ * serwera są po polsku, a każde „ż" zajmuje w UTF-8 dwa.
+ *
+ * Przycięcie jest tu ostatnią deską ratunku dla treści, które nie mają końca
+ * (strona błędu z proxy potrafi mieć kilobajty) — wiadomość większa niż skrzynka
+ * zegarka nie doszłaby wcale, a wtedy zamiast długiego błędu widać byłoby jego
+ * brak.
+ */
+var MAX_BODY_BYTES = 511;
+
+/**
  * Limit czasu jednego żądania. Krótszy niż limit zegarka (40 s), żeby to **my**
  * powiedzieli, co się stało — komunikat „serwer nie odpowiada" jest wart więcej
  * niż cisza, po której zegarek sam się poddaje.
@@ -135,9 +147,32 @@ function readNames() {
  */
 var screens = 0;
 
+/** Ile bajtów zajmie znak w UTF-8. Pary zastępcze liczą się z zapasem. */
+function charBytes(code) {
+  if (code < 0x80) return 1;
+  if (code < 0x800) return 2;
+  return 3;
+}
+
+/**
+ * Treść skrojona do skrzynki zegarka — w jednym przebiegu, bo po drugiej stronie
+ * bywa cała strona HTML od proxy.
+ */
+function fit(text) {
+  var total = 0;
+
+  for (var i = 0; i < text.length; i++) {
+    total += charBytes(text.charCodeAt(i));
+    // Trzy bajty zostawiamy na wielokropek, który mówi, że to jeszcze nie koniec.
+    if (total > MAX_BODY_BYTES - 3) return text.slice(0, i) + '…';
+  }
+
+  return text;
+}
+
 function reply(status, title, body) {
   screens += 1;
-  Pebble.sendAppMessage({ STATUS: status, TITLE: title, BODY: body || '' });
+  Pebble.sendAppMessage({ STATUS: status, TITLE: title, BODY: body ? fit(body) : '' });
 }
 
 /**
@@ -298,9 +333,41 @@ function latest(sets, names) {
 /* ------------------------------------------------------------------- sieć */
 
 /**
+ * Nieudana odpowiedź serwera, słowo w słowo.
+ *
+ * Na zegarku stoi **cała** treść błędu — kod stanu, stabilny kod błędu, zdanie
+ * od serwera i szczegóły, jeśli je dołożył. Aplikacji używają sami piszący ten
+ * serwer, więc komunikat techniczny jest tu wart więcej niż uproszczony: samo
+ * „The server answered 500." mówiło tylko tyle, że coś padło, choć odpowiedź
+ * wiedziała, co dokładnie.
+ *
+ * Gdy odpowiedź nie jest naszym błędem — nie da się jej przeczytać jako JSON,
+ * bo to strona od proxy albo pusta treść — zostaje kod stanu i surowe ciało.
+ * Też mówi więcej niż nic: po nim widać, że odpowiedział ktoś inny niż API.
+ */
+function serverProblem(status, body, raw) {
+  var error = body && body.error;
+  var problem = 'HTTP ' + status;
+
+  if (error && typeof error.code === 'string') problem += ' ' + error.code;
+
+  if (error && typeof error.message === 'string' && error.message.length > 0) {
+    problem += ': ' + error.message;
+  } else if (body === null && typeof raw === 'string' && raw.length > 0) {
+    problem += ': ' + raw;
+  }
+
+  // Szczegóły niosą to, czego nie da się powiedzieć zdaniem — np. które pole
+  // odrzuciła walidacja.
+  if (error && error.details !== undefined) problem += ' ' + JSON.stringify(error.details);
+
+  return problem;
+}
+
+/**
  * Jedno żądanie do API.
  *
- * `done(problem, body, retryable)` — `problem` jest gotowym zdaniem dla
+ * `done(problem, body, retryable)` — `problem` jest gotową treścią dla
  * użytkownika albo `null`. Tłumaczenie kodów na zdania jest tutaj, a nie
  * w wołających, bo to samo 401 znaczy wszędzie to samo: token do wymiany.
  *
@@ -333,25 +400,27 @@ function request(method, path, payload, done) {
       done(null, body, false);
       return;
     }
+
+    var problem = serverProblem(xhr.status, body, xhr.responseText);
+
+    // Do pełnej treści dochodzi zdanie o tym, co z nią zrobić — bo dwa kody
+    // stanu znaczą tu coś, czego z nich samych nie widać.
     if (xhr.status === 401 || xhr.status === 403) {
-      done('The API token was rejected — make a new one in the phone app.', null, false);
+      done(
+        problem + ' — the API token was rejected, make a new one in the phone app.',
+        null,
+        false
+      );
       return;
     }
     // 503 jest tu decyzją administratora („dyktowanie wyłączone"), a nie awarią,
     // która minie — dlatego jedyne 5xx bez ponowienia.
     if (xhr.status === 503) {
-      done('Dictation is switched off on the server.', null, false);
+      done(problem + ' — dictation is switched off on the server.', null, false);
       return;
     }
 
-    // Komunikat serwera jest po polsku i pisany dla ludzi, więc przy błędzie
-    // walidacji mówi więcej niż sam kod. Przy pozostałych zostaje kod.
-    var message = body && body.error && body.error.message;
-    done(
-      xhr.status === 400 && message ? message : 'The server answered ' + xhr.status + '.',
-      null,
-      xhr.status >= 500
-    );
+    done(problem, null, xhr.status >= 500);
   };
 
   xhr.ontimeout = function () {

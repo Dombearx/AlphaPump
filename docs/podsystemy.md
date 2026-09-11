@@ -282,6 +282,11 @@ zatrzymuje nieudaną operację, a zegarek pokazuje ekran z ponowieniem pod
 bez wracania do mikrofonu. Przy błędzie walidacji, martwym tokenie i wyłączonym
 dyktowaniu ponowienia nie ma, bo oddałoby dokładnie tę samą odpowiedź.
 
+Na ekranie błędu stoi **pełna** odpowiedź serwera: kod stanu, kod błędu, zdanie
+i szczegóły, a gdy odpowiedział nie API, tylko proxy — jego surowa treść.
+Aplikacji używają sami piszący ten serwer, więc komunikat techniczny prowadzi tu
+do naprawy szybciej niż uproszczony, a dłuższy niż ekran przewija `DOWN`.
+
 Testy ma **połowa telefonowa** — to w niej siedzi cała decyzyjność, a chodzi
 w Node, więc idzie osobnym zadaniem w `ci.yml` (`node --test`, na atrapach
 `Pebble`, `localStorage` i XHR-a). Watchappa w C nie sprawdza żaden test, ale

@@ -55,6 +55,7 @@ tytuł.
 | -------- | --------------------------------------------------------------------- |
 | SELECT   | dyktowanie; gdy seria czeka na potwierdzenie — zapis; po awarii — ponowienie |
 | UP       | **sprawdzenie połączenia** (`GET /health`, potem `GET /me`)            |
+| DOWN     | przewinięcie treści, gdy nie mieści się na ekranie — z dołu wraca na górę |
 | BACK     | odrzucenie czekającej serii lub ponowienia, a poza tym wyjście z aplikacji |
 
 Wibracja mówi to samo co ekran, tylko do kieszeni: jedno pulsnięcie — zapisane,
@@ -71,6 +72,26 @@ Ponowienia nie ma tam, gdzie powtórzenie oddałoby dokładnie tę samą odpowie
 przy błędzie walidacji, martwym tokenie i wyłączonym na serwerze dyktowaniu.
 Wtedy zostaje zwykły ekran błędu, bo przycisk, który niczego nie zmienia, jest
 gorszy niż jego brak. `BACK` odkłada ponowienie i wraca do ekranu głównego.
+
+### Co widać na ekranie błędu
+
+**Całą odpowiedź serwera**, a nie jej streszczenie: kod stanu, kod błędu, zdanie
+napisane przez serwer i szczegóły, jeśli je dołożył — czyli
+`HTTP 400 bad_request: Ćwiczenie nie przyjmuje ciężaru {"field":"weightG"}`.
+Gdy odpowiedziało coś innego niż API (strona błędu od proxy), widać jej surową
+treść — bo po niej właśnie poznać, że to nie API odpowiedziało.
+
+Jest to świadome odwrócenie zwykłej reguły o komunikatach dla ludzi: aplikacji
+używają wyłącznie osoby, które ten serwer piszą, a dla nich nazwa kodu błędu
+prowadzi do naprawy szybciej niż uprzejme zdanie o tym, że coś poszło nie tak.
+Tam, gdzie sam kod stanu nie mówi, co zrobić — 401 i 403 (token do wymiany),
+503 (dyktowanie wyłączone na serwerze) — zdanie dochodzi **za** pełną treścią,
+zamiast ją zastępować.
+
+Dłuższy komunikat nie mieści się na ekranie zegarka i przewija się go `DOWN`,
+ekranem naraz. Bufor zegarka ma 512 bajtów (`MAX_BODY` w `src/c/main.c`);
+tego, co dłuższe, telefon nie przycina po cichu, tylko kończy wielokropkiem —
+wiadomość większa niż skrzynka nie doszłaby wcale.
 
 ### Sprawdzenie połączenia
 
@@ -152,7 +173,7 @@ Kto buduje dla siebie i wie, co ma na ręce, może zostawić w `package.json` je
 pozycję i skrócić budowanie czterokrotnie.
 
 Z samego AlphaPumpa nie ma tu **niczego**: ani bazy, ani biblioteki ćwiczeń, ani
-rekordów, ani synchronizacji. Watchapp to 388 linii C, w których nie pada nawet
+rekordów, ani synchronizacji. Watchapp to 486 linii C, w których nie pada nawet
 słowo „ćwiczenie" — on zbiera zdanie i pokazuje odpowiedź. Wszystko, co wie
 o dziedzinie, wie serwer.
 
