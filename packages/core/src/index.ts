@@ -23,6 +23,7 @@ export * from './duplicates.js';
 export * from './voice.js';
 export * from './cycles.js';
 export * from './suggestions.js';
+export * from './rotation.js';
 export * from './schemas.js';
 export * from './rejections.js';
 export * from './sync.js';

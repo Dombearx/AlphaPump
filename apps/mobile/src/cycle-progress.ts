@@ -251,7 +251,21 @@ export function tagCycleProgress(
   summaries: readonly CycleSummary[],
   day: IsoDate,
 ): ReadonlyMap<string, number> {
-  /** Na tag: na metrykę para „zrobione / do zrobienia". */
+  return goalProgressBy(summaries, day, (row) => row.tagId ?? row.exercisePrimaryTagId);
+}
+
+/**
+ * Udział wykonania pozycji celu zsumowany po dowolnym kluczu — wspólny rdzeń
+ * `tagCycleProgress` i `cycleNeeds`. Klucz wybiera `keyOf`; pozycja, dla której
+ * wychodzi `null`, nie wchodzi do żadnej sumy. Reguły sumowania opisuje
+ * `tagCycleProgress`, bo to dla niego powstały.
+ */
+function goalProgressBy(
+  summaries: readonly CycleSummary[],
+  day: IsoDate,
+  keyOf: (row: CycleGoalRow) => string | null,
+): ReadonlyMap<string, number> {
+  /** Na klucz: na metrykę para „zrobione / do zrobienia". */
   const work = new Map<string, Map<GoalMetric, { current: number; target: number }>>();
 
   for (const { cycle, progress } of activeCycleSummaries(summaries, day)) {
@@ -259,13 +273,13 @@ export function tagCycleProgress(
       const row = cycle.goals.find((candidate) => candidate.id === goal.goalId);
       if (row === undefined) continue;
 
-      const tagId = row.tagId ?? row.exercisePrimaryTagId;
-      if (tagId === null) continue;
+      const key = keyOf(row);
+      if (key === null) continue;
 
-      let byMetric = work.get(tagId);
+      let byMetric = work.get(key);
       if (byMetric === undefined) {
         byMetric = new Map();
-        work.set(tagId, byMetric);
+        work.set(key, byMetric);
       }
 
       const sum = byMetric.get(goal.metric) ?? { current: 0, target: 0 };
@@ -276,13 +290,41 @@ export function tagCycleProgress(
   }
 
   return new Map(
-    [...work].map(([tagId, byMetric]) => {
+    [...work].map(([key, byMetric]) => {
       const ratios = [...byMetric.values()].map((sum) =>
         sum.target === 0 ? 1 : Math.min(sum.current / sum.target, 1),
       );
-      return [tagId, ratios.reduce((total, ratio) => total + ratio, 0) / ratios.length];
+      return [key, ratios.reduce((total, ratio) => total + ratio, 0) / ratios.length];
     }),
   );
+}
+
+/**
+ * Ile **zostało** w aktywnych cyklach — wejście algorytmu układającego listę
+ * ćwiczeń (patrz `rotation.ts` w rdzeniu). Jedynka znaczy „ani jednej serii",
+ * zero — „zrobione" albo „żaden aktywny cykl o to nie prosi".
+ *
+ * Pozycja wskazująca wprost ćwiczenie trafia **wyłącznie** do `byExercise`,
+ * a nie dodatkowo do tagu głównego tego ćwiczenia — inaczej „6 serii
+ * podciągnięć" podbijałoby całe plecy, czyli także te ćwiczenia, którymi tej
+ * pozycji nie da się zaliczyć. Chips tagu pokazuje to szerzej (patrz
+ * `tagCycleProgress`) i tak ma zostać: tam chodzi o „gdzie szukać", a tu
+ * o „co wykonać".
+ */
+export interface CycleNeeds {
+  byTag: ReadonlyMap<string, number>;
+  byExercise: ReadonlyMap<string, number>;
+}
+
+export function cycleNeeds(summaries: readonly CycleSummary[], day: IsoDate): CycleNeeds {
+  return {
+    byTag: remainder(goalProgressBy(summaries, day, (row) => row.tagId)),
+    byExercise: remainder(goalProgressBy(summaries, day, (row) => row.exerciseId)),
+  };
+}
+
+function remainder(progress: ReadonlyMap<string, number>): ReadonlyMap<string, number> {
+  return new Map([...progress].map(([key, ratio]) => [key, 1 - ratio]));
 }
 
 /** Ile z pozycji zostało — do podpisu pod skrótem i pod paskiem postępu. */

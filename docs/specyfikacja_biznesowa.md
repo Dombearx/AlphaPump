@@ -175,6 +175,24 @@ W widoku dodawania serii tagi objęte pozycjami celu aktywnego cyklu są oznaczo
 
 Każda zapisana seria jest automatycznie dopasowywana przez system do wszystkich pasujących cykli. 
 
+### Kolejność ćwiczeń na liście
+
+Lista ćwiczeń w widoku dodawania serii ma odpowiadać na pytanie, z którym użytkownik na nią wchodzi: **co wykonać teraz**. Na górze stoją więc ćwiczenia, które jednocześnie domykają braki aktywnych cykli i angażują partie jak najbardziej rozdzielne z tymi, które użytkownik obciążył ostatnimi seriami tego dnia. Typowy trening to dwa ćwiczenia wykonywane na zmianę, seria za serią, więc po serii jednego z nich na górze listy ma stanąć to drugie, a po jego serii — z powrotem pierwsze. Wynika to wyłącznie z serii zapisanych tego dnia: aplikacja nie prowadzi żadnego osobnego planu treningu ani nie pamięta niczego między wejściami na ekran.
+
+Reguły doboru:
+- liczy się brak w pozycji celu **aktywnego** cyklu — wskazującej wprost to ćwiczenie albo jego tag główny — i tym mocniej, im więcej w tej pozycji zostało,
+- ćwiczenie dzielące tagi z tym, co wykonano przed chwilą, idzie niżej; ostatnio wykonane ćwiczenie waży najmocniej, a każde wcześniejsze z tego dnia coraz słabiej,
+- wspólny tag główny odsuwa mocniej niż wspólny tag dodatkowy — seria na triceps zaraz po serii na plecy mocno angażującej triceps jest serią wykonaną w słabości,
+- kolejne serie tego samego ćwiczenia pod rząd liczą się jak jedno jego wykonanie,
+- pierwsze wejście w danym dniu nie ma z czego liczyć rozdzielności, więc rozstrzygają same braki w cyklu,
+- rozdzielność partii działa także bez żadnego cyklu — wtedy jest jedynym kryterium.
+
+Ćwiczenia oznaczone tagiem cardio są z tego doboru **wyłączone**: nie są podpowiadane, ale nie są też spychane na dół listy. Cardio jest osobną kategorią treningu i dobieranie go po partiach mięśniowych nie ma sensu, a zakopanie go pod listą siłową zabierałoby drogę do zapisania serii komuś, kto właśnie wrócił z biegu.
+
+Kolejność, w jakiej ćwiczenia stały wcześniej — najczęściej wykonywane przez użytkownika na górze — nie znika: rozstrzyga remisy, czyli całą listę poza kilkoma pozycjami wyciągniętymi na górę. Przy wybranym filtrze tagu dobór jest wyłączony, bo filtr jest wskazaniem użytkownika, czego szuka. Lista nie dostaje z tego tytułu żadnego nowego elementu interfejsu — ani znacznika przy wierszu, ani osobnej sekcji: odpowiedzią na „co teraz wykonać" jest jej pierwszy wiersz.
+
+W ustawieniach stoi przełącznik wyłączający cały ten dobór i przywracający kolejność po liczbie własnych serii. Domyślnie dobór jest włączony.
+
 ## Kalendarz
 
 Aplikacja ma zawierać widok kalendarza z widokiem miesiąca i tygodnia. W kafelku dnia ma być widoczna liczba zapisanych serii dla tego dnia.  [play.google](https://play.google.com/store/apps/details?id=com.github.jamesgay.fitnotes&hl=en_US)
@@ -427,6 +445,8 @@ Przykładowe kryteria akceptacyjne dla MVP:
 - równoległa praca na dwóch urządzeniach offline nie powoduje po synchronizacji ani utraty serii, ani duplikatów,
 - cykl poprawnie zlicza serie, czas lub dystans zgodnie z definicją celu,
 - po usunięciu serii postęp cyklu zmniejsza się odpowiednio,
+- lista ćwiczeń przy dodawaniu serii stawia na górze ćwiczenia domykające braki aktywnych cykli, a po zapisaniu serii proponuje ćwiczenie angażujące możliwie rozdzielne partie — tak, że dwa ćwiczenia robione na zmianę podpowiadają się naprzemiennie,
+- ćwiczeń cardio ten dobór nie podpowiada, a przełącznik w ustawieniach przywraca kolejność po liczbie własnych serii,
 - po dodaniu serii rekordowej użytkownik dostaje informację o rekordzie,
 - wykres ćwiczenia pokazuje historię odpowiednich metryk,
 - kalendarz pokazuje liczbę serii dla każdego dnia, a kafelek dnia jest podświetlony tym mocniej, im więcej serii tego dnia zapisano,
