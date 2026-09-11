@@ -15,6 +15,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { Buffer } from 'node:buffer';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { beforeEach, describe, it } from 'node:test';
@@ -131,7 +132,9 @@ function sandbox(stored = null) {
       }
 
       this.status = route.status;
-      this.responseText = JSON.stringify(route.body ?? {});
+      // `text` jest dla odpowiedzi, których nie da się przeczytać jako JSON —
+      // strony błędu od proxy stojącego przed API.
+      this.responseText = route.text ?? JSON.stringify(route.body ?? {});
       // Odpowiedź przychodzi po zdaniu sterowania, tak jak prawdziwa.
       void Promise.resolve().then(() => this.onload());
     }
@@ -475,14 +478,14 @@ describe('ponowienie nieudanej wysyłki', () => {
     const phone = await recognised(sandbox(SETTINGS));
     phone.routes['POST http://api.test/sets'] = {
       status: 400,
-      body: { error: { message: 'Ćwiczenie nie przyjmuje ciężaru' } },
+      body: { error: { code: 'bad_request', message: 'Ćwiczenie nie przyjmuje ciężaru' } },
     };
 
     phone.fire('appmessage', { payload: { COMMAND: COMMAND.SAVE } });
     await phone.settle();
 
     assert.equal(phone.last().STATUS, STATUS.ERROR);
-    assert.equal(phone.last().BODY, 'Ćwiczenie nie przyjmuje ciężaru');
+    assert.equal(phone.last().BODY, 'HTTP 400 bad_request: Ćwiczenie nie przyjmuje ciężaru');
   });
 
   it('martwy token i wyłączone dyktowanie prowadzą do ustawień, a nie do ponowień', async () => {
@@ -534,6 +537,73 @@ describe('ponowienie nieudanej wysyłki', () => {
 
     assert.equal(phone.saves(), afterFailure);
     assert.equal(phone.last().STATUS, STATUS.READY);
+  });
+});
+
+describe('pełna treść błędu na zegarku', () => {
+  /** Tyle bajtów treści przyjmuje `MAX_BODY` w `src/c/main.c`. */
+  const MAX_BODY_BYTES = 511;
+
+  const failing = async (route) => {
+    const phone = sandbox(SETTINGS);
+    phone.routes['POST http://api.test/voice/text'] = route;
+    phone.fire('appmessage', { payload: { TRANSCRIPT: 'bench press 82.5 for 8' } });
+    await phone.settle();
+    return phone.last();
+  };
+
+  it('awaria serwera mówi, co się stało, a nie samo „answered 500"', async () => {
+    // Zgłoszenie #119: aplikacji używają sami piszący ten serwer, więc kod błędu
+    // i zdanie od serwera są tu warte więcej niż uproszczony komunikat.
+    const screen = await failing({
+      status: 500,
+      body: { error: { code: 'internal', message: 'Model nie odpowiedział w czasie' } },
+    });
+
+    assert.equal(screen.STATUS, STATUS.RETRY);
+    assert.equal(screen.BODY, 'HTTP 500 internal: Model nie odpowiedział w czasie');
+  });
+
+  it('szczegóły odpowiedzi jadą razem ze zdaniem', async () => {
+    const screen = await failing({
+      status: 400,
+      body: {
+        error: { code: 'bad_request', message: 'Nieprawidłowe dane', details: { field: 'reps' } },
+      },
+    });
+
+    assert.equal(screen.BODY, 'HTTP 400 bad_request: Nieprawidłowe dane {"field":"reps"}');
+  });
+
+  it('odrzucony token pokazuje odpowiedź serwera i to, co z nią zrobić', async () => {
+    const screen = await failing({
+      status: 401,
+      body: { error: { code: 'unauthorized', message: 'Token API jest nieważny' } },
+    });
+
+    assert.match(screen.BODY, /^HTTP 401 unauthorized: Token API jest nieważny/);
+    assert.match(screen.BODY, /new one in the phone app/);
+  });
+
+  it('odpowiedź nie od API pokazuje się tak, jak przyszła', async () => {
+    // Przed API stoi Caddy, a jego strona błędu nie jest JSON-em — bez surowej
+    // treści zostałby sam kod stanu i pytanie, kto właściwie odpowiedział.
+    const screen = await failing({ status: 502, text: '<html>502 Bad Gateway</html>' });
+
+    assert.equal(screen.BODY, 'HTTP 502: <html>502 Bad Gateway</html>');
+  });
+
+  it('treść dłuższa niż skrzynka zegarka dojeżdża przycięta, a nie wcale', async () => {
+    // Wiadomość większa niż bufor zegarka nie doszłaby w całości — a wtedy
+    // zamiast długiego błędu widać byłoby jego brak.
+    const screen = await failing({
+      status: 500,
+      body: { error: { code: 'internal', message: 'żółć '.repeat(400) } },
+    });
+
+    assert.ok(Buffer.byteLength(screen.BODY, 'utf8') <= MAX_BODY_BYTES);
+    assert.ok(screen.BODY.endsWith('…'));
+    assert.match(screen.BODY, /^HTTP 500 internal: żółć/);
   });
 });
 
