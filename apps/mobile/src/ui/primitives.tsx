@@ -10,7 +10,7 @@
  * ekran ma być spójny, a nie konfigurowalny.
  */
 
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -161,9 +161,28 @@ export type FieldProps = {
    * jednopikselowe pole szukania.
    */
   grow?: boolean;
+  /**
+   * Pole hasła: znaki zakryte, a obok nich przełącznik podglądu. Kropki bronią
+   * przed czytaniem przez ramię, ale zabierają jedyny sposób sprawdzenia, co
+   * naprawdę zostało wpisane — na telefonie, gdzie literówka w haśle bierze się
+   * z klawiatury wielkości palca, jest to droga zamiana.
+   */
+  secureTextEntry?: boolean;
 } & React.ComponentProps<typeof TextInput>;
 
-export function Field({ label, unit, hint, grow = false, ...input }: FieldProps) {
+export function Field({
+  label,
+  unit,
+  hint,
+  grow = false,
+  secureTextEntry = false,
+  ...input
+}: FieldProps) {
+  // Podgląd dotyczy jednego pola i jednej chwili, więc stan siedzi tutaj,
+  // a nie u wywołującego: ekran z dwoma polami hasła odsłania każde osobno,
+  // a wyjście z ekranu odsłonięcie kasuje. Kropki wracają same.
+  const [revealed, setRevealed] = useState(false);
+
   return (
     <View className={`gap-1 ${grow ? 'flex-1' : ''}`}>
       <SectionTitle>{label}</SectionTitle>
@@ -176,9 +195,34 @@ export function Field({ label, unit, hint, grow = false, ...input }: FieldProps)
           className="flex-1 py-4 text-lg text-text"
           placeholderTextColor={COLORS.muted}
           selectionColor={COLORS.accent}
+          // Zakryte pole wyłącza podpowiedzi klawiatury samo; odkryte już nie,
+          // a wtedy autokorekta potrafi podmienić hasło na słowo ze słownika
+          // albo zrobić wielką literę na starcie. Stoi przed rozwinięciem
+          // `input`, więc wywołujący nadal może to nadpisać.
+          {...(secureTextEntry
+            ? { autoCapitalize: 'none' as const, autoCorrect: false, spellCheck: false }
+            : {})}
           {...input}
+          // Po rozwinięciu, bo to jest wartość wyliczona z podglądu, a nie
+          // przepisana od wywołującego. Pole zostaje to samo — przełączamy
+          // właściwość, zamiast podmieniać dwa pola, bo podmiana gubi kursor
+          // i zamyka klawiaturę w połowie pisania.
+          secureTextEntry={secureTextEntry && !revealed}
         />
         {unit !== undefined && unit.length > 0 && <Text className="pl-2 text-muted">{unit}</Text>}
+        {secureTextEntry && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ selected: revealed }}
+            accessibilityLabel={revealed ? 'Hide password' : 'Show password'}
+            onPress={() => setRevealed((shown) => !shown)}
+            className="py-4 pl-3 active:opacity-70"
+          >
+            <Text className="text-sm uppercase tracking-wide text-accent">
+              {revealed ? 'Hide' : 'Show'}
+            </Text>
+          </Pressable>
+        )}
       </View>
       {hint !== undefined && <Text className="text-xs text-muted">{hint}</Text>}
     </View>
