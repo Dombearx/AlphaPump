@@ -28,7 +28,7 @@ Aplikacja ma obsługiwać dwie metody logowania:
 - Google,
 - e-mail + hasło.
 
-Potwierdzenie adresu e-mail nie jest wymagane. Reset hasła przez e-mail nie jest częścią MVP, więc logowanie e-mail + hasło nie wymaga na starcie wdrażania procesu odzyskiwania hasła. 
+Potwierdzenie adresu e-mail nie jest wymagane. Reset hasła przez e-mail nie jest częścią MVP, więc logowanie e-mail + hasło nie wymaga na starcie wdrażania procesu odzyskiwania hasła. Odzyskanie dostępu do konta przechodzi przez administratora: nadaje on hasło tymczasowe z panelu i przekazuje je poza systemem, a użytkownik ustawia sobie własne przy pierwszym logowaniu — do tego czasu aplikacja nie pokazuje mu nic poza formularzem hasła. 
 
 Każdy użytkownik może wygenerować wiele tokenów API. Tokeny służą do korzystania z API poza interfejsem aplikacji, na przykład przez bota Discord działającego w tym samym VPN. 
 
@@ -385,6 +385,9 @@ MVP zawiera prosty panel administracyjny. Panel służy do podstawowego zarządz
 
 Zakres panelu administracyjnego obejmuje:
 - zarządzanie użytkownikami,
+- reset hasła użytkownika: administrator nadaje hasło tymczasowe, kopiuje je jednorazowo z panelu
+  i przekazuje właścicielowi konta, a ten przy najbliższym logowaniu ustawia sobie własne. Jest to
+  zastępnik resetu przez e-mail, którego MVP nie ma — serwer nie ma czym wysłać wiadomości,
 - podstawowe zarządzanie bazą ćwiczeń,
 - podstawowe zarządzanie tagami,
 - podstawowy wgląd w dane systemowe,

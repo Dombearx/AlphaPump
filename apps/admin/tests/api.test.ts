@@ -22,7 +22,9 @@ import {
   mergeExercises,
   pruneTombstones,
   request,
+  resetUserPassword,
   restoreExercise,
+  setOwnPassword,
   updateExercise,
 } from '../src/lib/api';
 import { z } from 'zod';
@@ -59,6 +61,7 @@ const USER = {
   banReason: null,
   setCount: 3,
   exerciseCount: 1,
+  passwordResetAt: null,
   createdAt: '2026-08-01T08:00:00.000Z',
   updatedAt: '2026-08-01T08:00:00.000Z',
   deletedAt: null,
@@ -116,6 +119,32 @@ describe('request', () => {
 });
 
 describe('mutacje', () => {
+  it('reset hasła idzie POST-em i oddaje hasło jawne', async () => {
+    const fake = fakeFetch(200, {
+      userId: USER.id,
+      email: USER.email,
+      password: 'k7np-3rtq-w9xm-2vhd',
+      issuedAt: '2026-09-12T09:00:00.000Z',
+    });
+
+    const result = await resetUserPassword(USER.id, fake.impl);
+
+    expect(fake.calls[0]?.url).toContain(`/admin/users/${USER.id}/reset-password`);
+    expect(fake.calls[0]?.init.method).toBe('POST');
+    expect(result.password).toBe('k7np-3rtq-w9xm-2vhd');
+  });
+
+  it('ustawienie własnego hasła idzie POST-em na /me/password i nie oczekuje treści', async () => {
+    const fake = fakeFetch(204, null);
+
+    await expect(setOwnPassword('moje-wlasne-haslo', fake.impl)).resolves.toBeUndefined();
+
+    const call = fake.calls[0];
+    expect(call?.url).toContain('/me/password');
+    expect(call?.init.method).toBe('POST');
+    expect(call?.init.body).toBe(JSON.stringify({ newPassword: 'moje-wlasne-haslo' }));
+  });
+
   it('zmiana ćwiczenia idzie PATCH-em z samą łatką', async () => {
     const fake = fakeFetch(200, {
       id: '22222222-2222-4222-8222-222222222222',

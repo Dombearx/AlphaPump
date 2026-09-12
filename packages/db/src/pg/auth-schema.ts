@@ -165,8 +165,41 @@ export const rateLimits = pgTable(
   (table) => [uniqueIndex('rate_limits_key_unique').on(table.key)],
 );
 
+/**
+ * Hasło tymczasowe czekające na zmianę.
+ *
+ * Wiersz istnieje dokładnie tak długo, jak długo konto loguje się hasłem
+ * nadanym przez administratora z panelu: zakłada go reset hasła, a kasuje
+ * pierwsze ustawienie własnego hasła przez właściciela konta. Obecność wiersza
+ * jest więc całą flagą „to konto musi ustawić sobie hasło" — nie ma osobnej
+ * kolumny z powtórzoną tą samą informacją.
+ *
+ * Osobna tabela, a nie kolumna w `users`, i to nie jest kwestia gustu: tabela
+ * użytkowników **schodzi pullem na telefony** (aplikacja potrzebuje nicków do
+ * rekordów globalnych), więc flaga w niej rozesłałaby wszystkim informację
+ * o tym, które konto ma właśnie hasło tymczasowe. Tutaj nie schodzi nigdzie —
+ * jak reszta tabel autoryzacji.
+ *
+ * Samego hasła w tej tabeli nie ma i być nie może: jawną wartość widzi
+ * administrator raz, w odpowiedzi na żądanie resetu, a w bazie zostaje wyłącznie
+ * jej hash w `accounts.password`. Zapisanie go tutaj zamieniłoby wygodę
+ * („podejrzę jeszcze raz") w tabelę haseł do odczytu.
+ */
+export const passwordResets = pgTable('password_resets', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  /**
+   * Kto nadał hasło. `set null` zamiast kaskady: usunięcie konta
+   * administratora nie ma prawa skasować cudzej flagi wymuszonej zmiany.
+   */
+  issuedBy: text('issued_by').references(() => users.id, { onDelete: 'set null' }),
+  issuedAt: instant('issued_at').notNull().defaultNow(),
+});
+
 export type SessionRow = typeof sessions.$inferSelect;
 export type AccountRow = typeof accounts.$inferSelect;
 export type VerificationRow = typeof verifications.$inferSelect;
 export type ApiKeyRow = typeof apiKeys.$inferSelect;
 export type RateLimitRow = typeof rateLimits.$inferSelect;
+export type PasswordResetRow = typeof passwordResets.$inferSelect;

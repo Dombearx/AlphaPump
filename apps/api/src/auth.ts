@@ -12,7 +12,9 @@
  *   uwierzytelnienie peerów zapewnia WireGuard pod spodem.
  * - **`requireEmailVerification: false`.** Potwierdzanie adresu nie jest
  *   wymaganiem, a reset hasła przez e-mail jest poza zakresem MVP — serwer nie
- *   ma więc czym wysłać wiadomości i nie udaje, że ma.
+ *   ma więc czym wysłać wiadomości i nie udaje, że ma. Odzyskanie dostępu idzie
+ *   przez administratora: hasło tymczasowe nadane z panelu i zmieniane przy
+ *   pierwszym logowaniu (`routes/admin.ts`, `routes/me.ts`, `passwords.ts`).
  *
  * Identyfikatory kont są UUIDv7, a nie domyślnymi napisami better-auth, bo
  * `users.id` wchodzi do klucza deterministycznego identyfikatora ćwiczenia.
@@ -24,6 +26,7 @@ import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { admin, bearer } from 'better-auth/plugins';
 import { v7 as uuidv7 } from 'uuid';
+import { MIN_PASSWORD_LENGTH } from '@alphapump/core';
 import { accounts, apiKeys, rateLimits, sessions, users, verifications } from '@alphapump/db/pg';
 import type { AppConfig } from './config.js';
 import type { Database } from './db.js';
@@ -69,7 +72,9 @@ export function createAuth(db: Database, config: AppConfig) {
       enabled: true,
       requireEmailVerification: false,
       autoSignIn: true,
-      minPasswordLength: 8,
+      // Jedna stała dla całego systemu: tej samej pilnuje formularz nowego
+      // hasła po resecie i generator hasła tymczasowego.
+      minPasswordLength: MIN_PASSWORD_LENGTH,
     },
 
     /**

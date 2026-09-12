@@ -10,6 +10,7 @@
 
 import { sessionCookie } from '../auth/client';
 import { appConfig } from '../config/index';
+import { createAccountClient } from './account';
 import { createRemoteReader } from './read-only';
 import { createVoiceClient } from './voice';
 
@@ -24,6 +25,16 @@ export const remoteReader = createRemoteReader({
  * jest **tylko do odczytu** i ma tak zostać: tu w żądaniu jedzie plik.
  */
 export const voiceClient = createVoiceClient({
+  baseUrl: appConfig.apiUrl,
+  cookie: sessionCookie,
+});
+
+/**
+ * Stan konta po stronie serwera — w tej chwili wyłącznie po to, żeby telefon
+ * wiedział, czy konto ma hasło tymczasowe do zmiany. Znowu obok czytnika i z
+ * tych samych dwóch rzeczy: adresu API i sesji czytanej przy każdym żądaniu.
+ */
+export const accountClient = createAccountClient({
   baseUrl: appConfig.apiUrl,
   cookie: sessionCookie,
 });
