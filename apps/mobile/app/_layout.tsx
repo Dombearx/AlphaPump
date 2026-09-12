@@ -24,15 +24,19 @@ import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { installConsoleCapture, installGlobalErrorCapture } from '../src/app-log';
+import { useSession } from '../src/auth/client';
+import { usePasswordGate } from '../src/auth/use-password-gate';
 import { expoBackgroundStore } from '../src/background/expo';
 import { BackgroundProvider, useAppBackground } from '../src/background/provider';
 import { appConfig, isGoogleSignInConfigured } from '../src/config/index';
 import { DatabaseProvider } from '../src/db/provider';
 import { expoLanguageStore } from '../src/language/expo';
 import { LanguageProvider } from '../src/language/provider';
+import { accountClient } from '../src/remote/reader';
 import { SyncProvider } from '../src/sync/provider';
 import { COLORS } from '../src/theme';
 import { AppBackdrop } from '../src/ui/background';
+import { PasswordGate } from '../src/ui/password-gate';
 import { UpdatePrompt } from '../src/ui/update-prompt';
 
 // Jak najwcześniej, żeby żaden log ani wyjątek wystrzelony podczas startu
@@ -74,6 +78,11 @@ export default function RootLayout() {
               nikt nie jest zalogowany — czyli dokładnie wtedy, gdy nowsze wydanie
               bywa lekarstwem. */}
             <UpdatePrompt />
+            {/* Nad bazą i synchronizacją z tego samego powodu co okno
+                aktualizacji: konto z hasłem nadanym przez kogoś innego ma
+                zobaczyć prośbę o jego zmianę niezależnie od tego, czy migracje
+                przeszły i czy jest z czym się synchronizować. */}
+            <PasswordChange />
             <DatabaseProvider>
               {/* Silnik synchronizacji stoi **wewnątrz** bazy, a nie obok niej:
                 wymiana danych pisze do tych samych tabel, więc nie ma prawa
@@ -87,6 +96,19 @@ export default function RootLayout() {
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
+}
+
+/**
+ * Wymuszona zmiana hasła tymczasowego.
+ *
+ * Osobny komponent, bo hak pyta serwer i musi mieć identyfikator zalogowanego
+ * konta — a `useSession` wywołane w `RootLayout` przerysowywałoby przy każdej
+ * zmianie sesji całą aplikację razem z bazą i silnikiem synchronizacji.
+ */
+function PasswordChange() {
+  const { data: session } = useSession();
+  const gate = usePasswordGate(accountClient, session?.user.id ?? null);
+  return <PasswordGate gate={gate} />;
 }
 
 function AppStack() {

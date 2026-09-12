@@ -1,22 +1,26 @@
 /**
  * Rama panelu: nawigacja i bramka dostępu.
  *
- * Bramka jest **dwustopniowa** i oba stopnie są potrzebne. Pierwszy to sesja: bez
- * niej pokazujemy logowanie. Drugi to rola, sprawdzana zapytaniem `GET /me`, a nie
- * odczytem z sesji — rola jest polem konta i może zostać odebrana w trakcie
- * trwania sesji. Panel bez tego sprawdzenia wyświetlałby administratorowi
- * pozbawionemu roli komplet ekranów, na których każde żądanie odbija się o 403.
+ * Bramka jest **trzystopniowa** i każdy stopień jest potrzebny. Pierwszy to
+ * sesja: bez niej pokazujemy logowanie. Drugi to hasło: konto z hasłem
+ * tymczasowym nadanym przez administratora widzi wyłącznie ekran jego zmiany,
+ * bo „zalogowany" znaczy w tym stanie „zalogowany hasłem, które zna ktoś inny".
+ * Trzeci to rola, sprawdzana zapytaniem `GET /me`, a nie odczytem z sesji — rola
+ * jest polem konta i może zostać odebrana w trakcie trwania sesji. Panel bez
+ * tego sprawdzenia wyświetlałby administratorowi pozbawionemu roli komplet
+ * ekranów, na których każde żądanie odbija się o 403.
  *
  * Sprawdzenie po stronie panelu **nie jest** zabezpieczeniem — uprawnień pilnuje
  * API przy każdym żądaniu. Jest komunikatem: „nie masz dostępu" zamiast pięciu
  * ekranów z błędami.
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Outlet, useRouterState } from '@tanstack/react-router';
 import { Button, Card, Loading, Problem } from './ui';
 import { getMe } from '../lib/api';
 import { signOut, useSession } from '../lib/auth';
+import { SetPasswordPage } from '../pages/set-password';
 import { SignInPage } from '../pages/sign-in';
 import { cn } from '../lib/cn';
 
@@ -30,6 +34,7 @@ const NAV = [
 ] as const;
 
 export function Layout() {
+  const queryClient = useQueryClient();
   const { data: session, isPending } = useSession();
   const me = useQuery({
     queryKey: ['me'],
@@ -57,6 +62,18 @@ export function Layout() {
           </Button>
         </Card>
       </main>
+    );
+  }
+
+  // Przed rolą, bo dotyczy poświadczenia, a nie uprawnień: hasło tymczasowe
+  // zmienia się tak samo administratorowi, jak i każdemu innemu.
+  if (me.data.mustChangePassword) {
+    return (
+      <SetPasswordPage
+        onDone={() => {
+          void queryClient.invalidateQueries({ queryKey: ['me'] });
+        }}
+      />
     );
   }
 

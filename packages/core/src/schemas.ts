@@ -88,6 +88,34 @@ export const userSchema = z
 
 export type User = z.infer<typeof userSchema>;
 
+/**
+ * Najkrótsze dopuszczalne hasło — ta sama liczba, którą better-auth dostaje
+ * w `emailAndPassword.minPasswordLength`.
+ *
+ * Stała jest tutaj, bo pilnują jej **trzy** miejsca: konfiguracja better-auth
+ * (rejestracja i logowanie), generator hasła tymczasowego w API i formularz
+ * ustawienia własnego hasła. Wpisana z ręki w każdym z nich rozjechałaby się
+ * przy pierwszej zmianie — a rozjazd wyszedłby dopiero komuś, kto próbuje
+ * ustawić hasło i dostaje odmowę bez powodu.
+ */
+export const MIN_PASSWORD_LENGTH = 8;
+
+/**
+ * Ustawienie własnego hasła po resecie wykonanym przez administratora
+ * (`POST /me/password`).
+ *
+ * Nie ma tu `currentPassword` i to jest cała różnica względem zwykłej zmiany
+ * hasła w better-auth: tamta potwierdza tożsamość starym hasłem, a ta jest
+ * dostępna **wyłącznie** dla konta z hasłem tymczasowym — czyli takiego, którego
+ * stare hasło zna administrator, bo sam je przed chwilą nadał. Pytanie o nie
+ * niczego by nie dowiodło.
+ */
+export const setOwnPasswordInputSchema = z.object({
+  newPassword: z.string().min(MIN_PASSWORD_LENGTH).max(128),
+});
+
+export type SetOwnPasswordInput = z.infer<typeof setOwnPasswordInputSchema>;
+
 /* ----------------------------------------------------------------------- tag */
 
 export const tagSchema = z

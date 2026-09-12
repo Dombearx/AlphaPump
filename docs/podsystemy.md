@@ -527,8 +527,48 @@ każdym żądaniu), lecz komunikatem: „brak uprawnień" zamiast pięciu ekran�
 Ćwiczeniami i tagami panel zarządza **istniejącymi** endpointami CRUD — osobna
 ścieżka zapisu byłaby drugim miejscem, w którym trzeba pamiętać o tombstonie,
 `server_seq` i o regule „tag używany przez ćwiczenia nie znika". Własne endpointy
-`/admin/*` dostały tylko te trzy rzeczy, których nigdzie indziej nie ma: lista
-i edycja kont, liczby systemowe i porządkowanie cache'u re-rankera.
+`/admin/*` dostały tylko te cztery rzeczy, których nigdzie indziej nie ma: lista
+i edycja kont, reset hasła konta, liczby systemowe i porządkowanie cache'u
+re-rankera.
+
+### Reset hasła
+
+Poczty ten stos nie ma, więc „przypomnij hasło" nie ma jak do nikogo dojść.
+Zamiast tego `POST /admin/users/:id/reset-password` nadaje kontu hasło
+**tymczasowe**, a panel pokazuje je raz, do skopiowania — administrator
+przekazuje je właścicielowi konta dowolnym kanałem, a ten ustawia sobie własne
+przy najbliższym logowaniu (`POST /me/password`, bez pytania o stare hasło: zna
+je ten, kto je nadał).
+
+Co się przy tym dzieje i dlaczego:
+
+- **Hasło jawne istnieje wyłącznie w tej jednej odpowiedzi.** W bazie zostaje
+  hash w `accounts`, a tabela `password_resets` niesie samą informację „to konto
+  ma hasło do zmiany" wraz z datą i autorem resetu. Zgubione hasło znaczy
+  „zresetuj jeszcze raz", i tak ma zostać — inaczej byłaby to tabela haseł do
+  odczytu.
+- **Sesje konta znikają.** Bez tego reset nic nie znaczyłby dla telefonu, który
+  jest już zalogowany — a to zwykle jest ten telefon, o który chodzi. Klucze API
+  zostają: to poświadczenie bota, a nie kopia hasła.
+- **Konto po Google dostaje przy okazji logowanie hasłem** (wcześniej nie miało
+  wiersza z hasłem, więc reset nie miałby czego zmienić); logowanie Google
+  działa dalej.
+- **Flaga jest w osobnej tabeli, nie w `users`.** Tabela użytkowników schodzi
+  pullem na telefony (nicki do rekordów globalnych), więc kolumna w niej
+  rozesłałaby wszystkim informację o tym, kto ma właśnie hasło tymczasowe.
+- **Własnego hasła tędy się nie resetuje** — reset kasuje sesje, więc
+  administrator wylogowałby się w chwili, w której panel pokazuje mu hasło do
+  przepisania. Konta systemowego nie dotyczy w ogóle, jak reszty operacji na
+  kontach.
+
+Wymuszenie zmiany jest po stronie klientów: `GET /me` niesie
+`mustChangePassword`, a panel i aplikacja pokazują wtedy **wyłącznie** formularz
+nowego hasła. Odcinanie na to każdego endpointu kosztowałoby zapytanie do bazy
+przy każdym żądaniu — także przy każdej paczce synchronizacji — a chroniłoby
+jedynie przed kimś, kto omija własną aplikację, żeby dłużej używać hasła, które
+i tak zna administrator. Telefon bez łączności nie blokuje niczego: nie ma jak
+sprawdzić stanu hasła, a zapisywanie serii offline jest ważniejsze niż
+natychmiastowość tej prośby.
 
 Biblioteka jest w panelu **kompletna**: dodawanie, zmiana i usuwanie ćwiczeń
 razem z tagiem głównym, tagami dodatkowymi, siłownią i notatką, oraz dodawanie,
