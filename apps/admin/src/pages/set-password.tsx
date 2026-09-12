@@ -15,7 +15,7 @@
 import { useMutation } from '@tanstack/react-query';
 import { MIN_PASSWORD_LENGTH } from '@alphapump/core';
 import { useState } from 'react';
-import { Button, Card, Field, Input, Problem } from '../components/ui';
+import { Button, Card, Field, PasswordInput, Problem } from '../components/ui';
 import { setOwnPassword } from '../lib/api';
 import { signOut } from '../lib/auth';
 
@@ -51,8 +51,7 @@ export function SetPasswordPage({ onDone }: { onDone: () => void }) {
           }}
         >
           <Field label="Nowe hasło" hint={`Minimum ${String(MIN_PASSWORD_LENGTH)} znaków.`}>
-            <Input
-              type="password"
+            <PasswordInput
               autoComplete="new-password"
               autoFocus
               value={password}
@@ -61,8 +60,7 @@ export function SetPasswordPage({ onDone }: { onDone: () => void }) {
             />
           </Field>
           <Field label="Powtórz hasło">
-            <Input
-              type="password"
+            <PasswordInput
               autoComplete="new-password"
               value={repeat}
               onChange={(event) => setRepeat(event.target.value)}
