@@ -10,7 +10,8 @@ import { describe, expect, it } from 'vitest';
 import {
   applyVoiceVerdict,
   carryOverLastSet,
-  isRepsOnlyVerdict,
+  isExerciselessVerdict,
+  matchSpokenExercise,
   voiceSetResponseSchema,
   voiceSetVerdictSchema,
   type VoiceExercise,
@@ -41,6 +42,7 @@ const RUN: VoiceExercise = {
 
 const verdict = (overrides: Partial<VoiceSetVerdict> = {}): VoiceSetVerdict => ({
   exerciseIndex: 0,
+  exerciseName: 'Wyciskanie sztangi leżąc',
   weightKg: null,
   reps: null,
   durationS: null,
@@ -123,7 +125,7 @@ describe('applyVoiceVerdict', () => {
   });
 });
 
-describe('uzupełnianie samej liczby powtórzeń', () => {
+describe('uzupełnianie zdania bez nazwy ćwiczenia', () => {
   const TODAY = '2026-08-31';
 
   const recentSet = (overrides: Partial<VoiceRecentSet> = {}): VoiceRecentSet => ({
@@ -134,22 +136,26 @@ describe('uzupełnianie samej liczby powtórzeń', () => {
     ...overrides,
   });
 
-  it('sama liczba powtórzeń to werdykt bez ćwiczenia i bez innych pomiarów', () => {
-    expect(isRepsOnlyVerdict(verdict({ exerciseIndex: null, reps: 8 }))).toBe(true);
-    // Nazwa padła, więc uzupełniać nie ma czego — model wskazał ćwiczenie sam.
-    expect(isRepsOnlyVerdict(verdict({ exerciseIndex: 0, reps: 8 }))).toBe(false);
-    // Ciężar padł, więc zdanie nie było „samą liczbą".
-    expect(isRepsOnlyVerdict(verdict({ exerciseIndex: null, reps: 8, weightKg: 80 }))).toBe(false);
-    expect(isRepsOnlyVerdict(verdict({ exerciseIndex: null, reps: null }))).toBe(false);
+  const nameless = (overrides: Partial<VoiceSetVerdict> = {}): VoiceSetVerdict =>
+    verdict({ exerciseIndex: null, exerciseName: null, reps: 8, ...overrides });
+
+  it('zdanie bez nazwy to werdykt bez ćwiczenia, ale z liczbami', () => {
+    expect(isExerciselessVerdict(nameless())).toBe(true);
+    // Ciężar podany w zdaniu niczego nie zmienia: nazwa dalej nie padła.
+    expect(isExerciselessVerdict(nameless({ weightKg: 80 }))).toBe(true);
+    // Nazwa padła, choć model nie wskazał pozycji — to jest przypadek dla
+    // dopasowania po nazwie, a nie dla historii.
+    expect(isExerciselessVerdict(verdict({ exerciseIndex: null, exerciseName: 'przysiat' }))).toBe(
+      false,
+    );
+    // Model wskazał ćwiczenie sam — nie ma czego uzupełniać.
+    expect(isExerciselessVerdict(verdict({ exerciseIndex: 0, reps: 8 }))).toBe(false);
+    // Zdanie bez jednej liczby nie jest serią.
+    expect(isExerciselessVerdict(nameless({ reps: null }))).toBe(false);
   });
 
   it('dopisuje ćwiczenie i ciężar z ostatniej serii tego treningu', () => {
-    const carried = carryOverLastSet(
-      [PLANK, BENCH],
-      [recentSet()],
-      verdict({ exerciseIndex: null, reps: 8 }),
-      TODAY,
-    );
+    const carried = carryOverLastSet([PLANK, BENCH], [recentSet()], nameless(), TODAY);
 
     if (carried === null) throw new Error('spodziewano się uzupełnionego werdyktu');
 
@@ -169,34 +175,47 @@ describe('uzupełnianie samej liczby powtórzeń', () => {
         recentSet({ measurements: { weightG: 85_000, reps: 6, durationS: null, distanceM: null } }),
         recentSet(),
       ],
-      verdict({ exerciseIndex: null, reps: 8 }),
+      nameless(),
       TODAY,
     );
 
     expect(carried).toMatchObject({ weightKg: 85 });
   });
 
-  it('nie sięga po serię z poprzedniego treningu', () => {
-    expect(
-      carryOverLastSet(
-        [BENCH],
-        [recentSet({ performedOn: '2026-08-30' })],
-        verdict({ exerciseIndex: null, reps: 8 }),
-        TODAY,
-      ),
-    ).toBeNull();
+  it('nie nadpisuje ciężaru, który padł w zdaniu', () => {
+    // „Jeszcze osiem na siedemdziesiąt" — ćwiczenie z historii, ciężar z ust.
+    const carried = carryOverLastSet([BENCH], [recentSet()], nameless({ weightKg: 70 }), TODAY);
+
+    expect(carried).toMatchObject({ exerciseIndex: 0, weightKg: 70, reps: 8 });
+  });
+
+  it('sięga po serię z poprzedniego treningu i podpisuje ją datą', () => {
+    // Dzień nie jest warunkiem: kto nie powiedział, co robi, robi dalej to samo.
+    // Warunkiem był i kosztował trening po północy oraz pierwszą serię dnia.
+    const carried = carryOverLastSet(
+      [BENCH],
+      [recentSet({ performedOn: '2026-08-30' })],
+      nameless(),
+      TODAY,
+    );
+
+    expect(carried).toMatchObject({ exerciseIndex: 0, weightKg: 80 });
+    expect(carried?.reason).toContain('2026-08-30');
+  });
+
+  it('bez dnia z urządzenia uzupełnia tak samo', () => {
+    expect(carryOverLastSet([BENCH], [recentSet()], nameless())).toMatchObject({
+      exerciseIndex: 0,
+      reps: 8,
+    });
   });
 
   it('bez żadnej wcześniejszej serii nie ma z czego uzupełnić', () => {
-    expect(
-      carryOverLastSet([BENCH], [], verdict({ exerciseIndex: null, reps: 8 }), TODAY),
-    ).toBeNull();
+    expect(carryOverLastSet([BENCH], [], nameless(), TODAY)).toBeNull();
   });
 
   it('ćwiczenie spoza listy podanej modelowi nie ma jak zostać wskazane', () => {
-    expect(
-      carryOverLastSet([PLANK], [recentSet()], verdict({ exerciseIndex: null, reps: 8 }), TODAY),
-    ).toBeNull();
+    expect(carryOverLastSet([PLANK], [recentSet()], nameless(), TODAY)).toBeNull();
   });
 
   it('ćwiczenie bez ciężaru dopisuje się bez niego', () => {
@@ -209,11 +228,69 @@ describe('uzupełnianie samej liczby powtórzeń', () => {
           measurements: { weightG: null, reps: null, durationS: 60, distanceM: null },
         }),
       ],
-      verdict({ exerciseIndex: null, reps: 8 }),
+      nameless(),
       TODAY,
     );
 
     expect(carried).toMatchObject({ exerciseIndex: 0, weightKg: null });
+  });
+});
+
+/**
+ * Nazwa przekręcona przez rozpoznawanie mowy.
+ *
+ * To jest warstwa, która ratuje dyktowanie wtedy, gdy model powiedział „nie
+ * wiem": deterministyczna, bez sieci i bez kosztu, a przy tym ostrożna —
+ * wskazuje wyłącznie nazwę, która **w całości** znalazła się w tym, co
+ * powiedziano.
+ */
+describe('matchSpokenExercise', () => {
+  const library = [BENCH, PLANK, RUN];
+
+  it('wybacza literówkę i odmianę', () => {
+    expect(matchSpokenExercise(library, 'wyciskanei sztangi leżąc')).toBe(0);
+    expect(matchSpokenExercise(library, 'wyciskanie sztangą leżac')).toBe(0);
+    expect(matchSpokenExercise(library, 'deska')).toBe(1);
+    expect(matchSpokenExercise(library, 'bieg')).toBe(2);
+  });
+
+  it('wybacza literówkę w słowie krótkim, gdzie same trigramy nie wystarczają', () => {
+    expect(matchSpokenExercise(library, 'bensh press')).toBe(0);
+    expect(matchSpokenExercise(library, 'plonk')).toBe(1);
+  });
+
+  it('szuka nazwy wewnątrz całego zdania, pomijając liczby', () => {
+    expect(matchSpokenExercise(library, 'bench press 80 na 8')).toBe(0);
+    expect(matchSpokenExercise(library, 'zrobiłem deskę 60 sekund')).toBe(1);
+  });
+
+  it('nie wskazuje niczego, gdy nazwa nie padła albo padła w kawałku', () => {
+    expect(matchSpokenExercise(library, 'osiem powtórzeń')).toBeNull();
+    // Sam człon „wyciskanie" to w bibliotece początek kilkunastu nazw —
+    // i dlatego nazwa musi paść w całości, a nie w większości.
+    expect(matchSpokenExercise(library, 'wyciskanie')).toBeNull();
+    expect(matchSpokenExercise(library, 'wyciskanie leżąc')).toBeNull();
+    expect(matchSpokenExercise(library, '')).toBeNull();
+    expect(matchSpokenExercise([], 'deska')).toBeNull();
+  });
+
+  it('woli nazwę, która zgodziła się większą liczbą członów', () => {
+    const SQUAT: VoiceExercise = {
+      exerciseId: '00000000-0000-4000-8000-000000000004',
+      name: 'Przysiad',
+      loggingType: 'weight_reps',
+      aliases: [],
+    };
+    const BULGARIAN: VoiceExercise = {
+      exerciseId: '00000000-0000-4000-8000-000000000005',
+      name: 'Przysiad bułgarski',
+      loggingType: 'weight_reps',
+      aliases: [],
+    };
+
+    expect(matchSpokenExercise([SQUAT, BULGARIAN], 'przysiad bułgarski 20 na 10')).toBe(1);
+    // A samo „przysiad" zostaje przysiadem: nazwa dłuższa nie jest pokryta.
+    expect(matchSpokenExercise([SQUAT, BULGARIAN], 'przysiad 100 na 5')).toBe(0);
   });
 });
 

@@ -174,9 +174,42 @@ niż jedna kartka, dostaje **dalszy ciąg** tego samego porządku — najwyżej
 zdanie o pokazanym wycinku, a nie o bibliotece, więc odesłanie użytkownika do
 listy przed sprawdzeniem reszty byłoby przedwczesne. Kolejna kartka kosztuje
 jedno wywołanie modelu i płaci się je wyłącznie przy nietrafieniu; kartka
-krótsza od limitu kończy pytanie, bo znaczy koniec biblioteki. Sama liczba
-powtórzeń („jeszcze osiem") jest z tego wyjęta — tam nazwa ćwiczenia w ogóle nie
-padła, więc żadna kartka jej nie zawiera.
+krótsza od limitu kończy pytanie, bo znaczy koniec biblioteki. Zdanie bez nazwy
+ćwiczenia („jeszcze osiem") jest z tego wyjęte — tam nazwa w ogóle nie padła,
+więc żadna kartka jej nie zawiera.
+
+### Nazwa przekręcona przez rozpoznawanie mowy
+
+Każde zdanie przychodzi tu z rozpoznawania mowy — z zegarka albo z klawiatury
+telefonu — więc nazwa ćwiczenia regularnie różni się od tej z biblioteki jednym
+znakiem („bensz pres", „przysiat"). Model, któremu **nie wolno zgadywać**,
+odpowiadał na to „nie wiem, o które ćwiczenie chodzi", chociaż ćwiczenie stało
+na liście, a żaden człowiek nie miałby wątpliwości. Odpowiedzią są dwie rzeczy
+naraz:
+
+- **werdykt niesie osobno numer i osobno usłyszaną nazwę** (`exerciseName`).
+  Numer mówi, **które** to ćwiczenie; nazwa — czy użytkownik w ogóle jakieś
+  wymienił. Bez tego rozróżnienia „nie rozpoznałem nazwy" i „nazwy nie było"
+  wyglądały tak samo, a wymagają przeciwnych reakcji;
+- **nazwa, która padła, ale nie trafiła w żadną pozycję, jest szukana jeszcze
+  raz — bez modelu.** `matchSpokenExercise` w rdzeniu porównuje ją z nazwami
+  z listy (kanonicznymi i obcojęzycznymi) **po słowach**, wybaczając literówkę:
+  człony zalicza `tokenCloseness`, czyli maksimum z podobieństwa trigramowego
+  i odległości edycyjnej — bo w słowie krótkim („bieg", „bench") same trigramy
+  po jednej literówce spadają poniżej każdego sensownego progu.
+
+Dopasowanie po nazwie wymaga **całej** nazwy z biblioteki: każdy jej człon musi
+mieć w zdaniu swój odpowiednik. Pokrycie częściowe wyglądałoby na hojniejsze,
+a kosztowałoby nie to ćwiczenie — „wyciskanie … leżąc" pokrywa w dwóch trzecich
+„Wyciskanie francuskie leżąc", czyli ruch na triceps, o którym nikt nie mówił.
+Ta warstwa naprawia więc **pisownię**, a skróty i synonimy zostają dla modelu,
+który widzi całą listę naraz. Sam prompt też został rozdzielony: przekręcona
+nazwa to nazwa do wskazania, a `null` zostaje dla zdania pasującego równie
+dobrze do kilku pozycji albo do żadnej.
+
+Kolejne kartki biblioteki przechodzą przez to samo dopasowanie **przed**
+pytaniem modelu — jest darmowe i rozstrzyga dokładnie ten przypadek, dla którego
+po dalszą kartkę się sięga.
 
 Dyktowanie, które nie trafiło w żadne ćwiczenie, zostawia po sobie wpis
 `dyktowanie bez dopasowania` w logu serwera — z transkrypcją, liczbą pozycji
@@ -190,18 +223,29 @@ z jednym przekręconym znakiem trafiłby w cudze ćwiczenie, a numer spoza zakre
 odrzuca `applyVoiceVerdict` w rdzeniu. Tam też wycinane są pomiary spoza osi typu
 logowania („dwadzieścia powtórzeń deski") i przeliczane kilogramy na gramy.
 
-Jeden kształt werdyktu domyka jeszcze serwer: **sama liczba powtórzeń**. „Osiem"
-rzucone między seriami znaczy „to samo ćwiczenie i ten sam ciężar, co przed
-chwilą" — model nie ma z czego tego wskazać, a uzupełniać z historii mu nie
-wolno (robiłby to także wtedy, gdy nazwę usłyszał i jej nie rozpoznał). Dlatego
-werdykt bez ćwiczenia, bez ciężaru i z samymi powtórzeniami rozpoznaje
-`isRepsOnlyVerdict`, a ćwiczenie i ciężar dopisuje `carryOverLastSet`
-z **ostatniej serii tego dnia** — odczytem z bazy, nie domysłem. Dzień jedzie
-w żądaniu (`performedOn` w `POST /voice/text`), bo należy do urządzenia: tylko
-ono wie, czy trwa jeszcze ten sam trening. Bez takiej serii — pierwsza seria
-dnia albo klient, który dnia nie przysłał — `match` zostaje pusty, a `reason`
-mówi, czego zabrakło. Korzysta z tego dziś zegarek; aplikacja pola nie wysyła,
-więc działa jak dotąd.
+Jeden kształt werdyktu domyka jeszcze serwer: **zdanie bez nazwy ćwiczenia**.
+„Osiem" albo „jeszcze osiem na siedemdziesiąt" rzucone między seriami znaczy
+„dalej to samo, co przed chwilą" — model nie ma z czego tego wskazać,
+a uzupełniać z historii mu nie wolno (robiłby to także wtedy, gdy nazwę usłyszał
+i jej nie rozpoznał). Dlatego werdykt bez numeru i bez usłyszanej nazwy, ale
+z liczbami, rozpoznaje `isExerciselessVerdict`, a ćwiczenie dopisuje
+`carryOverLastSet` z **ostatniej zapisanej serii** — odczytem z bazy, nie
+domysłem. Ciężar dokłada się wyłącznie tam, gdzie go nie podano: „jeszcze osiem"
+bierze ciężar poprzedniej serii, „jeszcze osiem na siedemdziesiąt" zostaje przy
+siedemdziesięciu.
+
+Dzień z urządzenia (`performedOn` w `POST /voice/text`) nie jest tu **warunkiem**,
+tylko treścią komunikatu: seria z innego dnia zostaje w `reason` podpisana swoją
+datą, żeby było widać, skąd wzięło się ćwiczenie, którego użytkownik nie
+wymienił. Warunkiem był i kosztował dokładnie te sytuacje, w których ta reguła
+miała działać — trening po północy, zegarek liczący dzień inaczej niż serwer,
+pierwsza seria dyktowana po dłuższej przerwie. Bez **żadnej** zapisanej serii
+nie ma z czego uzupełniać: `match` zostaje pusty, a `reason` mówi, czego
+zabrakło.
+
+Nazwa, która padła i w nic nie trafiła, jest czymś przeciwnym i tak też się
+kończy — pytaniem do użytkownika. Podstawienie pod nią ćwiczenia z historii
+zapisałoby serię pod czymś, o czym nie mówił.
 
 **Serwer nie zapisuje serii** — oddaje transkrypcję i wypełniony formularz.
 Zapis dzieje się na telefonie i tylko tam, a co się dzieje po rozpoznaniu,
@@ -279,10 +323,11 @@ Rozdzielenie tych dwóch jest całym sensem tego przycisku — pierwszy podejrza
 przy „nie działa" to czysty HTTP przepuszczany przez cudzą aplikację.
 
 Zegarek dokłada do rozpoznania jedno pole: **dzień** (`performedOn`), ten sam,
-który pojedzie za chwilę w `POST /sets`. Dzięki niemu dyktowanie samej liczby
-powtórzeń — „osiem" między seriami — dostaje ćwiczenie i ciężar z poprzedniej
-serii tego treningu, zamiast kończyć się pytaniem „o które ćwiczenie chodzi".
-Przy pierwszej serii dnia uzupełniać nie ma z czego i zegarek pokazuje to wprost.
+który pojedzie za chwilę w `POST /sets`. Zdanie bez nazwy ćwiczenia — „osiem"
+rzucone między seriami — dostaje ćwiczenie z ostatniej zapisanej serii, zamiast
+kończyć się pytaniem „o które ćwiczenie chodzi"; dzień rozstrzyga tylko o tym,
+czy komunikat pokaże datę tamtej serii. Bez ani jednej wcześniejszej serii
+uzupełniać nie ma z czego i zegarek pokazuje to wprost.
 
 Reguła „model nie zapisuje sam" obowiązuje tu tak samo jak w telefonie: po
 rozpoznaniu zegarek domyślnie pokazuje serię i czeka na naciśnięcie, a zapis bez

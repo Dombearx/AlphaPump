@@ -921,10 +921,11 @@ function recognise(text) {
   retry = null;
   reply(STATUS.WORKING, 'Recognising…', text);
 
-  // Dzień jedzie razem ze zdaniem, a nie dopiero przy zapisie: po nim serwer
-  // poznaje, czy sama liczba powtórzeń („osiem") należy jeszcze do tego samego
-  // treningu, co poprzednia seria — i tylko wtedy dopisuje do niej ćwiczenie
-  // i ciężar. Jest to ten sam dzień, który za chwilę pojedzie w `POST /sets`.
+  // Dzień jedzie razem ze zdaniem, a nie dopiero przy zapisie: zdanie bez nazwy
+  // ćwiczenia („osiem") dostaje je z ostatniej zapisanej serii, a dzień mówi
+  // serwerowi, czy tamta seria jest z tego samego treningu — czyli czy podpisać
+  // ją w komunikacie datą. Jest to ten sam dzień, który za chwilę pojedzie
+  // w `POST /sets`.
   var heard = { text: text, performedOn: today() };
 
   request('POST', '/voice/text', heard, function (problem, body, retryable) {

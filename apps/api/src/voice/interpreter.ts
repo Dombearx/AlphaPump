@@ -21,6 +21,23 @@
  * kosztuje jedno naciśnięcie — użytkownik wybiera z listy tak jak dotąd.
  * Seria dopisana do nie tego ćwiczenia kosztuje rekord, wykres i pozycję
  * w rankingu, a zauważa się ją tygodnie później.
+ *
+ * Nie znaczy to jednak „nie wskazuj przy najmniejszej wątpliwości", a dokładnie
+ * tak model tę regułę czytał: nazwa przekręcona przez rozpoznawanie mowy
+ * o jeden znak (a stamtąd przychodzi **każde** zdanie — z zegarka i z klawiatury
+ * telefonu) kończyła się odpowiedzią „nie wiem", chociaż ćwiczenie stało na
+ * liście i żaden człowiek nie miałby wątpliwości, o które chodzi. Dlatego prompt
+ * rozdziela dwie rzeczy, które wcześniej były jedną: **przekręconą nazwę**,
+ * przy której trzeba wskazać pozycję, i **nazwę niejednoznaczną**, przy której
+ * `null` dalej jest jedyną uczciwą odpowiedzią.
+ *
+ * ## Dlaczego model przepisuje usłyszaną nazwę osobnym polem
+ *
+ * Bo to jest jedyny sposób, żeby serwer odróżnił „nie rozpoznałem nazwy"
+ * od „nazwy w ogóle nie było". Pierwsze idzie do dopasowania po podobieństwie
+ * (`matchSpokenExercise`), drugie — do uzupełnienia z poprzedniej serii
+ * (`carryOverLastSet`). Bez tego pola oba wyglądały tak samo i oba kończyły się
+ * pytaniem do użytkownika.
  */
 
 import { voiceSetVerdictSchema, type VoiceExercise, type VoiceRecentSet } from '@alphapump/core';
@@ -53,8 +70,23 @@ const SYSTEM_PROMPT = [
   'Wskazujesz **numer** ćwiczenia z listy i wyciągasz liczby: ciężar w kilogramach,',
   'powtórzenia, czas w sekundach, dystans w metrach.',
   'Nowych ćwiczeń nie wymyślasz — wolno wskazać wyłącznie pozycję z listy.',
-  'Kiedy żadna nie pasuje albo nagranie jest niejednoznaczne, podajesz `null`',
-  'zamiast zgadywać: pomyłka w ćwiczeniu kosztuje więcej niż pytanie do użytkownika.',
+  'Transkrypcja pochodzi z rozpoznawania mowy na zegarku albo na klawiaturze',
+  'telefonu, więc nazwy bywają przekręcone, odmienione, skrócone albo zapisane',
+  'fonetycznie („bensz pres", „przysiat", „martwy ciong", „lat pull down").',
+  'Nazwę, która brzmi albo wygląda jak jedna pozycja z listy, wskazujesz —',
+  'literówka, końcówka fleksyjna, skrót i potoczna nazwa to ta sama nazwa.',
+  'Wskazujesz też wtedy, gdy nazwa z nagrania jest krótsza od pełnej nazwy',
+  'z listy, a pasuje tylko do niej („wyciskanie sztangi" przy jednym wyciskaniu',
+  'sztangi na liście).',
+  '`null` zostawiasz dla dwóch sytuacji: nagranie pasuje **równie dobrze** do',
+  'kilku pozycji (wtedy pytanie do użytkownika jest jedyną uczciwą odpowiedzią)',
+  'albo nie przypomina żadnej. Pomyłka w ćwiczeniu kosztuje więcej niż pytanie,',
+  'ale „nie wiem" przy jednej oczywistej kandydatce kosztuje zaufanie do całej funkcji.',
+  'W `exerciseName` przepisujesz nazwę ćwiczenia **tak, jak padła w nagraniu** —',
+  'zawsze, także wtedy, gdy nie wskazałeś numeru; `null` wpisujesz tam wyłącznie',
+  'wtedy, gdy w nagraniu nie padła żadna nazwa ćwiczenia („jeszcze osiem",',
+  '„osiemdziesiąt na dziesięć"). Aplikacja dopisze wtedy ćwiczenie z poprzedniej',
+  'serii sama — nie rób tego za nią i nie zgaduj numeru.',
   'Czego w nagraniu nie było, zostaje `null` — nie uzupełniasz go historią.',
   'Historia służy do zrozumienia zdania niepełnego („jeszcze osiem" to ten sam',
   'ciężar co ostatnio) i do oceny, czy usłyszana liczba jest w skali tego ćwiczenia.',

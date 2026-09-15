@@ -29,11 +29,14 @@ import {
   VOICE_EXERCISE_PASSES,
   applyVoiceVerdict,
   carryOverLastSet,
-  isRepsOnlyVerdict,
+  isExerciselessVerdict,
+  matchSpokenExercise,
   type IsoDate,
+  type VoiceExercise,
   type VoiceRecentSet,
   type VoiceSetMatch,
   type VoiceSetResponse,
+  type VoiceSetVerdict,
 } from '@alphapump/core';
 import type { Database } from '../db.js';
 import { logger } from '../logger.js';
@@ -85,10 +88,11 @@ export interface DescribeSetInput {
   /** Opis serii wpisany z klawiatury — albo podyktowany jej własnym mikrofonem. */
   text: string;
   /**
-   * Dzień treningu **z urządzenia**, jeśli je zna. Po nim poznajemy, czy sama
-   * liczba powtórzeń ma co uzupełnić: bez niego nie da się odróżnić serii
-   * dopowiedzianej do trwającego treningu od pierwszej serii nowego dnia,
-   * więc uzupełnianie po prostu nie wchodzi.
+   * Dzień treningu **z urządzenia**, jeśli je zna. Zdanie bez nazwy ćwiczenia
+   * uzupełniane jest z ostatniej zapisanej serii niezależnie od niego — dzień
+   * rozstrzyga wyłącznie o brzmieniu komunikatu: seria z innego dnia zostaje
+   * podpisana swoją datą, żeby użytkownik zobaczył, skąd wzięło się ćwiczenie,
+   * którego nie wymienił.
    */
   day?: IsoDate;
 }
@@ -175,21 +179,15 @@ async function interpretTranscript(
   }
 
   const verdict = await interpreter.interpret({ transcript, exercises, recent });
-
-  // „Osiem" powiedziane między seriami znaczy „to samo ćwiczenie i ten sam
-  // ciężar, co przed chwilą" — a to stoi w bazie, więc dopisujemy je sami.
-  const filled =
-    isRepsOnlyVerdict(verdict) && day !== undefined
-      ? carryOverLastSet(exercises, recent, verdict, day)
-      : verdict;
+  const filled = resolveExercise(exercises, recent, transcript, verdict, day);
 
   if (filled === null) {
     return {
       transcript,
       match: null,
       reason:
-        'Sama liczba powtórzeń, a nie ma z czego uzupełnić ćwiczenia i ciężaru — ' +
-        'w tym treningu nie ma jeszcze żadnej serii.',
+        'Nie padła nazwa ćwiczenia, a nie ma z czego jej uzupełnić — ' +
+        'nie ma jeszcze ani jednej zapisanej serii.',
     };
   }
 
@@ -198,11 +196,19 @@ async function interpretTranscript(
 
   // Model powiedział „żadne z tych nie pasuje". Przy bibliotece większej niż
   // jedna kartka jest to zdanie o **pokazanym wycinku**, a nie o bibliotece,
-  // więc pytamy o dalszy ciąg. Sama liczba powtórzeń jest z tego wyjęta: tam
-  // nazwa ćwiczenia w ogóle nie padła, więc żadna kartka jej nie zawiera.
-  const later = isRepsOnlyVerdict(filled)
+  // więc pytamy o dalszy ciąg. Zdanie bez nazwy ćwiczenia jest z tego wyjęte:
+  // tam nazwa w ogóle nie padła, więc żadna kartka jej nie zawiera.
+  const later = isExerciselessVerdict(filled)
     ? { match: null, reason: filled.reason, offered: exercises.length, passes: 1 }
-    : await matchInFurtherPages(db, interpreter, userId, transcript, recent, exercises.length);
+    : await matchInFurtherPages(
+        db,
+        interpreter,
+        userId,
+        transcript,
+        recent,
+        filled,
+        exercises.length,
+      );
 
   // Nietrafione dyktowanie jest jedynym śladem, jaki po tej funkcji zostaje:
   // serwer niczego nie zapisuje, a użytkownik zwykle wybiera ćwiczenie z listy
@@ -229,11 +235,80 @@ async function interpretTranscript(
 }
 
 /**
+ * Czym szukamy nazwy w bibliotece, gdy model nie wskazał pozycji.
+ *
+ * Nazwą usłyszaną przez model, a gdy jej nie podał — całą transkrypcją. Jedno
+ * i drugie działa, bo `matchSpokenExercise` szuka nazwy z biblioteki **wewnątrz**
+ * podanego tekstu; nazwa od modelu jest tylko krótsza, więc trafniejsza.
+ */
+function needle(transcript: string, verdict: VoiceSetVerdict): string {
+  return verdict.exerciseName ?? transcript;
+}
+
+/**
+ * Ćwiczenie dla werdyktu, którego model nie umiał wskazać.
+ *
+ * Trzy sytuacje, trzy różne odpowiedzi — i to jest cały powód, dla którego
+ * werdykt niesie osobno indeks i osobno usłyszaną nazwę:
+ *
+ * 1. **model wskazał pozycję** — nie ma co poprawiać,
+ * 2. **nazwa padła, ale model jej nie dopasował** — szukamy jej sami,
+ *    po podobieństwie słów, bo tak wygląda literówka z rozpoznawania mowy
+ *    („bensh press", „przysiat"); wynik jest deterministyczny i sprawdzalny,
+ *    więc wolno mu zrobić to, czego modelowi robić nie wolno,
+ * 3. **nazwa nie padła w ogóle** — użytkownik dyktuje kolejną serię tego, co
+ *    robi, więc ćwiczenie dopisujemy z ostatniej zapisanej serii.
+ *
+ * `null` znaczy „nie ma z czego uzupełnić": zdanie bez nazwy, a w historii nie
+ * ma ani jednej serii.
+ */
+function resolveExercise(
+  exercises: readonly VoiceExercise[],
+  recent: readonly VoiceRecentSet[],
+  transcript: string,
+  verdict: VoiceSetVerdict,
+  day: IsoDate | undefined,
+): VoiceSetVerdict | null {
+  if (verdict.exerciseIndex !== null) return verdict;
+
+  const found = matchSpokenExercise(exercises, needle(transcript, verdict));
+  if (found !== null) return named(exercises, verdict, found);
+
+  // Nazwy nie było — kolejna seria tego samego. Zdanie bez nazwy i bez liczb
+  // („zapisz to") nie jest serią, więc `isExerciselessVerdict` je odsiewa.
+  if (!isExerciselessVerdict(verdict)) return verdict;
+
+  return carryOverLastSet(exercises, recent, verdict, day);
+}
+
+/** Werdykt ze wskazaną pozycją i powodem mówiącym, co z tego wyszło. */
+function named(
+  exercises: readonly VoiceExercise[],
+  verdict: VoiceSetVerdict,
+  index: number,
+): VoiceSetVerdict {
+  const exercise = exercises[index];
+
+  return {
+    ...verdict,
+    exerciseIndex: index,
+    // Powód od modelu mówi w tym miejscu „nie wiem, o które chodzi" — a właśnie
+    // się okazało, że wiadomo. Zostawienie go byłoby sprzecznością na ekranie.
+    reason:
+      exercise === undefined ? verdict.reason : `Rozpoznane jako „${exercise.name}" po nazwie.`,
+  };
+}
+
+/**
  * Kolejne kartki biblioteki, po jednej, dopóki któraś nie da dopasowania.
  *
  * Każda kartka to osobne wywołanie modelu, więc pętla kończy się na
  * `VOICE_EXERCISE_PASSES` — razem z pierwszą kartką jest to trzysta pozycji.
  * Kartka krótsza od limitu znaczy koniec biblioteki i kończy pętlę wcześniej.
+ *
+ * Dopasowanie po nazwie idzie **przed** modelem: jest darmowe i rozstrzyga
+ * dokładnie ten przypadek, dla którego sięgamy po dalszą kartkę — nazwę, która
+ * padła, ale nie trafiła w nic na kartce poprzedniej.
  */
 async function matchInFurtherPages(
   db: Database,
@@ -241,6 +316,8 @@ async function matchInFurtherPages(
   userId: string,
   transcript: string,
   recent: readonly VoiceRecentSet[],
+  /** Werdykt z pierwszej kartki — liczby są w nim już wyciągnięte z nagrania. */
+  verdict: VoiceSetVerdict,
   offered: number,
 ): Promise<{
   match: VoiceSetMatch | null;
@@ -258,9 +335,18 @@ async function matchInFurtherPages(
     passes += 1;
     seen += page.length;
 
-    const verdict = await interpreter.interpret({ transcript, exercises: page, recent });
-    const match = applyVoiceVerdict(page, verdict);
-    if (match !== null) return { match, reason: verdict.reason, offered: seen, passes };
+    const found = matchSpokenExercise(page, needle(transcript, verdict));
+    if (found !== null) {
+      // Liczby zostają te, które model wyciągnął z nagrania na pierwszej kartce
+      // — kartka zmienia listę ćwiczeń, a nie to, co usłyszano.
+      const carried = named(page, verdict, found);
+      const match = applyVoiceVerdict(page, carried);
+      if (match !== null) return { match, reason: carried.reason, offered: seen, passes };
+    }
+
+    const later = await interpreter.interpret({ transcript, exercises: page, recent });
+    const match = applyVoiceVerdict(page, later);
+    if (match !== null) return { match, reason: later.reason, offered: seen, passes };
 
     if (page.length < VOICE_EXERCISE_LIMIT) break;
   }
