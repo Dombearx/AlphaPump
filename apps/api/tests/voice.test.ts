@@ -442,10 +442,9 @@ describe('dyktowanie serii', () => {
       await harness.close();
     });
 
-    it('sięga po serię z poprzedniego treningu i mówi, z którego dnia', async () => {
-      // Kto nie powiedział, co robi, robi dalej to, co robił — także wtedy, gdy
-      // poprzednia seria jest z wczoraj (trening po północy, zegarek liczący
-      // dzień inaczej niż serwer). Data w komunikacie mówi, skąd to się wzięło.
+    it('bez serii w tym treningu mówi, czego zabrakło, i niczego nie zgaduje', async () => {
+      // Pierwsze zdanie nowego dnia brzmi tak samo jak dziesiąte zdanie
+      // trwającego treningu — ćwiczenie z wczoraj byłoby tu zgadywaniem.
       const { layers } = stubLayers('osiem', REPS_ONLY);
       const harness = await createHarness({ voice: layers });
       const user = await harness.signUp('pierwszaseria@example.com');
@@ -468,32 +467,15 @@ describe('dyktowanie serii', () => {
       });
 
       expect(response.status).toBe(200);
-      expect(response.body.match).toMatchObject({ exerciseId: BENCH, weightG: 80_000, reps: 8 });
-      expect(response.body.reason).toMatch(/2026-08-30/);
-
-      await harness.close();
-    });
-
-    it('bez ani jednej zapisanej serii mówi, czego zabrakło, i niczego nie zgaduje', async () => {
-      const { layers } = stubLayers('osiem', REPS_ONLY);
-      const harness = await createHarness({ voice: layers });
-      const user = await harness.signUp('zadnejserii@example.com');
-
-      const response = await harness.json<VoiceSetResponse>('POST', '/voice/text', {
-        headers: user.headers,
-        body: { text: 'osiem', performedOn: '2026-08-31' },
-      });
-
-      expect(response.status).toBe(200);
       expect(response.body.match).toBeNull();
-      expect(response.body.reason).toMatch(/nie ma jeszcze ani jednej zapisanej serii/);
+      expect(response.body.reason).toMatch(/w tym treningu nie ma jeszcze żadnej serii/);
 
       await harness.close();
     });
 
-    it('bez dnia w żądaniu uzupełnia tak samo', async () => {
-      // Dzień z urządzenia rozstrzyga o brzmieniu komunikatu, a nie o tym, czy
-      // w ogóle jest co uzupełnić.
+    it('bez dnia w żądaniu zostaje sam werdykt modelu', async () => {
+      // Klient, który dnia nie przysłał, nie ma jak powiedzieć, czy trwa ten sam
+      // trening — więc dostaje dokładnie to, co dotąd.
       const { layers } = stubLayers('osiem', REPS_ONLY);
       const harness = await createHarness({ voice: layers });
       const user = await harness.signUp('bezdnia@example.com');
@@ -516,7 +498,8 @@ describe('dyktowanie serii', () => {
       });
 
       expect(response.status).toBe(200);
-      expect(response.body.match).toMatchObject({ exerciseId: BENCH, weightG: 80_000, reps: 8 });
+      expect(response.body.match).toBeNull();
+      expect(response.body.reason).toBe('Usłyszałem samą liczbę');
 
       await harness.close();
     });

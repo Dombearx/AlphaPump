@@ -88,11 +88,10 @@ export interface DescribeSetInput {
   /** Opis serii wpisany z klawiatury — albo podyktowany jej własnym mikrofonem. */
   text: string;
   /**
-   * Dzień treningu **z urządzenia**, jeśli je zna. Zdanie bez nazwy ćwiczenia
-   * uzupełniane jest z ostatniej zapisanej serii niezależnie od niego — dzień
-   * rozstrzyga wyłącznie o brzmieniu komunikatu: seria z innego dnia zostaje
-   * podpisana swoją datą, żeby użytkownik zobaczył, skąd wzięło się ćwiczenie,
-   * którego nie wymienił.
+   * Dzień treningu **z urządzenia**, jeśli je zna. Po nim poznajemy, czy zdanie
+   * bez nazwy ćwiczenia ma co uzupełnić: bez niego nie da się odróżnić serii
+   * dopowiedzianej do trwającego treningu od pierwszej serii nowego dnia,
+   * więc uzupełnianie po prostu nie wchodzi.
    */
   day?: IsoDate;
 }
@@ -187,7 +186,7 @@ async function interpretTranscript(
       match: null,
       reason:
         'Nie padła nazwa ćwiczenia, a nie ma z czego jej uzupełnić — ' +
-        'nie ma jeszcze ani jednej zapisanej serii.',
+        'w tym treningu nie ma jeszcze żadnej serii.',
     };
   }
 
@@ -257,10 +256,11 @@ function needle(transcript: string, verdict: VoiceSetVerdict): string {
  *    („bensh press", „przysiat"); wynik jest deterministyczny i sprawdzalny,
  *    więc wolno mu zrobić to, czego modelowi robić nie wolno,
  * 3. **nazwa nie padła w ogóle** — użytkownik dyktuje kolejną serię tego, co
- *    robi, więc ćwiczenie dopisujemy z ostatniej zapisanej serii.
+ *    robi, więc ćwiczenie dopisujemy z poprzedniej serii **tego treningu**.
  *
- * `null` znaczy „nie ma z czego uzupełnić": zdanie bez nazwy, a w historii nie
- * ma ani jednej serii.
+ * `null` znaczy „nie ma z czego uzupełnić": zdanie bez nazwy, a w tym treningu
+ * nie ma jeszcze żadnej serii. Klient, który dnia nie przysłał, nie ma jak
+ * powiedzieć, czy trening trwa — dostaje wtedy sam werdykt modelu.
  */
 function resolveExercise(
   exercises: readonly VoiceExercise[],
@@ -276,7 +276,7 @@ function resolveExercise(
 
   // Nazwy nie było — kolejna seria tego samego. Zdanie bez nazwy i bez liczb
   // („zapisz to") nie jest serią, więc `isExerciselessVerdict` je odsiewa.
-  if (!isExerciselessVerdict(verdict)) return verdict;
+  if (!isExerciselessVerdict(verdict) || day === undefined) return verdict;
 
   return carryOverLastSet(exercises, recent, verdict, day);
 }

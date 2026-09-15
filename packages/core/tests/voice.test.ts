@@ -189,25 +189,12 @@ describe('uzupełnianie zdania bez nazwy ćwiczenia', () => {
     expect(carried).toMatchObject({ exerciseIndex: 0, weightKg: 70, reps: 8 });
   });
 
-  it('sięga po serię z poprzedniego treningu i podpisuje ją datą', () => {
-    // Dzień nie jest warunkiem: kto nie powiedział, co robi, robi dalej to samo.
-    // Warunkiem był i kosztował trening po północy oraz pierwszą serię dnia.
-    const carried = carryOverLastSet(
-      [BENCH],
-      [recentSet({ performedOn: '2026-08-30' })],
-      nameless(),
-      TODAY,
-    );
-
-    expect(carried).toMatchObject({ exerciseIndex: 0, weightKg: 80 });
-    expect(carried?.reason).toContain('2026-08-30');
-  });
-
-  it('bez dnia z urządzenia uzupełnia tak samo', () => {
-    expect(carryOverLastSet([BENCH], [recentSet()], nameless())).toMatchObject({
-      exerciseIndex: 0,
-      reps: 8,
-    });
+  it('nie sięga po serię z poprzedniego treningu', () => {
+    // Pierwsze zdanie nowego dnia brzmi tak samo jak dziesiąte zdanie trwającego
+    // treningu — ćwiczenie wzięte wtedy z wczoraj byłoby zgadywaniem.
+    expect(
+      carryOverLastSet([BENCH], [recentSet({ performedOn: '2026-08-30' })], nameless(), TODAY),
+    ).toBeNull();
   });
 
   it('bez żadnej wcześniejszej serii nie ma z czego uzupełnić', () => {

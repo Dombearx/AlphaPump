@@ -229,19 +229,18 @@ Jeden kształt werdyktu domyka jeszcze serwer: **zdanie bez nazwy ćwiczenia**.
 a uzupełniać z historii mu nie wolno (robiłby to także wtedy, gdy nazwę usłyszał
 i jej nie rozpoznał). Dlatego werdykt bez numeru i bez usłyszanej nazwy, ale
 z liczbami, rozpoznaje `isExerciselessVerdict`, a ćwiczenie dopisuje
-`carryOverLastSet` z **ostatniej zapisanej serii** — odczytem z bazy, nie
+`carryOverLastSet` z **poprzedniej serii tego treningu** — odczytem z bazy, nie
 domysłem. Ciężar dokłada się wyłącznie tam, gdzie go nie podano: „jeszcze osiem"
 bierze ciężar poprzedniej serii, „jeszcze osiem na siedemdziesiąt" zostaje przy
 siedemdziesięciu.
 
-Dzień z urządzenia (`performedOn` w `POST /voice/text`) nie jest tu **warunkiem**,
-tylko treścią komunikatu: seria z innego dnia zostaje w `reason` podpisana swoją
-datą, żeby było widać, skąd wzięło się ćwiczenie, którego użytkownik nie
-wymienił. Warunkiem był i kosztował dokładnie te sytuacje, w których ta reguła
-miała działać — trening po północy, zegarek liczący dzień inaczej niż serwer,
-pierwsza seria dyktowana po dłuższej przerwie. Bez **żadnej** zapisanej serii
-nie ma z czego uzupełniać: `match` zostaje pusty, a `reason` mówi, czego
-zabrakło.
+Dzień jedzie w żądaniu (`performedOn` w `POST /voice/text`), bo należy do
+urządzenia: tylko ono wie, czy trwa jeszcze ten sam trening. Warunek jest
+twardy — seria z wczoraj nie jest podpowiedzią, tylko zgadywaniem: pierwsze
+zdanie nowego dnia brzmi tak samo jak dziesiąte zdanie trwającego treningu. Bez
+takiej serii — pierwsza seria dnia albo klient, który dnia nie przysłał —
+`match` zostaje pusty, a `reason` mówi, czego zabrakło. Korzysta z tego dziś
+zegarek; aplikacja pola nie wysyła, więc działa jak dotąd.
 
 Nazwa, która padła i w nic nie trafiła, jest czymś przeciwnym i tak też się
 kończy — pytaniem do użytkownika. Podstawienie pod nią ćwiczenia z historii
@@ -323,11 +322,11 @@ Rozdzielenie tych dwóch jest całym sensem tego przycisku — pierwszy podejrza
 przy „nie działa" to czysty HTTP przepuszczany przez cudzą aplikację.
 
 Zegarek dokłada do rozpoznania jedno pole: **dzień** (`performedOn`), ten sam,
-który pojedzie za chwilę w `POST /sets`. Zdanie bez nazwy ćwiczenia — „osiem"
-rzucone między seriami — dostaje ćwiczenie z ostatniej zapisanej serii, zamiast
-kończyć się pytaniem „o które ćwiczenie chodzi"; dzień rozstrzyga tylko o tym,
-czy komunikat pokaże datę tamtej serii. Bez ani jednej wcześniejszej serii
-uzupełniać nie ma z czego i zegarek pokazuje to wprost.
+który pojedzie za chwilę w `POST /sets`. Dzięki niemu zdanie bez nazwy
+ćwiczenia — „osiem" albo „jeszcze osiem na siedemdziesiąt" rzucone między
+seriami — dostaje ćwiczenie z poprzedniej serii tego treningu, zamiast kończyć
+się pytaniem „o które ćwiczenie chodzi". Przy pierwszej serii dnia uzupełniać
+nie ma z czego i zegarek pokazuje to wprost.
 
 Reguła „model nie zapisuje sam" obowiązuje tu tak samo jak w telefonie: po
 rozpoznaniu zegarek domyślnie pokazuje serię i czeka na naciśnięcie, a zapis bez

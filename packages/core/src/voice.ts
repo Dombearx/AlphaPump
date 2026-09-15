@@ -38,7 +38,8 @@
  * gdyby wolno mu było dopisywać ćwiczenie z historii, robiłby to także wtedy,
  * gdy usłyszał nazwę i jej nie rozpoznał. Dlatego zdanie bez nazwy jest
  * wykrywane po kształcie werdyktu (`isExerciselessVerdict`), a ćwiczenie
- * i brakujący ciężar dopisuje `carryOverLastSet` z ostatniej zapisanej serii.
+ * i brakujący ciężar dopisuje `carryOverLastSet` z poprzedniej serii tego
+ * treningu.
  *
  * Kształtem jest tu **brak nazwy**, a nie „same powtórzenia": „jeszcze osiem
  * na osiemdziesiąt" to dokładnie to samo zdanie, tylko z ciężarem, i kosztowało
@@ -384,50 +385,47 @@ export function matchSpokenExercise(
 }
 
 /**
- * Dopisuje do werdyktu ćwiczenie z ostatniej zapisanej serii — i ciężar, jeśli
- * w zdaniu go nie było.
+ * Dopisuje do werdyktu ćwiczenie z poprzedniej serii **tego treningu** —
+ * i ciężar, jeśli w zdaniu go nie było.
  *
  * `recent` musi być posortowane **od najnowszej** — tak samo, jak jedzie do
  * modelu; brana jest pierwsza pozycja, czyli ostatnia zapisana seria.
  *
  * Reguła jest taka, jak brzmi na siłowni: kto nie powiedział, co robi, robi
- * dalej to, co robił. Dzień nie jest tu warunkiem, tylko **treścią
- * komunikatu** — seria z innego dnia zostaje podpisana swoją datą, żeby
- * użytkownik zobaczył, skąd wzięło się ćwiczenie, którego nie wymienił.
- * Wcześniej dzień był warunkiem i kosztowało to dokładnie te sytuacje, w których
- * ta funkcja miała działać: trening po północy, zegarek liczący dzień inaczej
- * niż serwer, pierwsza seria dyktowana po przerwie na kawę tuż po północy.
+ * dalej to, co robił — ale „dalej" kończy się wraz z treningiem. Seria z innego
+ * dnia nie jest podpowiedzią, tylko zgadywaniem: pierwsze zdanie nowego dnia
+ * brzmi tak samo jak dziesiąte zdanie trwającego treningu, a ćwiczenie wzięte
+ * wtedy z wczoraj zapisałoby serię pod czymś, czego nikt dziś nie robił.
  *
  * Ciężar dokłada się **wyłącznie tam, gdzie go nie podano**: „jeszcze osiem"
  * bierze ciężar poprzedniej serii, a „jeszcze osiem na siedemdziesiąt" zostaje
  * przy siedemdziesięciu. Czasu ani dystansu poprzednia seria nie podpowiada —
  * one zmieniają się co serię.
  *
- * `null` znaczy „nie ma z czego uzupełnić": nie ma ani jednej wcześniejszej
- * serii albo jej ćwiczenia nie ma na liście podanej modelowi — a poza tą listą
- * nie ma jak go wskazać. Obie sytuacje kończą się pytaniem do użytkownika, bo
- * cena zgadywania jest tu ta sama co przy dopasowaniu ćwiczenia.
+ * `null` znaczy „nie ma z czego uzupełnić" i wychodzi w dwóch sytuacjach:
+ * ostatnia seria jest z innego dnia (czyli w tym treningu nie ma jeszcze
+ * żadnej) albo jej ćwiczenia nie ma na liście podanej modelowi — a poza tą
+ * listą nie ma jak go wskazać. Obie kończą się pytaniem do użytkownika, bo cena
+ * zgadywania jest tu ta sama co przy dopasowaniu ćwiczenia.
  *
- * `day` jest **z urządzenia**, a nie z zegara serwera: seria należy do dnia
- * kalendarzowego tego, kto ją zapisuje. Gdy urządzenie go nie przysłało,
- * uzupełnienie działa dalej — sam komunikat podaje wtedy datę serii.
+ * Dzień jest **z urządzenia**, a nie z zegara serwera: seria należy do dnia
+ * kalendarzowego tego, kto ją zapisuje, więc tylko ono wie, czy trwa jeszcze
+ * ten sam trening.
  */
 export function carryOverLastSet(
   exercises: readonly VoiceExercise[],
   recent: readonly VoiceRecentSet[],
   verdict: VoiceSetVerdict,
-  day?: IsoDate,
+  day: IsoDate,
 ): VoiceSetVerdict | null {
   const last = recent[0];
-  if (last === undefined) return null;
+  if (last === undefined || last.performedOn !== day) return null;
 
   const index = exercises.findIndex((exercise) => exercise.exerciseId === last.exerciseId);
   if (index === -1) return null;
 
   const { weightG } = last.measurements;
   const carriedWeight = weightG === null ? null : gramsToKilograms(weightG);
-  const sameDay = day !== undefined && last.performedOn === day;
-  const when = sameDay ? 'poprzedniej serii' : `ostatniej serii (${last.performedOn})`;
 
   return {
     ...verdict,
@@ -435,6 +433,6 @@ export function carryOverLastSet(
     // Pomiary z nagrania zostają nienaruszone: uzupełniamy to, czego nie
     // powiedziano, a nie to, co usłyszeliśmy.
     weightKg: verdict.weightKg ?? carriedWeight,
-    reason: `Bez nazwy ćwiczenia — ćwiczenie z ${when}: ${last.exerciseName}.`,
+    reason: `Bez nazwy ćwiczenia — ćwiczenie z poprzedniej serii: ${last.exerciseName}.`,
   };
 }
