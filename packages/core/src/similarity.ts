@@ -101,25 +101,86 @@ export function tokenSimilarity(a: string, b: string): number {
   return diceCoefficient(trigrams(a), trigrams(b));
 }
 
+/** Odległość edycyjna Levenshteina — ile znaków trzeba zmienić, dodać albo usunąć. */
+function editDistance(a: string, b: string): number {
+  if (a === b) return 0;
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+
+  // Jeden wiersz macierzy naraz: słowa są krótkie, a druga tablica byłaby tu
+  // wyłącznie pamięcią zajętą na nic.
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+
+  for (let i = 1; i <= a.length; i += 1) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j += 1) {
+      const substitution = (previous[j - 1] ?? 0) + (a[i - 1] === b[j - 1] ? 0 : 1);
+      const insertion = (current[j - 1] ?? 0) + 1;
+      const deletion = (previous[j] ?? 0) + 1;
+      current[j] = Math.min(substitution, insertion, deletion);
+    }
+    previous = current;
+  }
+
+  return previous[b.length] ?? 0;
+}
+
+/**
+ * Próg, od którego dwa słowa uznajemy za to samo słowo z literówką.
+ *
+ * Wyżej niż `TOKEN_MATCH_THRESHOLD`, bo `tokenCloseness` jest łagodniejsza:
+ * gdyby próg został ten sam, „deska" i „ławka" (jedna trzecia znaków różna)
+ * zaczęłyby być dla siebie literówką.
+ */
+export const TOKEN_CLOSENESS_THRESHOLD = 0.72;
+
+/**
+ * Podobieństwo dwóch słów **odporne na literówkę w krótkim słowie**, 0–1.
+ *
+ * Same trigramy tu nie wystarczą: „bench" i „bensh" różnią się jednym znakiem,
+ * a trigramowo dzielą jedną trójkę z trzech, czyli wychodzą na 0,33 — mniej niż
+ * dwa słowa, które nie mają ze sobą nic wspólnego poza długością. Dla nazw
+ * ćwiczeń ma to znaczenie, bo połowa z nich jest jednosylabowa („Bieg",
+ * „Deska", „Row"), a dyktowanie na zegarku przekręca dokładnie po jednym znaku.
+ *
+ * Stąd maksimum z dwóch miar: trigramy łapią odmianę i przestawienie końcówki
+ * („przysiad" ↔ „przysiady"), odległość edycyjna — literówkę w słowie krótkim.
+ * Osobno od `tokenSimilarity`, bo tamta stoi pod ostrzeżeniem o duplikatach,
+ * gdzie łagodniejsza miara znaczyłaby więcej ostrzeżeń fałszywych.
+ */
+export function tokenCloseness(a: string, b: string): number {
+  if (a === b) return 1;
+
+  const longest = Math.max(a.length, b.length);
+  const edit = longest === 0 ? 0 : 1 - editDistance(a, b) / longest;
+
+  return Math.max(tokenSimilarity(a, b), edit);
+}
+
 /**
  * Ile słów z lewej znalazło sobie partnera po prawej.
  *
  * Każde słowo z lewej szuka sobie **jednego** partnera z prawej. Zajęte słowa
  * odpadają, żeby „przysiad przysiad" nie zaliczyło dwa razy tego samego.
  */
-function countMatchedTokens(left: readonly string[], right: readonly string[]): number {
+function countMatched(
+  left: readonly string[],
+  right: readonly string[],
+  score: (a: string, b: string) => number,
+  threshold: number,
+): number {
   const taken = new Set<number>();
   let matched = 0;
 
   for (const token of left) {
     let bestIndex = -1;
-    let bestScore = TOKEN_MATCH_THRESHOLD;
+    let bestScore = threshold;
 
     for (const [index, candidate] of right.entries()) {
       if (taken.has(index)) continue;
-      const score = tokenSimilarity(token, candidate);
-      if (score >= bestScore) {
-        bestScore = score;
+      const current = score(token, candidate);
+      if (current >= bestScore) {
+        bestScore = current;
         bestIndex = index;
       }
     }
@@ -131,6 +192,22 @@ function countMatchedTokens(left: readonly string[], right: readonly string[]): 
   }
 
   return matched;
+}
+
+function countMatchedTokens(left: readonly string[], right: readonly string[]): number {
+  return countMatched(left, right, tokenSimilarity, TOKEN_MATCH_THRESHOLD);
+}
+
+/**
+ * Ile słów z `needle` znajduje sobie partnera w `haystack`, licząc po
+ * `tokenCloseness` — czyli wybaczając literówkę także w słowie krótkim.
+ *
+ * Używa tego dopasowanie nazwy usłyszanej przy dyktowaniu (`matchSpokenExercise`
+ * w `voice.ts`), gdzie wejściem jest tekst z rozpoznawania mowy, a nie coś, co
+ * ktoś przeczytał przed wysłaniem.
+ */
+export function countCloseTokens(needle: readonly string[], haystack: readonly string[]): number {
+  return countMatched(needle, haystack, tokenCloseness, TOKEN_CLOSENESS_THRESHOLD);
 }
 
 /**

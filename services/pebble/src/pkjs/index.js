@@ -922,9 +922,10 @@ function recognise(text) {
   reply(STATUS.WORKING, 'Recognising…', text);
 
   // Dzień jedzie razem ze zdaniem, a nie dopiero przy zapisie: po nim serwer
-  // poznaje, czy sama liczba powtórzeń („osiem") należy jeszcze do tego samego
-  // treningu, co poprzednia seria — i tylko wtedy dopisuje do niej ćwiczenie
-  // i ciężar. Jest to ten sam dzień, który za chwilę pojedzie w `POST /sets`.
+  // poznaje, czy zdanie bez nazwy ćwiczenia („osiem") należy jeszcze do tego
+  // samego treningu, co poprzednia seria — i tylko wtedy dopisuje do niej
+  // ćwiczenie i brakujący ciężar. Jest to ten sam dzień, który za chwilę
+  // pojedzie w `POST /sets`.
   var heard = { text: text, performedOn: today() };
 
   request('POST', '/voice/text', heard, function (problem, body, retryable) {
