@@ -82,6 +82,7 @@ export function toExerciseDto(row: ExerciseRow, additionalTagIds: string[]): Exe
     authorId: row.authorId,
     loggingType: row.loggingType,
     primaryTagId: row.primaryTagId,
+    intensity: row.intensity,
     additionalTagIds: sanitizeAdditionalTagIds(row.primaryTagId, additionalTagIds),
     note: row.note,
     gym: row.gym,
@@ -116,8 +117,10 @@ export function toCycleGoalDto(row: CycleGoalRow): CycleGoal {
     id: row.id,
     metric: row.metric,
     target: row.target,
+    stretchTarget: row.stretchTarget,
     exerciseId: row.exerciseId,
     tagId: row.tagId,
+    intensity: row.intensity,
   };
 }
 

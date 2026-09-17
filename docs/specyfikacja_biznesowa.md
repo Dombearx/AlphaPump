@@ -213,12 +213,17 @@ Każda pozycja celu w cyklu może być zdefiniowana jako:
 - określona liczba serii dla wskazanego tagu,
 - określona liczba serii dla wskazanego ćwiczenia,
 - określona suma czasu dla wskazanego ćwiczenia lub tagu,
-- określona suma dystansu dla wskazanego ćwiczenia lub tagu.
+- określona suma dystansu dla wskazanego ćwiczenia lub tagu,
+- określona liczba serii, suma czasu albo dystansu dla wskazanej **intensywności** wysiłku.
 
 Przykłady:
 - 12 serii na biceps,
 - 6 serii podciągnięć,
-- 10 km biegu.
+- 10 km biegu,
+- 150 minut wysiłku o umiarkowanej intensywności.
+
+Pozycja celu może mieć **dwa poziomy**: próg minimalny i wyższy. Cykl liczy je
+oba — po osiągnięciu progu minimalnego pokazuje, ile zostało do wyższego.
 
 Jeżeli seria pasuje do kilku aktywnych cykli, ma zaliczać się do wszystkich pasujących cykli jednocześnie. 
 
@@ -227,6 +232,37 @@ W przypadku cykli opartych o tagi uwzględniany jest tylko główny tag ćwiczen
 Cykl może zostać zresetowany przez ustawienie nowej daty początku liczenia. Reset nie usuwa historii poprzednich realizacji. System ma umożliwiać później sprawdzenie, na jakim poziomie użytkownik zrealizował cykl w poprzednich okresach, na przykład że miesiąc wcześniej osiągnął 90 procent celu. 
 
 Cykle mogą być aktywne i archiwalne. Użytkownik musi mieć możliwość przeglądania także historycznych realizacji cykli. 
+
+### Intensywność wysiłku i cykl WHO
+
+Ćwiczenie może mieć przypisaną intensywność wysiłku: niską, umiarkowaną albo
+wysoką. Jest to cecha ćwiczenia — tak jak typ logowania i tag główny — a nie
+pojedynczej serii: marsz jest lekki, a interwały ciężkie niezależnie od dnia,
+w którym zostały zapisane. Pole jest opcjonalne i domyślnie puste; ćwiczenie bez
+ustawionej intensywności nie zalicza się do żadnego celu intensywnościowego.
+
+Intensywność nie jest tagiem dodatkowym z dwóch powodów: tagi dodatkowe
+z założenia **nie** zaliczają serii do cykli, a tag główny jest jeden i opisuje
+partię mięśniową. Nie jest też wyliczana z pomiarów serii — aplikacja nie zbiera
+tętna ani mocy, a czas i dystans mówią o objętości, nie o wysiłku.
+
+Aplikacja udostępnia wbudowany, **opcjonalny** cykl WHO, oparty o wytyczne WHO
+dotyczące aktywności fizycznej dla dorosłych. Nie powstaje sam: użytkownik dodaje
+go z ekranu nowego cyklu, widząc przed zapisem, co dokładnie dostaje, a wyłącza
+go tak jak każdy inny cykl — archiwizując albo usuwając.
+
+Cykl WHO jest tygodniowy i ma jedną pozycję celu o dwóch poziomach: 150 minut
+wysiłku o umiarkowanej intensywności tygodniowo (podstawowe korzyści zdrowotne)
+oraz 300 minut (korzyści dodatkowe). Wytyczne traktują minutę wysiłku wysokiej
+intensywności jak dwie minuty umiarkowanego, więc w celu o intensywności
+umiarkowanej wysiłek wysoki liczy się podwójnie, a lekki nie liczy się wcale.
+Dzięki temu jedna pozycja wyraża całą regułę „150 minut umiarkowanego **albo**
+75 minut wysokiego **albo** równoważna kombinacja", zamiast rozpadać się na dwa
+progi wymagane naraz. Kto chce widzieć rozbicie na poszczególne poziomy osobno,
+dokłada sobie do cyklu pozycje w zakresach „niska" i „wysoka".
+
+Wymagania WHO dotyczące ćwiczeń wzmacniających mięśnie w co najmniej dwa dni
+w tygodniu cykl WHO nie pilnuje: cykle nie mają metryki „liczba dni".
 
 ## Rekordy indywidualne
 
@@ -417,6 +453,7 @@ Najważniejsze reguły biznesowe:
 - każdy użytkownik ma jeden profil,
 - każde ćwiczenie ma dokładnie jeden główny tag,
 - główny tag decyduje o zaliczaniu serii do cykli tagowych,
+- intensywność ćwiczenia decyduje o zaliczaniu serii do cykli intensywnościowych,
 - jedna seria może zaliczać się do wielu cykli jednocześnie,
 - typ logowania ćwiczenia po utworzeniu jest niezmienny,
 - usunięcie lub edycja serii przelicza rekordy, cykle, wykresy i rankingi,
@@ -449,6 +486,8 @@ Przykładowe kryteria akceptacyjne dla MVP:
 - po powrocie internetu dane synchronizują się bez blokowania pracy,
 - równoległa praca na dwóch urządzeniach offline nie powoduje po synchronizacji ani utraty serii, ani duplikatów,
 - cykl poprawnie zlicza serie, czas lub dystans zgodnie z definicją celu,
+- cykl WHO uznaje 75 minut wysiłku wysokiej intensywności za równoważne 150 minutom umiarkowanego, a wysiłku lekkiego nie zalicza,
+- cykl z dwoma poziomami pokazuje osobno osiągnięcie progu minimalnego i wyższego,
 - po usunięciu serii postęp cyklu zmniejsza się odpowiednio,
 - lista ćwiczeń przy dodawaniu serii stawia na górze ćwiczenia domykające braki aktywnych cykli, a po zapisaniu serii proponuje ćwiczenie angażujące możliwie rozdzielne partie — tak, że dwa ćwiczenia robione na zmianę podpowiadają się naprzemiennie,
 - ćwiczeń cardio ten dobór nie podpowiada, a przełącznik w ustawieniach przywraca kolejność po liczbie własnych serii,

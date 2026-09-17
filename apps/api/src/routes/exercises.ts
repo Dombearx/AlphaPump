@@ -258,6 +258,7 @@ export function createExerciseRouter(dependencies: AppDependencies) {
       authorId: principal.id,
       loggingType: input.loggingType,
       primaryTagId: input.primaryTagId,
+      intensity: input.intensity,
       note: input.note,
       gym: input.gym,
       // Nazwy z formularza wchodzą od razu, a nie kolejką: wpisane ręcznie mają
@@ -329,6 +330,7 @@ export function createExerciseRouter(dependencies: AppDependencies) {
           name,
           slug: newSlug,
           primaryTagId,
+          intensity: input.intensity === undefined ? existing.row.intensity : input.intensity,
           note: input.note === undefined ? existing.row.note : input.note,
           gym,
           translations: suppliedTranslations,

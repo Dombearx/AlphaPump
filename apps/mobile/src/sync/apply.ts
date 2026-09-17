@@ -250,6 +250,7 @@ async function applyExercise(
     authorId: row.authorId,
     loggingType: row.loggingType,
     primaryTagId: row.primaryTagId,
+    intensity: row.intensity,
     note: row.note,
     gym: row.gym,
     translations: row.translations,
@@ -319,8 +320,10 @@ async function applyCycle(
         cycleId: row.id,
         metric: goal.metric,
         target: goal.target,
+        stretchTarget: goal.stretchTarget,
         exerciseId: goal.exerciseId,
         tagId: goal.tagId,
+        intensity: goal.intensity,
         position,
       })),
     );

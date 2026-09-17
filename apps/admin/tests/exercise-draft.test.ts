@@ -36,6 +36,7 @@ const DRAFT: ExerciseDraft = {
   name: 'Podciąganie nachwytem',
   loggingType: 'bodyweight_reps',
   primaryTagId: PLECY,
+  intensity: '',
   additionalTagIds: [BICEPS],
   note: '',
   gym: '',
@@ -50,6 +51,7 @@ const EXERCISE: Exercise = {
   authorId: '11111111-1111-4111-8111-111111111111',
   loggingType: 'bodyweight_reps',
   primaryTagId: PLECY,
+  intensity: null,
   additionalTagIds: [BICEPS],
   note: null,
   gym: null,
@@ -107,6 +109,7 @@ describe('wejście do utworzenia', () => {
       name: 'Podciąganie nachwytem',
       loggingType: 'bodyweight_reps',
       primaryTagId: PLECY,
+      intensity: null,
       additionalTagIds: [BICEPS],
       note: 'Chwyt szerszy',
       // Panel nie ma pól na nazwy w innych językach — uzupełnia je serwer.

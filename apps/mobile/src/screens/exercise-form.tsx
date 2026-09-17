@@ -33,7 +33,9 @@
 
 import {
   findSimilarExercises,
+  INTENSITIES,
   LOGGING_TYPES,
+  type Intensity,
   type LoggingType,
   type IsoDate,
 } from '@alphapump/core';
@@ -50,7 +52,7 @@ import { remoteReader } from '../remote/reader';
 import { useServerDuplicates } from '../remote/use-duplicates';
 import { additionalTagsOf, exerciseDetails, exerciseLibrary, tagLibrary } from '../db/queries';
 import { useLocalAuthor } from '../hooks';
-import { LOGGING_TYPE_LABELS } from '../measurements';
+import { INTENSITY_LABELS, LOGGING_TYPE_LABELS } from '../measurements';
 import { useRequestSync } from '../sync/provider';
 import {
   Button,
@@ -91,6 +93,7 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
     mode.kind === 'create' ? (mode.tagId ?? null) : null,
   );
   const [additionalTagIds, setAdditionalTagIds] = useState<string[]>([]);
+  const [intensity, setIntensity] = useState<Intensity | null>(null);
   const [note, setNote] = useState('');
   const [gym, setGym] = useState('');
   const [newTag, setNewTag] = useState('');
@@ -113,6 +116,7 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
     setLoggingType(existing.loggingType);
     setPrimaryTagId(existing.tagId);
     setAdditionalTagIds(editedTags.data.map((tag) => tag.id));
+    setIntensity(existing.intensity);
     setNote(existing.note ?? '');
     setGym(existing.gym ?? '');
     setLoaded(true);
@@ -188,6 +192,7 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
           translations: translationsFromDraft(translations),
           loggingType,
           primaryTagId,
+          intensity,
           additionalTagIds,
           note: note.trim().length === 0 ? null : note.trim(),
           gym: gym.trim().length === 0 ? null : gym.trim(),
@@ -204,6 +209,7 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
         name,
         translations: translationsFromDraft(translations),
         primaryTagId,
+        intensity,
         additionalTagIds,
         note: note.trim().length === 0 ? null : note.trim(),
         gym: gym.trim().length === 0 ? null : gym.trim(),
@@ -303,6 +309,26 @@ export function ExerciseFormScreen({ mode, day }: { mode: ExerciseFormMode; day?
                     setPrimaryTagId(tag.id);
                     setAdditionalTagIds((current) => current.filter((id) => id !== tag.id));
                   }}
+                />
+              ))}
+            </ChipRow>
+          </View>
+
+          <View className="gap-2">
+            <SectionTitle>Intensity</SectionTitle>
+            <Text className="text-xs text-muted">
+              Optional — how hard this exercise is. Only cycle goals based on intensity use it,
+              including the WHO one; leave it off and the exercise simply doesn't count toward them.
+            </Text>
+            <ChipRow>
+              {INTENSITIES.map((option) => (
+                <Chip
+                  key={option}
+                  label={INTENSITY_LABELS[option]}
+                  selected={intensity === option}
+                  // Ponowne naciśnięcie wybranego czyści wybór — inaczej raz
+                  // ustawionej intensywności nie dałoby się już cofnąć.
+                  onPress={() => setIntensity((current) => (current === option ? null : option))}
                 />
               ))}
             </ChipRow>

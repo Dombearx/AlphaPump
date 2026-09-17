@@ -217,6 +217,7 @@ export async function importLocalArchive(
           // z bazy, bo historyczne serie już do niego pasują.
           loggingType: local?.loggingType ?? exercise.loggingType,
           primaryTagId: exercise.primaryTagId,
+          intensity: exercise.intensity,
           note: exercise.note,
           translations: exercise.translations,
           createdAt: instant(exercise.createdAt),
@@ -345,9 +346,11 @@ export async function importLocalArchive(
             cycleId: cycle.id,
             metric: goal.metric,
             target: goal.target,
+            stretchTarget: goal.stretchTarget,
             exerciseId:
               goal.exerciseId === null ? null : (plan.exerciseIdMap.get(goal.exerciseId) ?? null),
             tagId: goal.tagId,
+            intensity: goal.intensity,
             position,
           })),
         );

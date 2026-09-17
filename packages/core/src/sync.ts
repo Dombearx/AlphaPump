@@ -26,6 +26,7 @@ import {
   displayNameSchema,
   exerciseSchema,
   gymSchema,
+  intensitySchema,
   isoDateSchema,
   isoDateTimeSchema,
   loggingTypeSchema,
@@ -201,6 +202,8 @@ export const exercisePushSchema = z.object({
   authorId: uuidSchema,
   loggingType: loggingTypeSchema,
   primaryTagId: uuidSchema,
+  /** Puste w paczkach z telefonów sprzed wprowadzenia intensywności. */
+  intensity: intensitySchema.nullable().default(null),
   /** Zestaw tagów dodatkowych jedzie z ćwiczeniem i jest podmieniany w całości. */
   additionalTagIds: z.array(uuidSchema).default([]),
   note: noteSchema.nullable().default(null),

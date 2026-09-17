@@ -164,6 +164,7 @@ export async function applyExercises(
       authorId,
       loggingType: existing?.loggingType ?? row.loggingType,
       primaryTagId: row.primaryTagId,
+      intensity: row.intensity,
       note: row.note,
       gym: row.gym,
       // Domknięcie, nie podmiana — patrz ten sam zabieg przy tagach.

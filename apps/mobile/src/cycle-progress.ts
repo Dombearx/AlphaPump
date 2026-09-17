@@ -78,7 +78,11 @@ function exerciseResolver(
   const byId = new Map<string, CycleMatchableExercise>();
   for (const set of sets) {
     if (!byId.has(set.exerciseId)) {
-      byId.set(set.exerciseId, { id: set.exerciseId, primaryTagId: set.primaryTagId });
+      byId.set(set.exerciseId, {
+        id: set.exerciseId,
+        primaryTagId: set.primaryTagId,
+        intensity: set.intensity,
+      });
     }
   }
   return (exerciseId) => byId.get(exerciseId);

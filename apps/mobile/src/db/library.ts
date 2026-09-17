@@ -27,6 +27,7 @@ import {
   tagColor,
   tagId as computeTagId,
   updateExerciseInputSchema,
+  type Intensity,
   type LoggingType,
   type Translations,
   type UserRole,
@@ -194,6 +195,13 @@ export interface ExerciseValues {
   /** Nazwy w pozostałych językach; puste dokłada model przy synchronizacji. */
   translations?: Translations | null;
   primaryTagId: string;
+  /**
+   * Intensywność wysiłku; `null` znaczy „nieokreślona" (patrz `intensity.ts`
+   * w rdzeniu). Pole opcjonalne, bo pominięcie znaczy dokładnie to samo co
+   * `null` — a wołających, których intensywność nie obchodzi wcale (import
+   * z FitNotes), jest więcej niż tych, których obchodzi.
+   */
+  intensity?: Intensity | null;
   additionalTagIds: string[];
   note: string | null;
   /**
@@ -245,6 +253,7 @@ export async function createExercise(
     translations: command.translations ?? null,
     loggingType: command.loggingType,
     primaryTagId: command.primaryTagId,
+    intensity: command.intensity,
     additionalTagIds: command.additionalTagIds,
     note: command.note,
     gym: command.gym,
@@ -265,6 +274,7 @@ export async function createExercise(
     authorId: command.userId,
     loggingType: input.loggingType,
     primaryTagId: input.primaryTagId,
+    intensity: input.intensity,
     note: input.note,
     gym: input.gym,
     createdAt: existing?.createdAt ?? now,
@@ -309,6 +319,7 @@ export async function updateExercise(
     ...(command.name === undefined ? {} : { name: command.name }),
     ...(command.translations === undefined ? {} : { translations: command.translations }),
     ...(command.primaryTagId === undefined ? {} : { primaryTagId: command.primaryTagId }),
+    ...(command.intensity === undefined ? {} : { intensity: command.intensity }),
     ...(command.additionalTagIds === undefined
       ? {}
       : { additionalTagIds: command.additionalTagIds }),
@@ -350,6 +361,7 @@ export async function updateExercise(
         name,
         slug: newSlug,
         primaryTagId,
+        intensity: input.intensity === undefined ? existing.intensity : input.intensity,
         note: input.note === undefined ? existing.note : input.note,
         gym,
         // Pominięte pole znaczy „zostaw, jak jest", podane — „taki jest teraz

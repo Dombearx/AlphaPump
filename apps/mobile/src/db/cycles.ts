@@ -22,6 +22,7 @@ import {
   newCycleGoalId,
   newCycleId,
   resetCycleRange,
+  type CycleGoalDraft,
   type CycleGoalInput,
   type IsoDate,
 } from '@alphapump/core';
@@ -39,7 +40,7 @@ export interface CycleValues {
   name: string;
   startsOn: IsoDate;
   endsOn: IsoDate | null;
-  goals: CycleGoalInput[];
+  goals: CycleGoalDraft[];
 }
 
 export class CycleNotFoundError extends Error {
@@ -69,8 +70,10 @@ async function replaceGoals(
       cycleId,
       metric: goal.metric,
       target: goal.target,
+      stretchTarget: goal.stretchTarget,
       exerciseId: goal.exerciseId,
       tagId: goal.tagId,
+      intensity: goal.intensity,
       position,
     })),
   );
@@ -230,7 +233,9 @@ async function loadGoalInputs(db: SqliteDatabase, cycleId: string): Promise<Cycl
   return rows.map((row) => ({
     metric: row.metric,
     target: row.target,
+    stretchTarget: row.stretchTarget,
     exerciseId: row.exerciseId,
     tagId: row.tagId,
+    intensity: row.intensity,
   }));
 }

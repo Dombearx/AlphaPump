@@ -64,6 +64,13 @@
       "when": 1787490896130,
       "tag": "0008_far_jigsaw",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1789663222127,
+      "tag": "0009_zippy_skullbuster",
+      "breakpoints": true
     }
   ]
 }

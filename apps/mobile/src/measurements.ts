@@ -18,6 +18,7 @@ import {
   secondsToDuration,
   usesBodyweight,
   type GoalMetric,
+  type Intensity,
   type LoggingType,
   type MeasurementKey,
   type SetMeasurements,
@@ -234,6 +235,24 @@ export const GOAL_METRIC_LABELS: Readonly<Record<GoalMetric, string>> = {
   sets: 'Sets',
   duration: 'Time',
   distance: 'Distance',
+};
+
+/** Intensywność ćwiczenia po ludzku — pokazywana w formularzu ćwiczenia. */
+export const INTENSITY_LABELS: Readonly<Record<Intensity, string>> = {
+  low: 'Light',
+  moderate: 'Moderate',
+  high: 'Vigorous',
+};
+
+/**
+ * To samo widziane od strony pozycji celu. Osobne napisy, bo chips w bibliotece
+ * opisuje **ćwiczenie** („Moderate"), a wiersz w cyklu opisuje **robotę**
+ * („Moderate activity") i stoi obok nazw ćwiczeń i tagów.
+ */
+export const INTENSITY_GOAL_LABELS: Readonly<Record<Intensity, string>> = {
+  low: 'Light activity',
+  moderate: 'Moderate activity',
+  high: 'Vigorous activity',
 };
 
 /**

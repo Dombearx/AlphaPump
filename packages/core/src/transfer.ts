@@ -435,6 +435,7 @@ export function canonicalArchive(archive: ArchiveContent): unknown {
       authorId: exercise.authorId,
       loggingType: exercise.loggingType,
       primaryTagId: exercise.primaryTagId,
+      intensity: exercise.intensity,
       additionalTagIds: [...exercise.additionalTagIds].sort((a, b) => a.localeCompare(b)),
       note: exercise.note,
       gym: exercise.gym,
@@ -463,8 +464,10 @@ export function canonicalArchive(archive: ArchiveContent): unknown {
         id: goal.id,
         metric: goal.metric,
         target: goal.target,
+        stretchTarget: goal.stretchTarget,
         exerciseId: goal.exerciseId,
         tagId: goal.tagId,
+        intensity: goal.intensity,
       })),
     })),
   };
