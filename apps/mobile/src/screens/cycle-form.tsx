@@ -16,9 +16,13 @@
 import {
   addDays,
   differenceInDays,
+  INTENSITIES,
   isIsoDate,
-  type CycleGoalInput,
+  whoCycleInput,
+  WHO_CYCLE_DAYS,
+  type CycleGoalDraft,
   type GoalMetric,
+  type Intensity,
   type IsoDate,
   type Translations,
 } from '@alphapump/core';
@@ -43,6 +47,7 @@ import { useLocalAuthor } from '../hooks';
 import { useLocalizedName } from '../language/provider';
 import {
   GOAL_METRIC_LABELS,
+  INTENSITY_GOAL_LABELS,
   formatMetric,
   metricPlaceholder,
   metricUnit,
@@ -65,7 +70,7 @@ import {
 const METRICS: GoalMetric[] = ['sets', 'duration', 'distance'];
 
 /** Pozycja celu w formularzu — wejście dla bazy plus nazwa do pokazania. */
-interface GoalDraft extends CycleGoalInput {
+interface GoalDraft extends CycleGoalDraft {
   label: string;
   color: string | null;
 }
@@ -123,8 +128,10 @@ export function CycleFormScreen({ mode }: { mode: CycleFormMode }) {
         .map((goal) => ({
           metric: goal.metric,
           target: goal.target,
+          stretchTarget: goal.stretchTarget,
           exerciseId: goal.exerciseId,
           tagId: goal.tagId,
+          intensity: goal.intensity,
           label: goalName(goal, named),
           color: goal.tagColor,
         })),
@@ -133,6 +140,29 @@ export function CycleFormScreen({ mode }: { mode: CycleFormMode }) {
   }, [mode, loaded, edited, goalRows.data]);
 
   if (author === null || !loaded) return <Loading />;
+
+  /**
+   * Cykl WHO wchodzi do **tego samego formularza**, a nie zakłada się sam obok.
+   * Jest więc opcjonalny w najmocniejszym sensie: użytkownik widzi przed
+   * zapisem, co dokładnie dostaje, i może to zmienić — a wyłącza go tak, jak
+   * każdy inny cykl, czyli archiwizując go albo usuwając.
+   */
+  const fillFromWho = () => {
+    Keyboard.dismiss();
+    const template = whoCycleInput(today);
+
+    setName(template.name);
+    setStartsOn(template.startsOn);
+    setOpenEnded(false);
+    setDurationDays(String(WHO_CYCLE_DAYS));
+    setGoals(
+      template.goals.map((goal) => ({
+        ...goal,
+        label: goal.intensity === null ? 'Goal item' : INTENSITY_GOAL_LABELS[goal.intensity],
+        color: null,
+      })),
+    );
+  };
 
   const duration = Number.parseInt(durationDays, 10);
   const validDuration = Number.isInteger(duration) && duration >= 1;
@@ -202,6 +232,19 @@ export function CycleFormScreen({ mode }: { mode: CycleFormMode }) {
             placeholder="e.g. August biceps push"
             autoFocus={mode.kind === 'create'}
           />
+
+          {mode.kind === 'create' && (
+            <Card className="gap-2">
+              <SectionTitle>Start from a template</SectionTitle>
+              <Text className="text-xs text-muted">
+                WHO guidelines for adults: 150 minutes of moderate activity a week for the basic
+                health benefits, 300 for the additional ones. A minute of vigorous activity counts
+                as two moderate ones, so one item covers the whole rule. Exercises count toward it
+                once you set their intensity in the library.
+              </Text>
+              <Button variant="secondary" label="WHO weekly activity" onPress={fillFromWho} />
+            </Card>
+          )}
 
           <Card className="gap-3">
             <View className="flex-row gap-3">
@@ -294,6 +337,9 @@ export function CycleFormScreen({ mode }: { mode: CycleFormMode }) {
                     <Text className="text-text">{goal.label}</Text>
                     <Text className="text-xs text-muted">
                       {GOAL_METRIC_LABELS[goal.metric]} · {formatMetric(goal.metric, goal.target)}
+                      {goal.stretchTarget == null
+                        ? ''
+                        : ` → ${formatMetric(goal.metric, goal.stretchTarget)}`}
                     </Text>
                   </View>
                   <IconButton
@@ -337,9 +383,13 @@ export function CycleFormScreen({ mode }: { mode: CycleFormMode }) {
 /**
  * Dodawanie jednej pozycji celu.
  *
- * Zakres jest **albo** ćwiczeniem, **albo** tagiem — nigdy jednym i drugim. Ten
+ * Zakres jest **dokładnie jeden**: ćwiczenie, tag albo intensywność. Ten
  * warunek pilnuje schemat, baza i serwer; tutaj po prostu nie da się wybrać
- * obu naraz, bo wybór jednego czyści drugi.
+ * dwóch naraz, bo wybór jednego czyści pozostałe.
+ *
+ * Próg wyższy jest opcjonalny i pusty domyślnie. Cykl z dwoma poziomami ma sens
+ * tam, gdzie istnieje „minimum" i „więcej niż minimum" — tak jak w wytycznych
+ * WHO — a nie w każdym celu, jaki ktoś sobie postawi.
  */
 function GoalComposer({
   tags,
@@ -362,51 +412,82 @@ function GoalComposer({
 }) {
   const named = useLocalizedName();
   const [metric, setMetric] = useState<GoalMetric>('sets');
-  const [scope, setScope] = useState<'tag' | 'exercise'>('tag');
+  const [scope, setScope] = useState<'tag' | 'exercise' | 'intensity'>('tag');
   const [tagId, setTagId] = useState<string | null>(null);
   const [exerciseId, setExerciseId] = useState<string | null>(null);
+  const [intensity, setIntensity] = useState<Intensity | null>(null);
   const [query, setQuery] = useState('');
   const [target, setTarget] = useState('');
+  const [stretch, setStretch] = useState('');
 
   const matches = useMemo(() => filterExercises(exercises, query).slice(0, 6), [exercises, query]);
+
+  // Pusty próg wyższy znaczy „jeden poziom", a wpisany, ale niepoprawny, znaczy
+  // „użytkownik czegoś chce i jeszcze tego nie dokończył" — stąd trzy stany.
+  const stretchTarget =
+    stretch.trim().length === 0 ? null : parseMetricTarget(metric, stretch.trim());
 
   const add = () => {
     const value = parseMetricTarget(metric, target);
     if (value === null) return;
+    const levels = { target: value, stretchTarget };
 
     if (scope === 'tag') {
       const tag = tags.find((candidate) => candidate.id === tagId);
       if (tag === undefined) return;
       onAdd({
         metric,
-        target: value,
+        ...levels,
         exerciseId: null,
         tagId: tag.id,
+        intensity: null,
         label: named(tag),
         color: tag.color,
       });
-    } else {
+    } else if (scope === 'exercise') {
       const exercise = exercises.find((candidate) => candidate.id === exerciseId);
       if (exercise === undefined) return;
       onAdd({
         metric,
-        target: value,
+        ...levels,
         exerciseId: exercise.id,
         tagId: null,
+        intensity: null,
         label: named(exercise),
         color: exercise.tagColor,
+      });
+    } else {
+      if (intensity === null) return;
+      onAdd({
+        metric,
+        ...levels,
+        exerciseId: null,
+        tagId: null,
+        intensity,
+        label: INTENSITY_GOAL_LABELS[intensity],
+        color: null,
       });
     }
 
     setTarget('');
+    setStretch('');
     setQuery('');
     setTagId(null);
     setExerciseId(null);
+    setIntensity(null);
   };
 
+  const value = parseMetricTarget(metric, target);
+  const scopePicked =
+    scope === 'tag'
+      ? tagId !== null
+      : scope === 'exercise'
+        ? exerciseId !== null
+        : intensity !== null;
   const ready =
-    parseMetricTarget(metric, target) !== null &&
-    (scope === 'tag' ? tagId !== null : exerciseId !== null);
+    value !== null &&
+    scopePicked &&
+    (stretch.trim().length === 0 || (stretchTarget !== null && stretchTarget > value));
 
   return (
     <Card className="gap-3">
@@ -430,6 +511,7 @@ function GoalComposer({
           onPress={() => {
             setScope('tag');
             setExerciseId(null);
+            setIntensity(null);
           }}
         />
         <Chip
@@ -438,11 +520,32 @@ function GoalComposer({
           onPress={() => {
             setScope('exercise');
             setTagId(null);
+            setIntensity(null);
+          }}
+        />
+        <Chip
+          label="Intensity"
+          selected={scope === 'intensity'}
+          onPress={() => {
+            setScope('intensity');
+            setTagId(null);
+            setExerciseId(null);
           }}
         />
       </ChipRow>
 
-      {scope === 'tag' ? (
+      {scope === 'intensity' ? (
+        <ChipRow>
+          {INTENSITIES.map((option) => (
+            <Chip
+              key={option}
+              label={INTENSITY_GOAL_LABELS[option]}
+              selected={intensity === option}
+              onPress={() => setIntensity(option)}
+            />
+          ))}
+        </ChipRow>
+      ) : scope === 'tag' ? (
         <ChipRow wrap>
           {tags.map((tag) => (
             <Chip
@@ -486,12 +589,31 @@ function GoalComposer({
         onFocus={onFocusTarget}
       />
 
+      <Field
+        label="Higher target"
+        value={stretch}
+        onChangeText={setStretch}
+        unit={metricUnit(metric)}
+        placeholder="optional"
+        keyboardType={metric === 'duration' ? 'numbers-and-punctuation' : 'numeric'}
+        onFocus={onFocusTarget}
+        hint="A second level above the target, for goals that have a “minimum” and a “more than the minimum”. Must be higher than the target."
+      />
+
       <Button variant="secondary" label="Add item" disabled={!ready} onPress={add} />
 
       {scope === 'tag' && (
         <Text className="text-xs text-muted">
           A tag goal only counts an exercise's primary tag. Additional tags are labels for browsing
           the library and don't count sets.
+        </Text>
+      )}
+
+      {scope === 'intensity' && (
+        <Text className="text-xs text-muted">
+          An intensity goal counts exercises by the intensity set on them in the library; exercises
+          with none set don't count. In a moderate goal a minute of vigorous activity counts as two,
+          which is how the WHO guidelines count it.
         </Text>
       )}
     </Card>

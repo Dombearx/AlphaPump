@@ -88,6 +88,13 @@ export const sqliteMigrationBundle: SqliteMigrationBundle = {
         "when": 1787490896130,
         "tag": "0008_far_jigsaw",
         "breakpoints": true
+      },
+      {
+        "idx": 9,
+        "version": "6",
+        "when": 1789663222127,
+        "tag": "0009_zippy_skullbuster",
+        "breakpoints": true
       }
     ]
   },
@@ -101,6 +108,7 @@ export const sqliteMigrationBundle: SqliteMigrationBundle = {
   m0006: "CREATE INDEX `users_server_seq_idx` ON `users` (`server_seq`);",
   m0007: "ALTER TABLE `sync_rejections` ADD `reason_detail` text;",
   m0008: "ALTER TABLE `exercises` ADD `translations` text;--> statement-breakpoint\nALTER TABLE `tags` ADD `translations` text;",
+  m0009: "PRAGMA foreign_keys=OFF;--> statement-breakpoint\nCREATE TABLE `__new_cycle_goals` (\n\t`id` text PRIMARY KEY NOT NULL,\n\t`cycle_id` text NOT NULL,\n\t`metric` text NOT NULL,\n\t`target` integer NOT NULL,\n\t`stretch_target` integer,\n\t`exercise_id` text,\n\t`tag_id` text,\n\t`intensity` text,\n\t`position` integer DEFAULT 0 NOT NULL,\n\tFOREIGN KEY (`cycle_id`) REFERENCES `cycles`(`id`) ON UPDATE no action ON DELETE cascade,\n\tFOREIGN KEY (`exercise_id`) REFERENCES `exercises`(`id`) ON UPDATE no action ON DELETE no action,\n\tFOREIGN KEY (`tag_id`) REFERENCES `tags`(`id`) ON UPDATE no action ON DELETE no action,\n\tCONSTRAINT \"cycle_goals_metric_check\" CHECK(\"metric\" IN ('sets', 'duration', 'distance')),\n\tCONSTRAINT \"cycle_goals_target_check\" CHECK(\"target\" > 0),\n\tCONSTRAINT \"cycle_goals_stretch_target_check\" CHECK(\"stretch_target\" IS NULL OR \"stretch_target\" > \"target\"),\n\tCONSTRAINT \"cycle_goals_intensity_check\" CHECK(\"intensity\" IS NULL OR \"intensity\" IN ('low', 'moderate', 'high')),\n\tCONSTRAINT \"cycle_goals_scope_check\" CHECK((CASE WHEN \"exercise_id\" IS NULL THEN 0 ELSE 1 END + CASE WHEN \"tag_id\" IS NULL THEN 0 ELSE 1 END + CASE WHEN \"intensity\" IS NULL THEN 0 ELSE 1 END) = 1)\n);\n--> statement-breakpoint\nINSERT INTO `__new_cycle_goals`(\"id\", \"cycle_id\", \"metric\", \"target\", \"stretch_target\", \"exercise_id\", \"tag_id\", \"intensity\", \"position\") SELECT \"id\", \"cycle_id\", \"metric\", \"target\", NULL, \"exercise_id\", \"tag_id\", NULL, \"position\" FROM `cycle_goals`;--> statement-breakpoint\nDROP TABLE `cycle_goals`;--> statement-breakpoint\nALTER TABLE `__new_cycle_goals` RENAME TO `cycle_goals`;--> statement-breakpoint\nPRAGMA foreign_keys=ON;--> statement-breakpoint\nCREATE INDEX `cycle_goals_cycle_idx` ON `cycle_goals` (`cycle_id`);--> statement-breakpoint\nALTER TABLE `exercises` ADD `intensity` text;",
   },
 };
 

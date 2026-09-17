@@ -47,6 +47,7 @@ function exercise(id: string, overrides: ExerciseOverrides = {}): LibraryExercis
       authorId: 'autor',
       loggingType: 'weight_reps',
       primaryTagId: BICEPS,
+      intensity: null,
       additionalTagIds: [],
       note: null,
       gym: null,

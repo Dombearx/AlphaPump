@@ -128,4 +128,64 @@ describe('migracje PostgreSQL', () => {
       }),
     ).rejects.toThrow();
   });
+
+  it('odrzuca intensywność ćwiczenia spoza listy, ale przepuszcza pustą', async () => {
+    await seedPostgres(postgres.db);
+    const [tag] = await postgres.db.select().from(tags).limit(1);
+
+    // Nazwa musi być inna w każdej próbie — para „autor + slug" jest unikalna.
+    const insert = (intensity: string | null) => {
+      const name = `Bieg ${intensity ?? 'bez intensywności'}`;
+      return postgres.db.execute(sql`
+        INSERT INTO exercises (id, name, slug, author_id, logging_type, primary_tag_id, intensity)
+        VALUES (${name}, ${name}, ${name},
+                ${SYSTEM_USER.id}, 'distance_time', ${tag?.id ?? ''}, ${intensity})
+      `);
+    };
+
+    await expect(insert('katorznicza')).rejects.toThrow();
+    await expect(insert(null)).resolves.toBeDefined();
+    await expect(insert('high')).resolves.toBeDefined();
+  });
+
+  describe('pozycja celu cyklu', () => {
+    const insertGoal = (columns: string, values: ReturnType<typeof sql>) =>
+      postgres.db.execute(
+        sql`INSERT INTO cycle_goals (id, cycle_id, metric, ${sql.raw(columns)})
+            VALUES (${crypto.randomUUID()}, 'cykl-testowy', 'duration', ${values})`,
+      );
+
+    beforeAll(async () => {
+      await seedPostgres(postgres.db);
+      await postgres.db.execute(sql`
+        INSERT INTO cycles (id, user_id, name, starts_on)
+        VALUES ('cykl-testowy', ${SYSTEM_USER.id}, 'Testowy', '2026-08-01')
+        ON CONFLICT DO NOTHING
+      `);
+    });
+
+    it('przyjmuje zakres intensywnościowy', async () => {
+      await expect(insertGoal('target, intensity', sql`9000, 'moderate'`)).resolves.toBeDefined();
+    });
+
+    it('odrzuca pozycję z dwoma zakresami naraz', async () => {
+      const [tag] = await postgres.db.select().from(tags).limit(1);
+      await expect(
+        insertGoal('target, tag_id, intensity', sql`9000, ${tag?.id ?? ''}, 'moderate'`),
+      ).rejects.toThrow();
+    });
+
+    it('odrzuca pozycję bez żadnego zakresu', async () => {
+      await expect(insertGoal('target', sql`9000`)).rejects.toThrow();
+    });
+
+    it('odrzuca próg wyższy nie większy od minimalnego', async () => {
+      await expect(
+        insertGoal('target, stretch_target, intensity', sql`9000, 9000, 'moderate'`),
+      ).rejects.toThrow();
+      await expect(
+        insertGoal('target, stretch_target, intensity', sql`9000, 18000, 'moderate'`),
+      ).resolves.toBeDefined();
+    });
+  });
 });

@@ -265,6 +265,7 @@ export function exerciseDetails(db: SqliteDatabase, exerciseId: string) {
       name: exercises.name,
       translations: exercises.translations,
       loggingType: exercises.loggingType,
+      intensity: exercises.intensity,
       note: exercises.note,
       gym: exercises.gym,
       authorId: exercises.authorId,
@@ -566,8 +567,10 @@ export function cycleGoalList(db: SqliteDatabase, userId: string) {
       cycleId: cycleGoals.cycleId,
       metric: cycleGoals.metric,
       target: cycleGoals.target,
+      stretchTarget: cycleGoals.stretchTarget,
       exerciseId: cycleGoals.exerciseId,
       tagId: cycleGoals.tagId,
+      intensity: cycleGoals.intensity,
       position: cycleGoals.position,
       exerciseName: exercises.name,
       exerciseTranslations: exercises.translations,
@@ -627,6 +630,7 @@ export function setsForCycles(db: SqliteDatabase, userId: string, from: IsoDate)
       durationS: workoutSets.durationS,
       distanceM: workoutSets.distanceM,
       primaryTagId: exercises.primaryTagId,
+      intensity: exercises.intensity,
     })
     .from(workoutSets)
     .innerJoin(exercises, eq(exercises.id, workoutSets.exerciseId))

@@ -13,7 +13,7 @@
  */
 
 import { LANGUAGES, LANGUAGE_LABELS, type Exercise, type Tag } from '@alphapump/core';
-import { LOGGING_TYPES } from '@alphapump/core';
+import { INTENSITIES, LOGGING_TYPES } from '@alphapump/core';
 import { useState } from 'react';
 import { Button, Field, Input, Select, Textarea, ToggleChip } from './ui';
 import {
@@ -23,6 +23,13 @@ import {
   translationDraft,
   type ExerciseDraft,
 } from '../lib/exercise-draft';
+
+/** Intensywność po ludzku — nazwy jak w wytycznych WHO. */
+export const INTENSITY_LABELS: Record<NonNullable<Exercise['intensity']>, string> = {
+  low: 'light',
+  moderate: 'moderate',
+  high: 'vigorous',
+};
 
 export const LOGGING_TYPE_LABELS: Record<Exercise['loggingType'], string> = {
   weight_reps: 'weight + reps',
@@ -38,6 +45,7 @@ export function emptyDraft(tags: readonly Tag[]): ExerciseDraft {
     name: '',
     loggingType: 'weight_reps',
     primaryTagId: tags[0]?.id ?? '',
+    intensity: '',
     additionalTagIds: [],
     note: '',
     gym: '',
@@ -50,6 +58,7 @@ export function draftFrom(exercise: Exercise): ExerciseDraft {
     name: exercise.name,
     loggingType: exercise.loggingType,
     primaryTagId: exercise.primaryTagId,
+    intensity: exercise.intensity ?? '',
     additionalTagIds: [...exercise.additionalTagIds],
     note: exercise.note ?? '',
     gym: exercise.gym ?? '',
@@ -142,6 +151,25 @@ export function ExerciseForm({ tags, editing, busy, onCancel, onSubmit }: Exerci
             {tags.map((tag) => (
               <option key={tag.id} value={tag.id}>
                 {tag.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+
+        <Field
+          label="Intensity"
+          hint="Used only by intensity-based cycle goals, the WHO one among them."
+        >
+          <Select
+            value={draft.intensity}
+            onChange={(event) => {
+              patch({ intensity: event.target.value as ExerciseDraft['intensity'] });
+            }}
+          >
+            <option value="">— not set —</option>
+            {INTENSITIES.map((option) => (
+              <option key={option} value={option}>
+                {INTENSITY_LABELS[option]}
               </option>
             ))}
           </Select>

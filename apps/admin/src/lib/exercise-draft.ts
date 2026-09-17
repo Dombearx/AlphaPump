@@ -18,6 +18,7 @@ import {
   sameTranslations,
   type CreateExerciseInput,
   type Exercise,
+  type Intensity,
   type Language,
   type LoggingType,
   type Tag,
@@ -33,6 +34,8 @@ export interface ExerciseDraft {
   name: string;
   loggingType: LoggingType;
   primaryTagId: string;
+  /** Pusty napis znaczy „nieokreślona" — tak samo jak `null` w encji. */
+  intensity: Intensity | '';
   additionalTagIds: string[];
   note: string;
   gym: string;
@@ -112,6 +115,7 @@ export function exerciseInput(draft: ExerciseDraft): CreateExerciseInput {
     name: draft.name.trim(),
     loggingType: draft.loggingType,
     primaryTagId: draft.primaryTagId,
+    intensity: draft.intensity === '' ? null : draft.intensity,
     additionalTagIds: [...draft.additionalTagIds],
     note: orNull(draft.note),
     gym: orNull(draft.gym),
@@ -142,6 +146,7 @@ export function exercisePatch(draft: ExerciseDraft, current: Exercise): UpdateEx
     patch.translations = next.translations;
   }
   if (next.primaryTagId !== current.primaryTagId) patch.primaryTagId = next.primaryTagId;
+  if (next.intensity !== current.intensity) patch.intensity = next.intensity;
   if (next.note !== current.note) patch.note = next.note;
   if (next.gym !== current.gym) patch.gym = next.gym;
 
