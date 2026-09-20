@@ -66,22 +66,35 @@ export interface SuggestedDraft extends SetDraft {
  * serii ostatniego dnia z tym ćwiczeniem") liczy `@alphapump/core`. Tutaj
  * zostaje wyłącznie zamiana liczb na napisy. Notatki świadomie nie
  * podpowiadamy — dotyczy konkretnej serii, a nie zwyczaju.
+ *
+ * `bodyweightG` to masa ciała z ustawień urządzenia (`src/bodyweight/`) albo
+ * `null`, gdy nikt jej nie podał. Wygrywa z masą przepisaną z poprzedniej serii,
+ * bo jest tą **aktualną**: wartość sprzed tygodni podpowiadałaby w kółko masę,
+ * której już nie ma, i wpisanie nowej w ustawieniach niczego by nie zmieniło.
+ * Pole zostaje edytowalne, więc pojedynczą serię nadal da się poprawić ręcznie.
+ * Do typów logowania bez masy ciała nie ma jak trafić — `draftOf` bierze
+ * wyłącznie pola, które dany typ w ogóle pokazuje.
  */
 export function suggestedDraft<T extends SuggestableSet>(
   loggingType: LoggingType,
   history: readonly T[],
   day: IsoDate,
+  bodyweightG: number | null = null,
 ): SuggestedDraft {
   const suggestion = suggestNextSet(loggingType, history, day);
-  if (suggestion === null) return { ...EMPTY_DRAFT, reason: null };
+  if (suggestion === null && bodyweightG === null) return { ...EMPTY_DRAFT, reason: null };
 
   const draft = draftOf(loggingType, {
-    ...suggestion.measurements,
-    bodyweightG: suggestion.bodyweightG,
+    weightG: null,
+    reps: null,
+    durationS: null,
+    distanceM: null,
+    ...suggestion?.measurements,
+    bodyweightG: bodyweightG ?? suggestion?.bodyweightG ?? null,
     note: null,
   });
 
-  return { ...draft, reason: suggestion.reason };
+  return { ...draft, reason: suggestion?.reason ?? null };
 }
 
 export type DraftReadResult =

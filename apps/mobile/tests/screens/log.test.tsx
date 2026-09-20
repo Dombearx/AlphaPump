@@ -50,6 +50,46 @@ describe('ekran zapisywania serii', () => {
     });
   });
 
+  describe('masa ciała z ustawień', () => {
+    it('wchodzi do formularza ćwiczenia opartego o masę ciała', async () => {
+      await mount(<LogScreen day={DAY} exerciseId={EXERCISES.crunch!.id} bodyweightG={78_000} />);
+
+      expect((screen.getByLabelText('Bodyweight') as HTMLInputElement).value).toBe('78');
+    });
+
+    it('zapisuje się razem z serią, jednym naciśnięciem', async () => {
+      // To jest sedno zgłoszenia: masa podana raz w ustawieniach ma trafiać do
+      // serii sama, bez wpisywania jej przy każdym podejściu.
+      await mount(<LogScreen day={DAY} exerciseId={EXERCISES.crunch!.id} bodyweightG={78_000} />);
+
+      await user().type(screen.getByLabelText('Reps'), '12');
+      await user().click(screen.getByRole('button', { name: 'Add set' }));
+
+      const rows = await local.db.select().from(workoutSets).where(eqDay(DAY));
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ reps: 12, bodyweightG: 78_000 });
+    });
+
+    it('zostaje polem jak każde inne — da się ją poprawić dla jednej serii', async () => {
+      await mount(<LogScreen day={DAY} exerciseId={EXERCISES.crunch!.id} bodyweightG={78_000} />);
+
+      const field = screen.getByLabelText('Bodyweight');
+      await user().clear(field);
+      await user().type(field, '80');
+      await user().type(screen.getByLabelText('Reps'), '12');
+      await user().click(screen.getByRole('button', { name: 'Add set' }));
+
+      const rows = await local.db.select().from(workoutSets).where(eqDay(DAY));
+      expect(rows[0]).toMatchObject({ bodyweightG: 80_000 });
+    });
+
+    it('bez ustawienia formularz zachowuje się jak dotychczas', async () => {
+      await mount(<LogScreen day={DAY} exerciseId={EXERCISES.crunch!.id} />);
+
+      expect((screen.getByLabelText('Bodyweight') as HTMLInputElement).value).toBe('');
+    });
+  });
+
   describe('pusty dzień', () => {
     it('tłumaczy, że nic tu jeszcze nie ma', async () => {
       await mount(<LogScreen day={DAY} exerciseId={EXERCISES.bench!.id} />);

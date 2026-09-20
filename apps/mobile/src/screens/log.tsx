@@ -98,6 +98,7 @@ export function LogScreen({
   day,
   exerciseId,
   dictated = null,
+  bodyweightG = null,
 }: {
   day: IsoDate;
   exerciseId: string;
@@ -107,6 +108,12 @@ export function LogScreen({
    * zawsze; ekran nie ma z tego powodu drugiego trybu, tylko inny punkt startowy.
    */
   dictated?: DictatedSet | null;
+  /**
+   * Masa ciała z ustawień urządzenia (`src/bodyweight/`) albo `null`, gdy nikt
+   * jej nie podał. Przychodzi z trasy, a nie z magazynu czytanego tutaj: dysk
+   * dotyka wyłącznie warstwa Expo, a ekran zostaje testowalny poza telefonem.
+   */
+  bodyweightG?: number | null;
 }) {
   const { data: session, isPending } = useSession();
   const router = useRouter();
@@ -133,8 +140,9 @@ export function LogScreen({
   const daySets = useMemo(() => sets.filter((set) => set.performedOn === day), [sets, day]);
 
   const suggestion = useMemo(
-    () => (exercise === undefined ? null : suggestedDraft(exercise.loggingType, sets, day)),
-    [exercise, sets, day],
+    () =>
+      exercise === undefined ? null : suggestedDraft(exercise.loggingType, sets, day, bodyweightG),
+    [exercise, sets, day, bodyweightG],
   );
 
   // Typ logowania rozstrzyga, które pola formularz w ogóle ma — a znany jest
@@ -144,8 +152,14 @@ export function LogScreen({
     () =>
       exercise === undefined || dictation === null
         ? null
-        : draftOf(exercise.loggingType, { ...dictation }),
-    [exercise, dictation],
+        : draftOf(exercise.loggingType, {
+            ...dictation,
+            // Masa z ustawień uzupełnia wyłącznie to, czego w nagraniu nie było.
+            // Powiedzianej na głos nie nadpisujemy: dotyczy tej jednej serii
+            // i jest świeższa niż cokolwiek zapisanego wcześniej.
+            bodyweightG: dictation.bodyweightG ?? bodyweightG,
+          }),
+    [exercise, dictation, bodyweightG],
   );
 
   const records = useMemo(

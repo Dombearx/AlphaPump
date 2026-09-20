@@ -24,8 +24,10 @@ import { useSyncEngine, useSyncSnapshot } from '../src/sync/provider';
 import { describeRunningBundle } from '../src/update/running';
 import { useRunningBundle } from '../src/update/use-update';
 import { expoDictationStore } from '../src/dictation/expo';
+import { expoBodyweightStore } from '../src/bodyweight/expo';
 import { expoExerciseOrderStore } from '../src/exercise-order/expo';
 import { BackgroundSettings } from '../src/ui/background';
+import { BodyweightSettings } from '../src/ui/bodyweight';
 import { DictationSettings } from '../src/ui/dictation';
 import { ExerciseOrderSettings } from '../src/ui/exercise-order';
 import { LanguageSettings } from '../src/ui/language';
@@ -61,6 +63,11 @@ export default function AccountRoute() {
           </Text>
           <Text className="mt-1 text-muted">{session.user.email}</Text>
         </Card>
+
+        {/* Zaraz pod kontem, a nie między ustawieniami urządzenia: masa ciała
+            mówi o człowieku, a nie o telefonie — mimo że jak reszta ustawień
+            leży na tym jednym urządzeniu. */}
+        <BodyweightSettings store={expoBodyweightStore} />
 
         <Card className="gap-2">
           <SectionTitle>Sync</SectionTitle>

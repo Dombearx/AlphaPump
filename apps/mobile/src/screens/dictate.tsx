@@ -25,6 +25,11 @@
  * model trafia, włącza zapis od razu. Seria niepełna trafia do formularza
  * zawsze: nie da się zapisać serii bez pól, których wymaga jej typ logowania.
  *
+ * Obie drogi podstawiają masę ciała z ustawień (`src/bodyweight/`) — przez
+ * formularz robi to trasa `/day/[date]/log/[exerciseId]`, a przy zapisie od razu
+ * `dictatedSetValues`. Masa powiedziana w nagraniu wygrywa z ustawieniem, bo
+ * dotyczy tej jednej serii.
+ *
  * ## Dlaczego ten ekran wolno **czekać na sieć**
  *
  * Bo cała reszta aplikacji czyta z bazy lokalnej i działa offline — i to jest
@@ -47,6 +52,8 @@ import { useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSession } from '../auth/client';
+import { expoBodyweightStore } from '../bodyweight/expo';
+import { useBodyweight } from '../bodyweight/use-bodyweight';
 import { db } from '../db/client';
 import { createSet } from '../db/sets';
 import { expoDictationStore } from '../dictation/expo';
@@ -58,7 +65,7 @@ import { recordingFrom, VoiceUnavailableError } from '../remote/voice';
 import { useRequestSync } from '../sync/provider';
 import { SyncAuthError, SyncOfflineError } from '../sync/transport';
 import { Button, Card, Field, Loading, SectionTitle } from '../ui/primitives';
-import { dictationOutcome, dictationParams } from '../voice-draft';
+import { dictatedSetValues, dictationOutcome, dictationParams } from '../voice-draft';
 import { VOICE_MAX_SECONDS, VOICE_RECORDING_OPTIONS } from '../voice-recording';
 
 const HINT =
@@ -89,6 +96,10 @@ export function DictateScreen({ day }: { day: IsoDate }) {
   const deviceId = useDeviceId();
   const requestSync = useRequestSync();
   const { mode } = useDictationMode(expoDictationStore);
+  // Tryb „zapisz od razu" omija formularz serii, a to on podstawia masę ciała
+  // z ustawień — więc ustawienie czyta także ten ekran. Droga przez formularz
+  // dostaje ją po staremu, w trasie `/day/[date]/log/[exerciseId]`.
+  const { bodyweightG } = useBodyweight(expoBodyweightStore);
 
   // Preset zostaje presetem: nadpisujemy w nim wyłącznie pasmo i bitrate
   // (patrz `voice-recording.ts`), więc format pliku jest ten sam, co u Expo.
@@ -127,14 +138,7 @@ export function DictateScreen({ day }: { day: IsoDate }) {
         deviceId,
         exerciseId: match.exerciseId,
         performedOn: day,
-        values: {
-          weightG: match.weightG,
-          reps: match.reps,
-          durationS: match.durationS,
-          distanceM: match.distanceM,
-          bodyweightG: match.bodyweightG,
-          note: match.note,
-        },
+        values: dictatedSetValues(match, bodyweightG),
       });
 
       setSaved({

@@ -10,7 +10,9 @@
  * - **wartości jadą do formularza adresem** i wracają z niego liczbami, także
  *   wtedy, gdy w adresie znajdzie się śmieć,
  * - **ustawienie „zapisz od razu" nie omija kompletności serii** — a rejestr,
- *   którego nie da się przeczytać, cofa się do zapisu przez formularz.
+ *   którego nie da się przeczytać, cofa się do zapisu przez formularz,
+ * - **masa ciała z ustawień wchodzi także do serii zapisanej wprost z nagrania**,
+ *   bo ta jedna droga formularza nie dotyka.
  */
 
 import type { VoiceSetMatch } from '@alphapump/core';
@@ -22,7 +24,12 @@ import {
 } from '../src/dictation/state';
 import { createVoiceClient, recordingFrom, VoiceUnavailableError } from '../src/remote/voice';
 import { SyncAuthError, SyncOfflineError, SyncServerError } from '../src/sync/transport';
-import { dictationOutcome, dictationParams, readDictationParams } from '../src/voice-draft';
+import {
+  dictatedSetValues,
+  dictationOutcome,
+  dictationParams,
+  readDictationParams,
+} from '../src/voice-draft';
 
 const EXERCISE = '00000000-0000-7000-8000-000000000001';
 
@@ -195,6 +202,45 @@ describe('co zrobić z rozpoznaną serią', () => {
   it('bez dopasowania nie ma czego zrobić', () => {
     expect(dictationOutcome('save', null)).toBe('ask');
     expect(dictationOutcome('form', null)).toBe('ask');
+  });
+});
+
+describe('seria zapisywana wprost z dyktowania', () => {
+  const pullUps: VoiceSetMatch = {
+    ...MATCH,
+    name: 'Podciąganie',
+    loggingType: 'bodyweight_reps',
+    weightG: null,
+    reps: 8,
+  };
+
+  it('bierze masę ciała z ustawień, bo formularza tu nie ma', () => {
+    // Zapis od razu omija formularz — bez tego ta sama seria miałaby masę
+    // wpisana z palca, a podyktowana nie miałaby jej wcale.
+    expect(dictatedSetValues(pullUps, 78_000)).toMatchObject({ reps: 8, bodyweightG: 78_000 });
+  });
+
+  it('masa powiedziana w nagraniu wygrywa z ustawieniem', () => {
+    // Dotyczy tej jednej serii i jest najświeższa — podciąganie z obciążeniem
+    // mówi się na głos właśnie po to.
+    const spoken = { ...pullUps, bodyweightG: 85_000 };
+
+    expect(dictatedSetValues(spoken, 78_000).bodyweightG).toBe(85_000);
+  });
+
+  it('nie podstawia masy ciała tam, gdzie ćwiczenie o nią nie pyta', () => {
+    expect(dictatedSetValues(MATCH, 78_000)).toEqual({
+      weightG: 82_500,
+      reps: 8,
+      durationS: null,
+      distanceM: null,
+      bodyweightG: null,
+      note: null,
+    });
+  });
+
+  it('bez ustawienia zapisuje dokładnie to, co usłyszał', () => {
+    expect(dictatedSetValues(pullUps, null).bodyweightG).toBeNull();
   });
 });
 

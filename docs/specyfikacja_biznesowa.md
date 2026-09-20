@@ -124,6 +124,10 @@ Obsługiwane typy logowania serii:
 
 Dla ćwiczeń opartych o masę ciała użytkownik może wpisać wartość masy ciała. Masa ciała nie bierze udziału w liczeniu rekordów. 
 
+Użytkownik może zapisać w ustawieniach aplikacji swoją aktualną masę ciała. Jest ona wtedy podstawiana jako wartość startowa masy ciała przy dodawaniu serii ćwiczeń opartych o masę ciała — zarówno w formularzu, jak i przy serii zapisywanej wprost z dyktowania — i pozostaje edytowalna dla pojedynczej serii. Masa podana w dyktowaniu ma pierwszeństwo przed ustawieniem. Ustawienie jest opcjonalne — bez niego pole masy ciała zachowuje się tak jak dotychczas. 
+
+Aplikacja przechowuje historię zmian masy ciała: jeden pomiar na dzień, a masą aktualną jest pomiar najświeższy. Kilka ostatnich pomiarów wraz ze zmianą względem poprzedniego jest widocznych w ustawieniach. Wyczyszczenie ustawienia kasuje całą historię. Historia masy ciała nie bierze udziału w liczeniu rekordów ani rankingów. 
+
 Użytkownik może dodawać serie do:
 - dnia bieżącego,
 - dowolnego dnia w przeszłości,

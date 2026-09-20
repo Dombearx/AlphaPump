@@ -15,7 +15,8 @@
  * ciężaru „NaN".
  */
 
-import type { VoiceSetMatch } from '@alphapump/core';
+import { usesBodyweight, type VoiceSetMatch } from '@alphapump/core';
+import type { SetValues } from './db/sets';
 import type { DictationMode } from './dictation/state';
 
 /** Wartości serii wyjęte z nagrania; `null` znaczy „w nagraniu tego nie było". */
@@ -107,4 +108,27 @@ export function dictationOutcome(
 ): DictationOutcome {
   if (match === null) return 'ask';
   return mode === 'save' && match.complete ? 'save' : 'form';
+}
+
+/**
+ * Wartości serii zapisywanej wprost z dyktowania, czyli w trybie „zapisz od
+ * razu" — ten jeden tryb omija formularz, więc masa ciała z ustawień musi wejść
+ * tutaj. Inaczej ta sama seria miałaby masę przy zapisie z palca, a nie miałaby
+ * jej przy dyktowaniu, i to bez żadnego powodu widocznego dla użytkownika.
+ *
+ * Reguła jest ta sama co w `suggestedDraft`, z jednym odwróceniem: masa
+ * **powiedziana** wygrywa z ustawieniem, bo dotyczy tej jednej serii. Ustawienie
+ * uzupełnia wyłącznie to, czego w nagraniu nie było — i tylko tam, gdzie
+ * ćwiczenie w ogóle o masę ciała pyta (`usesBodyweight`), żeby nie wpisać jej
+ * do wyciskania sztangi.
+ */
+export function dictatedSetValues(match: VoiceSetMatch, bodyweightG: number | null): SetValues {
+  return {
+    weightG: match.weightG,
+    reps: match.reps,
+    durationS: match.durationS,
+    distanceM: match.distanceM,
+    bodyweightG: usesBodyweight(match.loggingType) ? (match.bodyweightG ?? bodyweightG) : null,
+    note: match.note,
+  };
 }
