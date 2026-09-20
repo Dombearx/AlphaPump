@@ -71,6 +71,13 @@
       "when": 1789209645725,
       "tag": "0009_icy_typhoid_mary",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789663245591,
+      "tag": "0010_motionless_fixer",
+      "breakpoints": true
     }
   ]
 }

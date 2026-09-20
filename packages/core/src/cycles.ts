@@ -9,11 +9,22 @@
  * W celach opartych o tag liczy się wyłącznie **tag główny** ćwiczenia. Tagi
  * dodatkowe są etykietami do przeglądania biblioteki i nie zaliczają serii.
  *
+ * Pozycja celu może też wskazywać **intensywność** zamiast ćwiczenia czy tagu —
+ * to na tym zakresie stoi cykl WHO (patrz `who.ts`). Zakres intensywnościowy
+ * jako jedyny waży wkład serii: minuta wysiłku wysokiej intensywności liczy się
+ * w celu umiarkowanym za dwie, bo tak liczą ją wytyczne WHO (`intensity.ts`).
+ *
  * Postęp jest daną pochodną — przeliczaną z serii, a nie akumulowaną. Dzięki
  * temu usunięcie serii po prostu zmniejsza postęp, bez korekt wstecznych.
+ *
+ * Pozycja celu może mieć **dwa poziomy**: `target` (minimalny) i opcjonalny
+ * `stretchTarget` (wyższy). Bierze się to wprost z wytycznych WHO, które
+ * rozróżniają próg podstawowych korzyści zdrowotnych i próg korzyści
+ * dodatkowych — ale mechanizm jest ogólny i działa w każdym cyklu.
  */
 
 import { addDays, differenceInDays, isWithinRange, type IsoDate } from './dates.js';
+import { intensityWeight, type Intensity } from './intensity.js';
 import type { GoalMetric } from './schemas.js';
 
 /** Minimum, jakiego algorytm potrzebuje od serii. `WorkoutSet` to spełnia. */
@@ -28,6 +39,8 @@ export interface CycleMatchableSet {
 export interface CycleMatchableExercise {
   id: string;
   primaryTagId: string;
+  /** `null` — intensywność nieokreślona; taka seria nie zasila celów WHO. */
+  intensity: Intensity | null;
 }
 
 /** Minimum, jakiego algorytm potrzebuje od pozycji celu. `CycleGoal` to spełnia. */
@@ -35,8 +48,11 @@ export interface CycleMatchableGoal {
   id: string;
   metric: GoalMetric;
   target: number;
+  /** Próg wyższy; `null`, gdy pozycja ma jeden poziom. Zawsze większy od `target`. */
+  stretchTarget: number | null;
   exerciseId: string | null;
   tagId: string | null;
+  intensity: Intensity | null;
 }
 
 /** Minimum, jakiego algorytm potrzebuje od cyklu. `Cycle` to spełnia. */
@@ -47,12 +63,18 @@ export interface CycleMatchable {
   goals: readonly CycleMatchableGoal[];
 }
 
-export type GoalScope = { kind: 'exercise'; id: string } | { kind: 'tag'; id: string };
+export type GoalScope =
+  | { kind: 'exercise'; id: string }
+  | { kind: 'tag'; id: string }
+  | { kind: 'intensity'; intensity: Intensity };
 
 export function goalScope(goal: CycleMatchableGoal): GoalScope {
   if (goal.exerciseId !== null) return { kind: 'exercise', id: goal.exerciseId };
   if (goal.tagId !== null) return { kind: 'tag', id: goal.tagId };
-  throw new RangeError(`Pozycja celu ${goal.id} nie wskazuje ani ćwiczenia, ani tagu`);
+  if (goal.intensity !== null) return { kind: 'intensity', intensity: goal.intensity };
+  throw new RangeError(
+    `Pozycja celu ${goal.id} nie wskazuje ani ćwiczenia, ani tagu, ani intensywności`,
+  );
 }
 
 /** Czy dzień mieści się w zakresie cyklu (zakres domknięty obustronnie). */
@@ -65,21 +87,41 @@ export function goalMatchesExercise(
   exercise: CycleMatchableExercise,
 ): boolean {
   const scope = goalScope(goal);
-  return scope.kind === 'exercise' ? scope.id === exercise.id : scope.id === exercise.primaryTagId;
+  switch (scope.kind) {
+    case 'exercise':
+      return scope.id === exercise.id;
+    case 'tag':
+      return scope.id === exercise.primaryTagId;
+    case 'intensity':
+      return intensityWeight(scope.intensity, exercise.intensity) > 0;
+  }
 }
 
 /**
  * Ile dana seria wnosi do pozycji celu. Zero oznacza, że seria nie zasila tego
  * celu — na przykład cel dystansowy, a seria bez dystansu.
+ *
+ * Wkład surowy jest mnożony przez wagę zakresu. Waga jest jedynką wszędzie poza
+ * zakresem intensywnościowym, gdzie niesie równoważność WHO: minuta wysiłku
+ * wysokiej intensywności wchodzi do celu umiarkowanego za dwie.
  */
-export function goalContribution(goal: CycleMatchableGoal, set: CycleMatchableSet): number {
+export function goalContribution(
+  goal: CycleMatchableGoal,
+  set: CycleMatchableSet,
+  exercise: CycleMatchableExercise,
+): number {
+  const scope = goalScope(goal);
+  const weight =
+    scope.kind === 'intensity' ? intensityWeight(scope.intensity, exercise.intensity) : 1;
+  if (weight === 0) return 0;
+
   switch (goal.metric) {
     case 'sets':
-      return 1;
+      return weight;
     case 'duration':
-      return set.durationS ?? 0;
+      return weight * (set.durationS ?? 0);
     case 'distance':
-      return set.distanceM ?? 0;
+      return weight * (set.distanceM ?? 0);
   }
 }
 
@@ -96,20 +138,31 @@ export function setMatchesGoal(
   if (set.exerciseId !== exercise.id) return false;
   if (!isDayWithinCycle(cycle, set.performedOn)) return false;
   if (!goalMatchesExercise(goal, exercise)) return false;
-  return goalContribution(goal, set) > 0;
+  return goalContribution(goal, set, exercise) > 0;
 }
 
 export interface GoalProgress {
   goalId: string;
   metric: GoalMetric;
   target: number;
+  /** Próg wyższy pozycji; `null`, gdy pozycja ma jeden poziom. */
+  stretchTarget: number | null;
   current: number;
   /** Ile brakuje do celu; nigdy ujemne. */
   remaining: number;
   /** Udział w celu, przycięty do przedziału 0–1. */
   ratio: number;
   completed: boolean;
+  /** Udział w progu wyższym, 0–1; `null`, gdy pozycja ma jeden poziom. */
+  stretchRatio: number | null;
+  stretchCompleted: boolean;
 }
+
+/**
+ * Poziom realizacji cyklu: `none` — próg minimalny jeszcze nieosiągnięty,
+ * `minimal` — osiągnięty, `higher` — osiągnięty także próg wyższy.
+ */
+export type CycleLevel = 'none' | 'minimal' | 'higher';
 
 export interface CycleProgress {
   cycleId: string;
@@ -117,6 +170,12 @@ export interface CycleProgress {
   /** Średnia z przyciętych udziałów pozycji — „90 procent celu" ze specyfikacji. */
   ratio: number;
   completed: boolean;
+  /** Czy którakolwiek pozycja ma w ogóle próg wyższy — bez tego poziom jest jeden. */
+  hasStretch: boolean;
+  /** To samo co `ratio`, tylko liczone względem progów wyższych. */
+  stretchRatio: number;
+  stretchCompleted: boolean;
+  level: CycleLevel;
 }
 
 /**
@@ -137,29 +196,47 @@ export function computeCycleProgress(
       const exercise = exerciseById(set.exerciseId);
       if (exercise === undefined) continue;
       if (!setMatchesGoal(cycle, goal, set, exercise)) continue;
-      current += goalContribution(goal, set);
+      current += goalContribution(goal, set, exercise);
     }
 
     const ratio = goal.target === 0 ? 1 : Math.min(current / goal.target, 1);
+    const stretch = goal.stretchTarget;
     return {
       goalId: goal.id,
       metric: goal.metric,
       target: goal.target,
+      stretchTarget: stretch,
       current,
       remaining: Math.max(goal.target - current, 0),
       ratio,
       completed: current >= goal.target,
+      stretchRatio: stretch === null ? null : Math.min(current / stretch, 1),
+      stretchCompleted: stretch !== null && current >= stretch,
     } satisfies GoalProgress;
   });
 
-  const ratio =
-    goals.length === 0 ? 0 : goals.reduce((sum, goal) => sum + goal.ratio, 0) / goals.length;
+  const average = (of: (goal: GoalProgress) => number) =>
+    goals.length === 0 ? 0 : goals.reduce((sum, goal) => sum + of(goal), 0) / goals.length;
+
+  const ratio = average((goal) => goal.ratio);
+  const completed = goals.length > 0 && goals.every((goal) => goal.completed);
+
+  // Pozycja bez progu wyższego wchodzi do liczenia poziomu wyższego swoim
+  // zwykłym udziałem: jej jedyny próg **jest** wszystkim, czego wymaga, więc nie
+  // ma powodu, żeby blokowała poziom wyższy całego cyklu.
+  const hasStretch = goals.some((goal) => goal.stretchTarget !== null);
+  const stretchCompleted =
+    completed && goals.every((goal) => goal.stretchTarget === null || goal.stretchCompleted);
 
   return {
     cycleId: cycle.id,
     goals,
     ratio,
-    completed: goals.length > 0 && goals.every((goal) => goal.completed),
+    completed,
+    hasStretch,
+    stretchRatio: average((goal) => goal.stretchRatio ?? goal.ratio),
+    stretchCompleted: hasStretch && stretchCompleted,
+    level: completed ? (hasStretch && stretchCompleted ? 'higher' : 'minimal') : 'none',
   };
 }
 

@@ -38,9 +38,16 @@
  * paczki — dalej nie przechodzi.
  */
 
-import { GOAL_METRICS, LOGGING_TYPES, SYNC_ENTITIES, USER_ROLES } from '@alphapump/core';
+import {
+  GOAL_METRICS,
+  INTENSITIES,
+  LOGGING_TYPES,
+  SYNC_ENTITIES,
+  USER_ROLES,
+} from '@alphapump/core';
 import type {
   GoalMetric,
+  Intensity,
   IsoDate,
   LoggingType,
   SyncEntity,
@@ -74,6 +81,22 @@ const syncColumns = () => ({
 
 const oneOf = (column: string, values: readonly string[]) =>
   sql.raw(`"${column}" IN (${values.map((value) => `'${value}'`).join(', ')})`);
+
+/** To samo dla kolumny opcjonalnej: pusta wartość jest dozwolona, byle nie obca. */
+const oneOfOrNull = (column: string, values: readonly string[]) =>
+  sql.raw(
+    `"${column}" IS NULL OR "${column}" IN (${values.map((value) => `'${value}'`).join(', ')})`,
+  );
+
+/**
+ * „Dokładnie jedna z wymienionych kolumn jest wypełniona" — w składni, którą
+ * rozumieją oba dialekty. `CASE`, a nie suma warunków logicznych: PostgreSQL
+ * nie dodaje wartości `boolean` bez rzutowania, a SQLite nie ma tego typu wcale.
+ */
+const exactlyOneOf = (columns: readonly string[]) =>
+  sql.raw(
+    `(${columns.map((column) => `CASE WHEN "${column}" IS NULL THEN 0 ELSE 1 END`).join(' + ')}) = 1`,
+  );
 
 /* ---------------------------------------------------------------- użytkownik */
 
@@ -160,6 +183,20 @@ export const exercises = sqliteTable(
      * kolumna to migracja w dwóch dialektach.
      */
     translations: text('translations', { mode: 'json' }).$type<Translations>(),
+    /**
+     * Intensywność wysiłku — to ona rozstrzyga cele intensywnościowe cyklu WHO
+     * (patrz `intensity.ts` w rdzeniu). `NULL` znaczy „nieokreślona" i jest
+     * stanem domyślnym: pole doszło do biblioteki, która już istniała.
+     *
+     * Jako jedyna kolumna z listą wartości **nie ma tu `CHECK`-a**, choć po
+     * stronie serwera go ma. SQLite nie umie dołożyć warunku do istniejącej
+     * tabeli — trzeba ją przepisać, a `exercises` jest tabelą nadrzędną dla
+     * serii, tagów dodatkowych i pozycji celu. `DROP TABLE` na niej, przy
+     * włączonych kluczach obcych i pełnej bazie na telefonie, kończy się
+     * naruszeniem więzów. Wartości i tak pilnują dwie warstwy przed bazą:
+     * schemat Zod z rdzenia i `CHECK` na serwerze przy pushu.
+     */
+    intensity: text('intensity').$type<Intensity>(),
     ...syncColumns(),
   },
   (table) => [
@@ -260,15 +297,24 @@ export const cycleGoals = sqliteTable(
       .references(() => cycles.id, { onDelete: 'cascade' }),
     metric: text('metric').$type<GoalMetric>().notNull(),
     target: integer('target').notNull(),
+    /** Próg wyższy tej samej pozycji; `NULL` znaczy „jeden poziom". */
+    stretchTarget: integer('stretch_target'),
     exerciseId: text('exercise_id').references(() => exercises.id),
     tagId: text('tag_id').references(() => tags.id),
+    /** Zakres intensywnościowy — na nim stoi cykl WHO (patrz `who.ts` w rdzeniu). */
+    intensity: text('intensity').$type<Intensity>(),
     position: integer('position').notNull().default(0),
   },
   (table) => [
     index('cycle_goals_cycle_idx').on(table.cycleId),
     check('cycle_goals_metric_check', oneOf('metric', GOAL_METRICS)),
     check('cycle_goals_target_check', sql.raw('"target" > 0')),
-    check('cycle_goals_scope_check', sql.raw('("exercise_id" IS NULL) <> ("tag_id" IS NULL)')),
+    check(
+      'cycle_goals_stretch_target_check',
+      sql.raw('"stretch_target" IS NULL OR "stretch_target" > "target"'),
+    ),
+    check('cycle_goals_intensity_check', oneOfOrNull('intensity', INTENSITIES)),
+    check('cycle_goals_scope_check', exactlyOneOf(['exercise_id', 'tag_id', 'intensity'])),
   ],
 );
 

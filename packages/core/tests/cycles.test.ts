@@ -21,14 +21,29 @@ import { makeSet } from './helpers.js';
 const BICEPS = 'tag-biceps';
 const NOGI = 'tag-nogi';
 
-const uginanie: CycleMatchableExercise = { id: 'uginanie', primaryTagId: BICEPS };
-const mlotki: CycleMatchableExercise = { id: 'mlotki', primaryTagId: BICEPS };
-const przysiad: CycleMatchableExercise = { id: 'przysiad', primaryTagId: NOGI };
+const uginanie: CycleMatchableExercise = { id: 'uginanie', primaryTagId: BICEPS, intensity: null };
+const mlotki: CycleMatchableExercise = { id: 'mlotki', primaryTagId: BICEPS, intensity: null };
+const przysiad: CycleMatchableExercise = { id: 'przysiad', primaryTagId: NOGI, intensity: null };
 /** Ćwiczenie z tagiem dodatkowym „biceps" — tagi dodatkowe nie zaliczają serii. */
-const podciaganie: CycleMatchableExercise = { id: 'podciaganie', primaryTagId: 'tag-grzbiet' };
-const bieg: CycleMatchableExercise = { id: 'bieg', primaryTagId: 'tag-cardio' };
+const podciaganie: CycleMatchableExercise = {
+  id: 'podciaganie',
+  primaryTagId: 'tag-grzbiet',
+  intensity: null,
+};
+const bieg: CycleMatchableExercise = {
+  id: 'bieg',
+  primaryTagId: 'tag-cardio',
+  intensity: 'moderate',
+};
+/** Marsz i interwały — ta sama biblioteka, trzy różne poziomy wysiłku. */
+const marsz: CycleMatchableExercise = { id: 'marsz', primaryTagId: 'tag-cardio', intensity: 'low' };
+const interwaly: CycleMatchableExercise = {
+  id: 'interwaly',
+  primaryTagId: 'tag-cardio',
+  intensity: 'high',
+};
 
-const exercises = [uginanie, mlotki, przysiad, podciaganie, bieg];
+const exercises = [uginanie, mlotki, przysiad, podciaganie, bieg, marsz, interwaly];
 const exerciseById = (id: string) => exercises.find((exercise) => exercise.id === id);
 
 function goal(overrides: Partial<CycleMatchableGoal> = {}): CycleMatchableGoal {
@@ -36,8 +51,10 @@ function goal(overrides: Partial<CycleMatchableGoal> = {}): CycleMatchableGoal {
     id: 'goal-1',
     metric: 'sets',
     target: 12,
+    stretchTarget: null,
     exerciseId: null,
     tagId: BICEPS,
+    intensity: null,
     ...overrides,
   };
 }
@@ -95,17 +112,17 @@ describe('dopasowanie pozycji celu do ćwiczenia', () => {
 
 describe('goalContribution', () => {
   it('cel na serie liczy każdą serię jako jedną', () => {
-    expect(goalContribution(goal({ metric: 'sets' }), makeSet({ reps: 10 }))).toBe(1);
+    expect(goalContribution(goal({ metric: 'sets' }), makeSet({ reps: 10 }), uginanie)).toBe(1);
   });
 
   it('cel czasowy sumuje sekundy, dystansowy metry', () => {
     const set = makeSet({ durationS: 90, distanceM: 1500 });
-    expect(goalContribution(goal({ metric: 'duration' }), set)).toBe(90);
-    expect(goalContribution(goal({ metric: 'distance' }), set)).toBe(1500);
+    expect(goalContribution(goal({ metric: 'duration' }), set, uginanie)).toBe(90);
+    expect(goalContribution(goal({ metric: 'distance' }), set, uginanie)).toBe(1500);
   });
 
   it('brak wartości metryki to zerowy wkład', () => {
-    expect(goalContribution(goal({ metric: 'distance' }), makeSet({ reps: 10 }))).toBe(0);
+    expect(goalContribution(goal({ metric: 'distance' }), makeSet({ reps: 10 }), uginanie)).toBe(0);
   });
 });
 
@@ -344,5 +361,93 @@ describe('findMatchingCycles', () => {
     const cykle = [cycle({ id: 'c-1', startsOn: '2026-09-01', endsOn: '2026-09-30' })];
     const set = makeSet({ exerciseId: 'uginanie', performedOn: '2026-08-10', reps: 10 });
     expect(findMatchingCycles(cykle, set, uginanie)).toEqual([]);
+  });
+});
+
+describe('zakres intensywnościowy', () => {
+  const moderate = goal({ tagId: null, intensity: 'moderate', metric: 'duration', target: 600 });
+
+  it('jest rozpoznawany jako trzeci rodzaj zakresu', () => {
+    expect(goalScope(moderate)).toEqual({ kind: 'intensity', intensity: 'moderate' });
+  });
+
+  it('obejmuje ćwiczenia o tej intensywności i — w celu umiarkowanym — wyższej', () => {
+    expect(goalMatchesExercise(moderate, bieg)).toBe(true);
+    expect(goalMatchesExercise(moderate, interwaly)).toBe(true);
+    expect(goalMatchesExercise(moderate, marsz)).toBe(false);
+    // Ćwiczenie bez określonej intensywności nie zalicza się nigdzie.
+    expect(goalMatchesExercise(moderate, uginanie)).toBe(false);
+  });
+
+  it('waży wkład równoważnością WHO, a nie liczy minut wprost', () => {
+    const set = makeSet({ exerciseId: 'interwaly', durationS: 300 });
+    expect(goalContribution(moderate, set, interwaly)).toBe(600);
+    expect(goalContribution(moderate, set, bieg)).toBe(300);
+  });
+
+  it('cel na serie liczy serię intensywną za dwie', () => {
+    const sets = goal({ tagId: null, intensity: 'moderate', metric: 'sets', target: 10 });
+    expect(goalContribution(sets, makeSet({ exerciseId: 'interwaly' }), interwaly)).toBe(2);
+  });
+
+  it('nie miesza się z celami tagowymi tego samego ćwiczenia', () => {
+    const cardio = goal({ tagId: 'tag-cardio', metric: 'duration', target: 600 });
+    const set = makeSet({ exerciseId: 'marsz', performedOn: '2026-08-10', durationS: 600 });
+
+    expect(setMatchesGoal(cycle(), cardio, set, marsz)).toBe(true);
+    expect(setMatchesGoal(cycle(), moderate, set, marsz)).toBe(false);
+  });
+});
+
+describe('dwa poziomy pozycji celu', () => {
+  const twoLevels = goal({ metric: 'sets', target: 10, stretchTarget: 20 });
+
+  const progressAfter = (count: number) =>
+    computeCycleProgress(
+      cycle({ goals: [twoLevels] }),
+      Array.from({ length: count }, () =>
+        makeSet({ exerciseId: 'uginanie', performedOn: '2026-08-10', reps: 10 }),
+      ),
+      exerciseById,
+    );
+
+  it('pozycja bez progu wyższego zostaje jednopoziomowa', () => {
+    const progress = computeCycleProgress(cycle(), [], exerciseById);
+
+    expect(progress.hasStretch).toBe(false);
+    expect(progress.goals[0]?.stretchTarget).toBeNull();
+    expect(progress.goals[0]?.stretchRatio).toBeNull();
+    expect(progress.level).toBe('none');
+  });
+
+  it('poziom minimalny zamyka się na pierwszym progu', () => {
+    const progress = progressAfter(10);
+
+    expect(progress.completed).toBe(true);
+    expect(progress.level).toBe('minimal');
+    expect(progress.goals[0]?.stretchCompleted).toBe(false);
+    expect(progress.goals[0]?.stretchRatio).toBe(0.5);
+  });
+
+  it('poziom wyższy dopiero na drugim', () => {
+    const progress = progressAfter(20);
+
+    expect(progress.level).toBe('higher');
+    expect(progress.stretchCompleted).toBe(true);
+  });
+
+  it('pozycja jednopoziomowa nie blokuje poziomu wyższego całego cyklu', () => {
+    // „Zrobione w całości" jest wszystkim, czego taka pozycja wymaga — więc
+    // wchodzi do poziomu wyższego swoim zwykłym udziałem.
+    const mixed = cycle({
+      goals: [twoLevels, goal({ id: 'g-plain', metric: 'sets', target: 1 })],
+    });
+    const sets = Array.from({ length: 20 }, () =>
+      makeSet({ exerciseId: 'uginanie', performedOn: '2026-08-10', reps: 10 }),
+    );
+
+    const progress = computeCycleProgress(mixed, sets, exerciseById);
+    expect(progress.level).toBe('higher');
+    expect(progress.stretchRatio).toBe(1);
   });
 });
