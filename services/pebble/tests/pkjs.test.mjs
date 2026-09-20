@@ -840,6 +840,76 @@ describe('dzisiejsze serie na ekranie spoczynku', () => {
   });
 });
 
+describe('status połączenia na ekranie głównym', () => {
+  // Zgłoszenie #127: bez łącza z API serii nie da się zapisać, a dowiadywało
+  // się o tym dopiero po podyktowaniu jej w całości.
+
+  it('cisza w sieci mówi o tym na ekranie, zanim ktokolwiek zacznie dyktować', async () => {
+    const phone = sandbox(SETTINGS);
+    phone.routes['GET http://api.test/cycles'] = { fail: 'network' };
+
+    phone.fire('ready');
+    await phone.settle();
+
+    // Wciąż gotowość, a nie błąd: wskaźnik ostrzega, ale niczego nie blokuje.
+    assert.equal(phone.last().STATUS, STATUS.READY);
+    assert.equal(phone.last().TITLE, 'Offline');
+    assert.match(phone.last().BODY, /VPN/);
+  });
+
+  it('przekroczony czas jest tym samym brakiem łącza co cisza', async () => {
+    const phone = sandbox(SETTINGS);
+    phone.routes['GET http://api.test/cycles'] = { fail: 'timeout' };
+
+    phone.fire('ready');
+    await phone.settle();
+
+    assert.equal(phone.last().TITLE, 'Offline');
+  });
+
+  it('odpowiedź serwera — choćby błędem — brakiem łącza nie jest', async () => {
+    // Skoro API odpowiedziało, to telefon je dosięga; 500 nie ma prawa wyglądać
+    // na brak VPN-a.
+    const phone = sandbox(SETTINGS);
+    phone.routes['GET http://api.test/cycles'] = { status: 500, body: {} };
+    phone.routes[SETS_TODAY] = { status: 500, body: {} };
+
+    phone.fire('ready');
+    await phone.settle();
+
+    assert.equal(phone.last().TITLE, 'Ready');
+    assert.equal(phone.sent.length, 1);
+  });
+
+  it('po odzyskaniu łącza ekran wraca do tego, co zostało w cyklu', async () => {
+    const phone = sandbox(SETTINGS);
+    phone.routes['GET http://api.test/cycles'] = { fail: 'network' };
+    phone.fire('ready');
+    await phone.settle();
+    assert.equal(phone.last().TITLE, 'Offline');
+
+    phone.routes['GET http://api.test/cycles'] = { status: 200, body: [] };
+    phone.routes[SETS_TODAY] = { status: 200, body: [set({})] };
+    phone.routes['GET http://api.test/exercises'] = { status: 200, body: LIBRARY };
+
+    phone.fire('ready');
+    await phone.settle();
+
+    assert.equal(phone.last().TITLE, 'Today: 1 set');
+  });
+
+  it('spóźniony wskaźnik nie zabiera ekranu temu, kto już dyktuje', async () => {
+    const phone = sandbox(SETTINGS);
+    phone.routes['GET http://api.test/cycles'] = { fail: 'network' };
+
+    phone.fire('ready');
+    phone.fire('appmessage', { payload: { TRANSCRIPT: 'bench press 82.5 for 8' } });
+    await phone.settle();
+
+    assert.equal(phone.last().STATUS, STATUS.CONFIRM);
+  });
+});
+
 describe('pozostała robota z cyklu na ekranie głównym', () => {
   const goal = (fields) => ({
     id: 'goal-1',
