@@ -60,8 +60,14 @@ export const EXERCISES: Record<string, { id: string; loggingType: LoggingType }>
   // ćwiczenie z rozjazdem między tagiem liczącym się do cyklu a tagami, po
   // których też je znajdzie filtr biblioteki.
   dips: { id: builtInExerciseId('Weighted dip'), loggingType: 'weight_reps' },
+  // Para na zmianę: jedno na biceps, drugie na triceps, bez wspólnych tagów —
+  // czyli dokładnie to, co ma podpowiadać kolejność ćwiczeń.
+  curl: { id: builtInExerciseId('Lying dumbbell curl'), loggingType: 'weight_reps' },
+  frenchPress: { id: builtInExerciseId('Lying triceps extension'), loggingType: 'weight_reps' },
 };
 
 export const TAGS = {
   chest: tagId('chest'),
+  biceps: tagId('biceps'),
+  triceps: tagId('triceps'),
 } as const;

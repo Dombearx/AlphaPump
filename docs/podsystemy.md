@@ -174,9 +174,42 @@ niż jedna kartka, dostaje **dalszy ciąg** tego samego porządku — najwyżej
 zdanie o pokazanym wycinku, a nie o bibliotece, więc odesłanie użytkownika do
 listy przed sprawdzeniem reszty byłoby przedwczesne. Kolejna kartka kosztuje
 jedno wywołanie modelu i płaci się je wyłącznie przy nietrafieniu; kartka
-krótsza od limitu kończy pytanie, bo znaczy koniec biblioteki. Sama liczba
-powtórzeń („jeszcze osiem") jest z tego wyjęta — tam nazwa ćwiczenia w ogóle nie
-padła, więc żadna kartka jej nie zawiera.
+krótsza od limitu kończy pytanie, bo znaczy koniec biblioteki. Zdanie bez nazwy
+ćwiczenia („jeszcze osiem") jest z tego wyjęte — tam nazwa w ogóle nie padła,
+więc żadna kartka jej nie zawiera.
+
+### Nazwa przekręcona przez rozpoznawanie mowy
+
+Każde zdanie przychodzi tu z rozpoznawania mowy — z zegarka albo z klawiatury
+telefonu — więc nazwa ćwiczenia regularnie różni się od tej z biblioteki jednym
+znakiem („bensz pres", „przysiat"). Model, któremu **nie wolno zgadywać**,
+odpowiadał na to „nie wiem, o które ćwiczenie chodzi", chociaż ćwiczenie stało
+na liście, a żaden człowiek nie miałby wątpliwości. Odpowiedzią są dwie rzeczy
+naraz:
+
+- **werdykt niesie osobno numer i osobno usłyszaną nazwę** (`exerciseName`).
+  Numer mówi, **które** to ćwiczenie; nazwa — czy użytkownik w ogóle jakieś
+  wymienił. Bez tego rozróżnienia „nie rozpoznałem nazwy" i „nazwy nie było"
+  wyglądały tak samo, a wymagają przeciwnych reakcji;
+- **nazwa, która padła, ale nie trafiła w żadną pozycję, jest szukana jeszcze
+  raz — bez modelu.** `matchSpokenExercise` w rdzeniu porównuje ją z nazwami
+  z listy (kanonicznymi i obcojęzycznymi) **po słowach**, wybaczając literówkę:
+  człony zalicza `tokenCloseness`, czyli maksimum z podobieństwa trigramowego
+  i odległości edycyjnej — bo w słowie krótkim („bieg", „bench") same trigramy
+  po jednej literówce spadają poniżej każdego sensownego progu.
+
+Dopasowanie po nazwie wymaga **całej** nazwy z biblioteki: każdy jej człon musi
+mieć w zdaniu swój odpowiednik. Pokrycie częściowe wyglądałoby na hojniejsze,
+a kosztowałoby nie to ćwiczenie — „wyciskanie … leżąc" pokrywa w dwóch trzecich
+„Wyciskanie francuskie leżąc", czyli ruch na triceps, o którym nikt nie mówił.
+Ta warstwa naprawia więc **pisownię**, a skróty i synonimy zostają dla modelu,
+który widzi całą listę naraz. Sam prompt też został rozdzielony: przekręcona
+nazwa to nazwa do wskazania, a `null` zostaje dla zdania pasującego równie
+dobrze do kilku pozycji albo do żadnej.
+
+Kolejne kartki biblioteki przechodzą przez to samo dopasowanie **przed**
+pytaniem modelu — jest darmowe i rozstrzyga dokładnie ten przypadek, dla którego
+po dalszą kartkę się sięga.
 
 Dyktowanie, które nie trafiło w żadne ćwiczenie, zostawia po sobie wpis
 `dyktowanie bez dopasowania` w logu serwera — z transkrypcją, liczbą pozycji
@@ -190,18 +223,28 @@ z jednym przekręconym znakiem trafiłby w cudze ćwiczenie, a numer spoza zakre
 odrzuca `applyVoiceVerdict` w rdzeniu. Tam też wycinane są pomiary spoza osi typu
 logowania („dwadzieścia powtórzeń deski") i przeliczane kilogramy na gramy.
 
-Jeden kształt werdyktu domyka jeszcze serwer: **sama liczba powtórzeń**. „Osiem"
-rzucone między seriami znaczy „to samo ćwiczenie i ten sam ciężar, co przed
-chwilą" — model nie ma z czego tego wskazać, a uzupełniać z historii mu nie
-wolno (robiłby to także wtedy, gdy nazwę usłyszał i jej nie rozpoznał). Dlatego
-werdykt bez ćwiczenia, bez ciężaru i z samymi powtórzeniami rozpoznaje
-`isRepsOnlyVerdict`, a ćwiczenie i ciężar dopisuje `carryOverLastSet`
-z **ostatniej serii tego dnia** — odczytem z bazy, nie domysłem. Dzień jedzie
-w żądaniu (`performedOn` w `POST /voice/text`), bo należy do urządzenia: tylko
-ono wie, czy trwa jeszcze ten sam trening. Bez takiej serii — pierwsza seria
-dnia albo klient, który dnia nie przysłał — `match` zostaje pusty, a `reason`
-mówi, czego zabrakło. Korzysta z tego dziś zegarek; aplikacja pola nie wysyła,
-więc działa jak dotąd.
+Jeden kształt werdyktu domyka jeszcze serwer: **zdanie bez nazwy ćwiczenia**.
+„Osiem" albo „jeszcze osiem na siedemdziesiąt" rzucone między seriami znaczy
+„dalej to samo, co przed chwilą" — model nie ma z czego tego wskazać,
+a uzupełniać z historii mu nie wolno (robiłby to także wtedy, gdy nazwę usłyszał
+i jej nie rozpoznał). Dlatego werdykt bez numeru i bez usłyszanej nazwy, ale
+z liczbami, rozpoznaje `isExerciselessVerdict`, a ćwiczenie dopisuje
+`carryOverLastSet` z **poprzedniej serii tego treningu** — odczytem z bazy, nie
+domysłem. Ciężar dokłada się wyłącznie tam, gdzie go nie podano: „jeszcze osiem"
+bierze ciężar poprzedniej serii, „jeszcze osiem na siedemdziesiąt" zostaje przy
+siedemdziesięciu.
+
+Dzień jedzie w żądaniu (`performedOn` w `POST /voice/text`), bo należy do
+urządzenia: tylko ono wie, czy trwa jeszcze ten sam trening. Warunek jest
+twardy — seria z wczoraj nie jest podpowiedzią, tylko zgadywaniem: pierwsze
+zdanie nowego dnia brzmi tak samo jak dziesiąte zdanie trwającego treningu. Bez
+takiej serii — pierwsza seria dnia albo klient, który dnia nie przysłał —
+`match` zostaje pusty, a `reason` mówi, czego zabrakło. Korzysta z tego dziś
+zegarek; aplikacja pola nie wysyła, więc działa jak dotąd.
+
+Nazwa, która padła i w nic nie trafiła, jest czymś przeciwnym i tak też się
+kończy — pytaniem do użytkownika. Podstawienie pod nią ćwiczenia z historii
+zapisałoby serię pod czymś, o czym nie mówił.
 
 **Serwer nie zapisuje serii** — oddaje transkrypcję i wypełniony formularz.
 Zapis dzieje się na telefonie i tylko tam, a co się dzieje po rozpoznaniu,
@@ -232,13 +275,15 @@ od cudzej usługi, ani od klucza w sekretach.
 ### Dyktowanie z zegarka Pebble
 
 Osobna aplikacja (`services/pebble/`), która **nie dokłada do API niczego** —
-korzysta z dwóch endpointów, które już były, i z tokenów API, które powstały dla
-bota Discord:
+korzysta z endpointów, które już były, i z tokenów API, które powstały dla bota
+Discord:
 
 ```
 Pebble ──dictation──▶ tekst ──AppMessage──▶ PebbleKit JS (w aplikacji Pebble na telefonie)
                                                   │ POST /voice/text   → rozpoznana seria
                                                   │ POST /sets         → zapis
+                                                  │ GET  /cycles       → co zostało w cyklu
+                                                  │ GET  /sets         → serie bieżącego okresu
                                             AlphaPump API ──sync──▶ telefon
 ```
 
@@ -248,22 +293,58 @@ Dictation API daje gotowy tekst, a dźwięku aplikacja na zegarku nie widzi w og
 Devices), poza naszym kodem i poza naszym rachunkiem. Dlatego zegarek wpina się
 w wejście **tekstowe**, które i tak powstało dla klawiatury.
 
+Ekran spoczynku pokazuje **to, co w bieżącym cyklu jeszcze zostało** — ekran
+główny ma odpowiadać na pytanie „co teraz zrobić", a nie tylko „co już
+zrobiłem". Pozycja celu wskazująca ćwiczenie nazywa je wprost; pozycja
+wskazująca tag dokłada dwa ćwiczenia, którymi ten tag w tym cyklu bywał robiony
+najczęściej — sam tag nie mówi, co podyktować. Gdy cyklu nie ma albo jest
+domknięty w całości, zostają **serie zapisane dzisiaj** — wszystkie, a nie tylko
+podyktowane z zegarka, bo dzień treningowy jest jeden niezależnie od urządzenia.
+
+Postęp liczy się na telefonie, z serii, tymi samymi regułami co
+`computeCycleProgress` w rdzeniu — przepisanymi do ES5, bo piaskowka PKJS nie
+dociągnie `@alphapump/core`. O serie pyta jedno żądanie, zakresem całego
+bieżącego okresu (cykl o stałej długości przewija się sam, tak samo jak
+w telefonie), więc dzisiejsze serie są w tej samej odpowiedzi i wariant zapasowy
+nie kosztuje drugiego pytania.
+
+Podsumowanie dochodzi **drugą wiadomością**, już po ekranie gotowości:
+dyktowanie nie ma prawa czekać na sieć, więc gdy `GET /sets` nie odpowie,
+zegarek wygląda tak jak przed tą listą i tak samo działa. Nazwy ćwiczeń
+(z tagiem głównym, bo to on rozstrzyga cele tagowe) i nazwy tagów trzyma pamięć
+podręczna w telefonie, uzupełniana z `GET /exercises` i `GET /tags` dopiero przy
+identyfikatorze, którego nie zna — `GET /sets` oddaje same identyfikatory,
+a filtrowania biblioteki po nich nie ma.
+
 Zegarek ma własny przycisk sprawdzenia połączenia: `GET /health` bez tokenu
 (czy telefon w ogóle dosięga API), a potem `GET /me` z tokenem (czy token żyje).
 Rozdzielenie tych dwóch jest całym sensem tego przycisku — pierwszy podejrzany
 przy „nie działa" to czysty HTTP przepuszczany przez cudzą aplikację.
 
 Zegarek dokłada do rozpoznania jedno pole: **dzień** (`performedOn`), ten sam,
-który pojedzie za chwilę w `POST /sets`. Dzięki niemu dyktowanie samej liczby
-powtórzeń — „osiem" między seriami — dostaje ćwiczenie i ciężar z poprzedniej
-serii tego treningu, zamiast kończyć się pytaniem „o które ćwiczenie chodzi".
-Przy pierwszej serii dnia uzupełniać nie ma z czego i zegarek pokazuje to wprost.
+który pojedzie za chwilę w `POST /sets`. Dzięki niemu zdanie bez nazwy
+ćwiczenia — „osiem" albo „jeszcze osiem na siedemdziesiąt" rzucone między
+seriami — dostaje ćwiczenie z poprzedniej serii tego treningu, zamiast kończyć
+się pytaniem „o które ćwiczenie chodzi". Przy pierwszej serii dnia uzupełniać
+nie ma z czego i zegarek pokazuje to wprost.
 
 Reguła „model nie zapisuje sam" obowiązuje tu tak samo jak w telefonie: po
 rozpoznaniu zegarek domyślnie pokazuje serię i czeka na naciśnięcie, a zapis bez
 potwierdzenia jest ustawieniem, które trzeba włączyć. Serii niekompletnej nie
 zapisze w żadnym trybie — formularza na zegarku nie ma, więc jedynym wyjściem
 jest powtórzenie zdania.
+
+Nieudana wysyłka dzieli się na dwie: tę, którą użytkownik może poprawić, i tę,
+która minie sama. Przy drugiej — cisza w sieci, przekroczony czas, 5xx — telefon
+zatrzymuje nieudaną operację, a zegarek pokazuje ekran z ponowieniem pod
+`SELECT`: powtarza się to samo żądanie, tym samym zdaniem albo tą samą serią,
+bez wracania do mikrofonu. Przy błędzie walidacji, martwym tokenie i wyłączonym
+dyktowaniu ponowienia nie ma, bo oddałoby dokładnie tę samą odpowiedź.
+
+Na ekranie błędu stoi **pełna** odpowiedź serwera: kod stanu, kod błędu, zdanie
+i szczegóły, a gdy odpowiedział nie API, tylko proxy — jego surowa treść.
+Aplikacji używają sami piszący ten serwer, więc komunikat techniczny prowadzi tu
+do naprawy szybciej niż uproszczony, a dłuższy niż ekran przewija `DOWN`.
 
 Testy ma **połowa telefonowa** — to w niej siedzi cała decyzyjność, a chodzi
 w Node, więc idzie osobnym zadaniem w `ci.yml` (`node --test`, na atrapach
@@ -490,8 +571,48 @@ każdym żądaniu), lecz komunikatem: „brak uprawnień" zamiast pięciu ekran�
 Ćwiczeniami i tagami panel zarządza **istniejącymi** endpointami CRUD — osobna
 ścieżka zapisu byłaby drugim miejscem, w którym trzeba pamiętać o tombstonie,
 `server_seq` i o regule „tag używany przez ćwiczenia nie znika". Własne endpointy
-`/admin/*` dostały tylko te trzy rzeczy, których nigdzie indziej nie ma: lista
-i edycja kont, liczby systemowe i porządkowanie cache'u re-rankera.
+`/admin/*` dostały tylko te cztery rzeczy, których nigdzie indziej nie ma: lista
+i edycja kont, reset hasła konta, liczby systemowe i porządkowanie cache'u
+re-rankera.
+
+### Reset hasła
+
+Poczty ten stos nie ma, więc „przypomnij hasło" nie ma jak do nikogo dojść.
+Zamiast tego `POST /admin/users/:id/reset-password` nadaje kontu hasło
+**tymczasowe**, a panel pokazuje je raz, do skopiowania — administrator
+przekazuje je właścicielowi konta dowolnym kanałem, a ten ustawia sobie własne
+przy najbliższym logowaniu (`POST /me/password`, bez pytania o stare hasło: zna
+je ten, kto je nadał).
+
+Co się przy tym dzieje i dlaczego:
+
+- **Hasło jawne istnieje wyłącznie w tej jednej odpowiedzi.** W bazie zostaje
+  hash w `accounts`, a tabela `password_resets` niesie samą informację „to konto
+  ma hasło do zmiany" wraz z datą i autorem resetu. Zgubione hasło znaczy
+  „zresetuj jeszcze raz", i tak ma zostać — inaczej byłaby to tabela haseł do
+  odczytu.
+- **Sesje konta znikają.** Bez tego reset nic nie znaczyłby dla telefonu, który
+  jest już zalogowany — a to zwykle jest ten telefon, o który chodzi. Klucze API
+  zostają: to poświadczenie bota, a nie kopia hasła.
+- **Konto po Google dostaje przy okazji logowanie hasłem** (wcześniej nie miało
+  wiersza z hasłem, więc reset nie miałby czego zmienić); logowanie Google
+  działa dalej.
+- **Flaga jest w osobnej tabeli, nie w `users`.** Tabela użytkowników schodzi
+  pullem na telefony (nicki do rekordów globalnych), więc kolumna w niej
+  rozesłałaby wszystkim informację o tym, kto ma właśnie hasło tymczasowe.
+- **Własnego hasła tędy się nie resetuje** — reset kasuje sesje, więc
+  administrator wylogowałby się w chwili, w której panel pokazuje mu hasło do
+  przepisania. Konta systemowego nie dotyczy w ogóle, jak reszty operacji na
+  kontach.
+
+Wymuszenie zmiany jest po stronie klientów: `GET /me` niesie
+`mustChangePassword`, a panel i aplikacja pokazują wtedy **wyłącznie** formularz
+nowego hasła. Odcinanie na to każdego endpointu kosztowałoby zapytanie do bazy
+przy każdym żądaniu — także przy każdej paczce synchronizacji — a chroniłoby
+jedynie przed kimś, kto omija własną aplikację, żeby dłużej używać hasła, które
+i tak zna administrator. Telefon bez łączności nie blokuje niczego: nie ma jak
+sprawdzić stanu hasła, a zapisywanie serii offline jest ważniejsze niż
+natychmiastowość tej prośby.
 
 Biblioteka jest w panelu **kompletna**: dodawanie, zmiana i usuwanie ćwiczeń
 razem z tagiem głównym, tagami dodatkowymi, siłownią i notatką, oraz dodawanie,

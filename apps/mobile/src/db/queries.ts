@@ -75,6 +75,11 @@ export function daySets(db: SqliteDatabase, userId: string, day: IsoDate) {
       // `language/provider.tsx`).
       exerciseTranslations: exercises.translations,
       loggingType: exercises.loggingType,
+      // Tag główny ćwiczenia, a nie sam jego kolor: z kolejności dzisiejszych
+      // serii liczy się rozdzielność partii przy podpowiadaniu następnego
+      // ćwiczenia (patrz `exercise-rotation.ts`), a do tego trzeba wiedzieć,
+      // co dany wiersz w ogóle męczył.
+      tagId: exercises.primaryTagId,
       tagColor: tags.color,
       position: workoutSets.position,
       weightG: workoutSets.weightG,
@@ -260,6 +265,7 @@ export function exerciseDetails(db: SqliteDatabase, exerciseId: string) {
       name: exercises.name,
       translations: exercises.translations,
       loggingType: exercises.loggingType,
+      intensity: exercises.intensity,
       note: exercises.note,
       gym: exercises.gym,
       authorId: exercises.authorId,
@@ -416,6 +422,10 @@ export function tagLibrary(db: SqliteDatabase) {
     .select({
       id: tags.id,
       name: tags.name,
+      // Slug, bo po nim — a nie po nazwie widocznej na ekranie — rozpoznajemy
+      // tag cardio wyłączony z podpowiadania ćwiczeń (patrz `rotation.ts`
+      // w rdzeniu). Nazwa bywa przetłumaczona, slug jest jeden.
+      slug: tags.slug,
       translations: tags.translations,
       color: tags.color,
       exerciseCount: count(membership.exerciseId).as('exercise_count'),
@@ -423,7 +433,7 @@ export function tagLibrary(db: SqliteDatabase) {
     .from(tags)
     .leftJoin(membership, eq(membership.tagId, tags.id))
     .where(isNull(tags.deletedAt))
-    .groupBy(tags.id, tags.name, tags.translations, tags.color)
+    .groupBy(tags.id, tags.name, tags.slug, tags.translations, tags.color)
     .orderBy(asc(tags.name));
 }
 
@@ -557,8 +567,10 @@ export function cycleGoalList(db: SqliteDatabase, userId: string) {
       cycleId: cycleGoals.cycleId,
       metric: cycleGoals.metric,
       target: cycleGoals.target,
+      stretchTarget: cycleGoals.stretchTarget,
       exerciseId: cycleGoals.exerciseId,
       tagId: cycleGoals.tagId,
+      intensity: cycleGoals.intensity,
       position: cycleGoals.position,
       exerciseName: exercises.name,
       exerciseTranslations: exercises.translations,
@@ -618,6 +630,7 @@ export function setsForCycles(db: SqliteDatabase, userId: string, from: IsoDate)
       durationS: workoutSets.durationS,
       distanceM: workoutSets.distanceM,
       primaryTagId: exercises.primaryTagId,
+      intensity: exercises.intensity,
     })
     .from(workoutSets)
     .innerJoin(exercises, eq(exercises.id, workoutSets.exerciseId))

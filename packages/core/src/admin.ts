@@ -12,7 +12,7 @@
  */
 
 import { z } from 'zod';
-import { userRoleSchema, userSchema } from './schemas.js';
+import { isoDateTimeSchema, userRoleSchema, userSchema, uuidSchema } from './schemas.js';
 
 /* ------------------------------------------------------------------- konta */
 
@@ -25,11 +25,38 @@ export const adminUserSchema = userSchema.extend({
   banReason: z.string().nullable(),
   setCount: z.int().min(0),
   exerciseCount: z.int().min(0),
+  /**
+   * Kiedy administrator nadał temu kontu hasło tymczasowe; `null`, gdy konto ma
+   * własne hasło. Pole jest tu po to, żeby panel odróżnił „zresetowałem i osoba
+   * już je zmieniła" od „zresetowałem i nadal nikt tego nie odebrał" — bez tego
+   * jedyną różnicą między tymi stanami byłaby czyjaś pamięć.
+   */
+  passwordResetAt: isoDateTimeSchema.nullable(),
 });
 
 export type AdminUser = z.infer<typeof adminUserSchema>;
 
 export const adminUserListSchema = z.object({ users: z.array(adminUserSchema) });
+
+/**
+ * Wynik resetu hasła (`POST /admin/users/:id/reset-password`).
+ *
+ * `password` jest jawne i wraca **wyłącznie tutaj**: w bazie zostaje sam hash,
+ * a serwer nie ma czym wysłać wiadomości (poczty w stosie nie ma — patrz
+ * `apps/api/src/auth.ts`). Administrator przekazuje tę wartość osobie, której
+ * dotyczy, dowolnym kanałem, a przy następnym logowaniu ta osoba ustawia sobie
+ * własne hasło. Ponowne odczytanie tej wartości nie jest możliwe — jedyną drogą
+ * jest kolejny reset.
+ */
+export const passwordResetResultSchema = z.object({
+  userId: uuidSchema,
+  email: z.email(),
+  /** Hasło jawne — do jednorazowego skopiowania z panelu. */
+  password: z.string().min(1),
+  issuedAt: isoDateTimeSchema,
+});
+
+export type PasswordResetResult = z.infer<typeof passwordResetResultSchema>;
 
 /**
  * Zmiana konta. Każde pole opcjonalne, ale przynajmniej jedno wymagane — żądanie,

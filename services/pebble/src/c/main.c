@@ -24,9 +24,17 @@
 /** Najdłuższe zdanie, jakie przyjmujemy z dyktowania. Seria to jedno zdanie. */
 #define MAX_TRANSCRIPT 200
 
-/** Tytuł i treść przychodzą z telefonu; dłuższe i tak nie zmieszczą się na ekranie. */
+/**
+ * Tytuł i treść przychodzą z telefonu. Tytuł jest zawsze nasz i krótki, treścią
+ * bywa **cały** komunikat serwera — kod błędu, zdanie i szczegóły — bo aplikacji
+ * używają sami piszący ten serwer. Co nie mieści się na ekranie, dojeżdża
+ * przyciskiem DOWN; ten sam limit zna `MAX_BODY_BYTES` w `src/pkjs/index.js`.
+ */
 #define MAX_TITLE 48
-#define MAX_BODY 128
+#define MAX_BODY 512
+
+/** Z zapasem ponad każdy ekran — po to, żeby zmierzyć, ile miejsca bierze tekst. */
+#define BODY_MEASURE_H 2000
 
 /**
  * Po tylu milisekundach bez odpowiedzi telefonu uznajemy, że nie przyjdzie.
@@ -47,6 +55,12 @@ typedef enum {
   /** Model nie wskazał ćwiczenia albo zabrakło liczb — trzeba powtórzyć. */
   StatusUnknown = 5,
   StatusError = 6,
+  /**
+   * Błąd, za którym nie stoi użytkownik — serwer milczy albo się przewrócił.
+   * Telefon trzyma wtedy nieudaną wysyłkę, a `SELECT` powtarza ją bez dyktowania
+   * zdania od nowa.
+   */
+  StatusRetry = 7,
 } Status;
 
 /** Polecenia w drugą stronę: telefon trzyma rozpoznaną serię, zegarek decyduje. */
@@ -54,11 +68,13 @@ typedef enum {
   CommandSave = 1,
   CommandDiscard = 2,
   CommandCheck = 3,
+  CommandRetry = 4,
 } Command;
 
 static Window *s_window;
 static TextLayer *s_title_layer;
 static TextLayer *s_body_layer;
+static ScrollLayer *s_body_scroll;
 static TextLayer *s_hint_layer;
 static AppTimer *s_timeout;
 
@@ -74,6 +90,30 @@ static char s_hint[48];
 /* ------------------------------------------------------------------- ekran */
 
 /**
+ * Treść rośnie do wysokości tekstu, a nie do wysokości okienka.
+ *
+ * Warstwa dostaje najpierw wysokość z zapasem, bo `text_layer_get_content_size`
+ * mierzy tekst **w obecnej ramce** — w za niskiej oddałaby wysokość samej ramki
+ * i długi komunikat wyglądałby na krótki. Zmierzoną wysokość bierze potem
+ * `ScrollLayer` i to ona decyduje, ile jest do przewinięcia.
+ *
+ * Każdy nowy ekran zaczyna się od góry: poprzednie przesunięcie dotyczyło
+ * treści, której już nie ma.
+ */
+static void fit_body(void) {
+  const int16_t width = layer_get_bounds(scroll_layer_get_layer(s_body_scroll)).size.w;
+
+  text_layer_set_size(s_body_layer, GSize(width, BODY_MEASURE_H));
+  // Kilka pikseli ponad zmierzoną wysokość, bo ostatni wiersz ma jeszcze ogonki
+  // liter — bez zapasu obcina je dolna krawędź.
+  const int16_t height = text_layer_get_content_size(s_body_layer).h + 4;
+  text_layer_set_size(s_body_layer, GSize(width, height));
+
+  scroll_layer_set_content_size(s_body_scroll, GSize(width, height));
+  scroll_layer_set_content_offset(s_body_scroll, GPoint(0, 0), false);
+}
+
+/**
  * Stan bywa ustawiany, **zanim** okno wjedzie na stos — pierwszy komunikat
  * powstaje w `init()`, a warstwy tekstu dopiero w `window_load`. Wtedy nie ma
  * czego przerysowywać i nie jest to błąd: `window_load` domknie to samo, gdy
@@ -85,6 +125,8 @@ static void render(void) {
   text_layer_set_text(s_title_layer, s_title);
   text_layer_set_text(s_body_layer, s_body);
   text_layer_set_text(s_hint_layer, s_hint);
+
+  fit_body();
 }
 
 /**
@@ -95,6 +137,9 @@ static void update_hint(void) {
   switch (s_status) {
     case StatusConfirm:
       strncpy(s_hint, "SELECT save  BACK drop", sizeof(s_hint) - 1);
+      break;
+    case StatusRetry:
+      strncpy(s_hint, "SELECT retry  BACK drop", sizeof(s_hint) - 1);
       break;
     case StatusWorking:
       strncpy(s_hint, "waiting for the phone", sizeof(s_hint) - 1);
@@ -197,7 +242,7 @@ static void inbox_received(DictionaryIterator *iterator, void *context) {
   // zapisana w trakcie serii następnej nie wymaga wtedy spojrzenia na zegarek.
   if (s_status == StatusSaved) {
     vibes_short_pulse();
-  } else if (s_status == StatusError || s_status == StatusUnknown) {
+  } else if (s_status == StatusError || s_status == StatusUnknown || s_status == StatusRetry) {
     vibes_double_pulse();
   }
 }
@@ -280,6 +325,13 @@ static void select_clicked(ClickRecognizerRef recognizer, void *context) {
     return;
   }
 
+  // Po błędzie, którego nie da się poprawić mówieniem, `SELECT` powtarza samą
+  // wysyłkę: zdanie jest już podyktowane i telefon wciąż je trzyma.
+  if (s_status == StatusRetry) {
+    send_command(CommandRetry, "Retrying…");
+    return;
+  }
+
   start_dictation();
 }
 
@@ -289,12 +341,39 @@ static void up_clicked(ClickRecognizerRef recognizer, void *context) {
 }
 
 /**
+ * `DOWN` przewija treść, bo pełny komunikat błędu bywa dłuższy niż ekran.
+ *
+ * Ekranem naraz, a nie wierszem: czytanie zaczyna się tam, gdzie skończyło się
+ * poprzednie. Z dołu przycisk wraca na początek — inaczej byłby to jedyny
+ * przycisk w tej aplikacji, który po kilku naciśnięciach przestaje cokolwiek
+ * robić, a droga z powrotem na górę wiodłaby przez wyjście z ekranu.
+ */
+static void down_clicked(ClickRecognizerRef recognizer, void *context) {
+  if (s_body_scroll == NULL) return;
+
+  const int16_t visible = layer_get_bounds(scroll_layer_get_layer(s_body_scroll)).size.h;
+  const int16_t shown = -scroll_layer_get_content_offset(s_body_scroll).y;
+  const int16_t rest = scroll_layer_get_content_size(s_body_scroll).h - visible - shown;
+
+  if (rest <= 0) {
+    scroll_layer_set_content_offset(s_body_scroll, GPoint(0, 0), true);
+    return;
+  }
+
+  // Wiersz zostaje z poprzedniego ekranu, żeby czytanie miało się czego złapać.
+  const int16_t step = visible - 20 < rest ? visible - 20 : rest;
+  scroll_layer_set_content_offset(s_body_scroll, GPoint(0, -(shown + step)), true);
+}
+
+/**
  * `BACK` w stanie potwierdzenia **odrzuca** rozpoznaną serię zamiast wyjść
  * z aplikacji: wyjście zostawiłoby ją wiszącą po stronie telefonu, a użytkownik
- * i tak nacisnął ten przycisk, żeby powiedzieć „nie to".
+ * i tak nacisnął ten przycisk, żeby powiedzieć „nie to". Tak samo przy
+ * ponowieniu — kto go nie chce, mówi to tym samym przyciskiem i wraca do
+ * ekranu, z którego wolno dyktować dalej.
  */
 static void back_clicked(ClickRecognizerRef recognizer, void *context) {
-  if (s_status == StatusConfirm) {
+  if (s_status == StatusConfirm || s_status == StatusRetry) {
     send_command(CommandDiscard, "Dropping…");
     return;
   }
@@ -305,18 +384,22 @@ static void back_clicked(ClickRecognizerRef recognizer, void *context) {
 static void click_config(void *context) {
   window_single_click_subscribe(BUTTON_ID_SELECT, select_clicked);
   window_single_click_subscribe(BUTTON_ID_UP, up_clicked);
+  window_single_click_subscribe(BUTTON_ID_DOWN, down_clicked);
   window_single_click_subscribe(BUTTON_ID_BACK, back_clicked);
 }
 
 /* --------------------------------------------------------------------- okno */
 
-static TextLayer *make_layer(Layer *parent, GRect frame, const char *font, GColor color) {
+/**
+ * Warstwa tekstu bez rodzica — podpina ją wołający, bo treść trafia do okienka
+ * przewijanego (`scroll_layer_add_child`), a tytuł i podpowiedź prosto do okna.
+ */
+static TextLayer *make_layer(GRect frame, const char *font, GColor color) {
   TextLayer *layer = text_layer_create(frame);
   text_layer_set_background_color(layer, GColorClear);
   text_layer_set_text_color(layer, color);
   text_layer_set_font(layer, fonts_get_system_font(font));
   text_layer_set_text_alignment(layer, GTextAlignmentCenter);
-  layer_add_child(parent, text_layer_get_layer(layer));
   return layer;
 }
 
@@ -328,23 +411,39 @@ static void window_load(Window *window) {
   const int16_t inset = PBL_IF_ROUND_ELSE(18, 6);
   const int16_t width = bounds.size.w - inset * 2;
 
-  s_title_layer = make_layer(root, GRect(inset, PBL_IF_ROUND_ELSE(24, 12), width, 28),
-                             FONT_KEY_GOTHIC_24_BOLD, GColorWhite);
-  s_body_layer = make_layer(root, GRect(inset, PBL_IF_ROUND_ELSE(54, 44), width, 80),
-                            FONT_KEY_GOTHIC_18, GColorWhite);
-  s_hint_layer = make_layer(root, GRect(inset, bounds.size.h - PBL_IF_ROUND_ELSE(34, 24), width, 20),
-                            FONT_KEY_GOTHIC_14, PBL_IF_COLOR_ELSE(GColorLightGray, GColorWhite));
+  s_title_layer =
+      make_layer(GRect(inset, PBL_IF_ROUND_ELSE(24, 12), width, 28), FONT_KEY_GOTHIC_24_BOLD,
+                 GColorWhite);
+  layer_add_child(root, text_layer_get_layer(s_title_layer));
 
-  text_layer_set_overflow_mode(s_body_layer, GTextOverflowModeTrailingEllipsis);
+  // Treść mieszka w okienku przewijanym, a nie prosto w oknie: pełny komunikat
+  // serwera bywa dłuższy niż te 80 pikseli, a ucięty błąd jest tyle wart, co
+  // żaden.
+  s_body_scroll = scroll_layer_create(GRect(inset, PBL_IF_ROUND_ELSE(54, 44), width, 80));
+  layer_add_child(root, scroll_layer_get_layer(s_body_scroll));
+
+  s_body_layer = make_layer(GRect(0, 0, width, 80), FONT_KEY_GOTHIC_18, GColorWhite);
+  // Zawijanie zamiast wielokropka — po tej zmianie dalszy ciąg jest o jedno
+  // naciśnięcie DOWN, a nie utracony.
+  text_layer_set_overflow_mode(s_body_layer, GTextOverflowModeWordWrap);
+  scroll_layer_add_child(s_body_scroll, text_layer_get_layer(s_body_layer));
+
+  s_hint_layer =
+      make_layer(GRect(inset, bounds.size.h - PBL_IF_ROUND_ELSE(34, 24), width, 20),
+                 FONT_KEY_GOTHIC_14, PBL_IF_COLOR_ELSE(GColorLightGray, GColorWhite));
+  layer_add_child(root, text_layer_get_layer(s_hint_layer));
+
   render();
 }
 
 static void window_unload(Window *window) {
   text_layer_destroy(s_title_layer);
   text_layer_destroy(s_body_layer);
+  scroll_layer_destroy(s_body_scroll);
   text_layer_destroy(s_hint_layer);
   s_title_layer = NULL;
   s_body_layer = NULL;
+  s_body_scroll = NULL;
   s_hint_layer = NULL;
 }
 
@@ -357,8 +456,9 @@ static void init(void) {
 
   app_message_register_inbox_received(inbox_received);
   app_message_register_outbox_failed(outbox_failed);
-  // Wejście musi pomieścić tytuł i treść; wyjście — jedno zdanie z dyktowania.
-  app_message_open(512, 256);
+  // Wejście musi pomieścić tytuł i treść — a treścią bywa cały komunikat błędu,
+  // więc skrzynka rośnie razem z `MAX_BODY`; wyjście — jedno zdanie z dyktowania.
+  app_message_open(1024, 256);
 
   s_window = window_create();
   window_set_background_color(s_window, PBL_IF_COLOR_ELSE(GColorFromHEX(0x232327), GColorBlack));

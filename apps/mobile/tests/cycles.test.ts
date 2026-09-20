@@ -10,7 +10,7 @@
  * Wszystko dzieje się bez sieci, na prawdziwym schemacie lokalnym.
  */
 
-import { tagId, type CycleGoalInput } from '@alphapump/core';
+import { tagId, whoCycleInput, type CycleGoalDraft, type Intensity } from '@alphapump/core';
 import { cycleGoals, cycles as cyclesTable, outbox } from '@alphapump/db/sqlite';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -31,6 +31,7 @@ import {
   setCycleArchived,
   updateCycle,
 } from '../src/db/cycles';
+import { createExercise } from '../src/db/library';
 import { cycleGoalList, cycleList, setsForCycles } from '../src/db/queries';
 import { createSet, deleteSet, type SetValues } from '../src/db/sets';
 import {
@@ -65,14 +66,14 @@ describe('cykle w bazie lokalnej', () => {
 
   afterEach(() => local.close());
 
-  const CHEST_GOAL: CycleGoalInput = {
+  const CHEST_GOAL: CycleGoalDraft = {
     metric: 'sets',
     target: 4,
     exerciseId: null,
     tagId: TAGS.chest,
   };
 
-  const create = (goals: CycleGoalInput[] = [CHEST_GOAL]) =>
+  const create = (goals: CycleGoalDraft[] = [CHEST_GOAL]) =>
     createCycle(local.db, {
       ...AUTHOR,
       name: 'Sierpień na klatkę',
@@ -508,6 +509,96 @@ describe('cykle w bazie lokalnej', () => {
       // Zaplanowane dziewięć serii, zrobione pięć: jedna z jednej i cztery
       // z ośmiu. Czwarta seria wyciskania nie dolicza się do pozycji na jedną.
       expect(tagCycleProgress(summaries, DAY).get(TAGS.chest)).toBeCloseTo(5 / 9, 10);
+    });
+  });
+  /**
+   * Cykl WHO — wbudowany szablon, ta sama droga zapisu co każdy inny cykl.
+   *
+   * Sprawdzamy tu przede wszystkim to, na czym stoi całe zgłoszenie: że trzy
+   * poziomy intensywności **nie** liczą się tak samo, i że minuta wysiłku
+   * intensywnego wchodzi do celu umiarkowanego za dwie — czyli że wytyczne WHO
+   * da się spełnić samym biegiem albo samymi interwałami.
+   */
+  describe('cykl WHO', () => {
+    const WHO_START = '2026-08-10';
+
+    const addTimedExercise = (name: string, intensity: Intensity | null) =>
+      createExercise(local.db, {
+        ...AUTHOR,
+        role: 'user',
+        name,
+        loggingType: 'bodyweight_time',
+        primaryTagId: TAGS.chest,
+        intensity,
+        additionalTagIds: [],
+        note: null,
+        gym: null,
+      });
+
+    const minutes = (exerciseId: string, count: number) =>
+      createSet(local.db, {
+        ...AUTHOR,
+        exerciseId,
+        performedOn: DAY,
+        values: {
+          weightG: null,
+          reps: null,
+          durationS: count * 60,
+          distanceM: null,
+          bodyweightG: null,
+          note: null,
+        },
+      });
+
+    const createWho = () => {
+      const template = whoCycleInput(WHO_START);
+      return createCycle(local.db, { ...AUTHOR, ...template });
+    };
+
+    it('zapisuje oba progi i zakres intensywnościowy', async () => {
+      const id = await createWho();
+
+      const [goal] = await local.db.select().from(cycleGoals).where(eq(cycleGoals.cycleId, id));
+      expect(goal).toMatchObject({
+        metric: 'duration',
+        target: 150 * 60,
+        stretchTarget: 300 * 60,
+        intensity: 'moderate',
+        exerciseId: null,
+        tagId: null,
+      });
+    });
+
+    it('75 minut interwałów domyka poziom minimalny, 150 — wyższy', async () => {
+      await createWho();
+      const { id } = await addTimedExercise('Interwały', 'high');
+
+      await minutes(id, 75);
+      const afterMinimum = (await load()).summaries[0]?.progress;
+      expect(afterMinimum?.level).toBe('minimal');
+
+      await minutes(id, 75);
+      const afterAll = (await load()).summaries[0]?.progress;
+      expect(afterAll?.level).toBe('higher');
+      expect(afterAll?.stretchCompleted).toBe(true);
+    });
+
+    it('marsz nie zasila celu umiarkowanego, choć trwa dłużej', async () => {
+      await createWho();
+      const { id } = await addTimedExercise('Marsz', 'low');
+      await minutes(id, 300);
+
+      const progress = (await load()).summaries[0]?.progress;
+      expect(progress?.goals[0]?.current).toBe(0);
+      expect(progress?.completed).toBe(false);
+    });
+
+    it('ćwiczenie bez ustawionej intensywności też się nie liczy', async () => {
+      await createWho();
+      const { id } = await addTimedExercise('Deska', null);
+      await minutes(id, 200);
+
+      expect((await load()).summaries[0]?.progress.goals[0]?.current).toBe(0);
     });
   });
 });

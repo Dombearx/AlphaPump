@@ -1,22 +1,29 @@
 /**
  * Zarządzanie kontami.
  *
- * Zakres jest wąski i celowo taki zostaje: nick, rola, blokada. Panel nie kasuje
- * kont i nie ma do tego przycisku — konto jest autorem ćwiczeń i właścicielem
- * serii, więc jego usunięcie albo osierociłoby cudze dane, albo wymagałoby
- * kaskady, która niszczy historię grupy. Blokada odbiera dostęp i to jest właściwa
- * operacja: dane zostają, człowiek nie wchodzi.
+ * Zakres jest wąski i celowo taki zostaje: nick, rola, blokada i reset hasła.
+ * Panel nie kasuje kont i nie ma do tego przycisku — konto jest autorem ćwiczeń
+ * i właścicielem serii, więc jego usunięcie albo osierociłoby cudze dane, albo
+ * wymagałoby kaskady, która niszczy historię grupy. Blokada odbiera dostęp i to
+ * jest właściwa operacja: dane zostają, człowiek nie wchodzi.
  *
- * Dwie blokady bezpieczeństwa egzekwuje serwer (własne konto, konto systemowe),
- * ale panel je **pokazuje** — przycisk, który zawsze kończy się błędem, jest
- * gorszy niż przycisk nieaktywny z wyjaśnieniem.
+ * Reset hasła jest tutaj, bo nie ma go gdzie indziej: poczty w stosie nie ma,
+ * więc „przypomnij hasło" nie ma jak dojść do nikogo. Administrator nadaje hasło
+ * tymczasowe, przekazuje je osobiście, a właściciel konta ustawia sobie własne
+ * przy najbliższym logowaniu. Hasło widać **raz** — patrz
+ * `components/temporary-password.tsx`.
+ *
+ * Trzy blokady bezpieczeństwa egzekwuje serwer (własne konto, konto systemowe,
+ * własne hasło), ale panel je **pokazuje** — przycisk, który zawsze kończy się
+ * błędem, jest gorszy niż przycisk nieaktywny z wyjaśnieniem.
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { AdminUser, UpdateUserInput } from '@alphapump/core';
+import type { AdminUser, PasswordResetResult, UpdateUserInput } from '@alphapump/core';
 import { useState } from 'react';
+import { TemporaryPassword } from '../components/temporary-password';
 import { Badge, Button, Cell, Empty, Input, Loading, Problem, Row, Table } from '../components/ui';
-import { getMe, listUsers, updateUser } from '../lib/api';
+import { getMe, listUsers, resetUserPassword, updateUser } from '../lib/api';
 
 /** Konto systemowe jest autorem ćwiczeń wbudowanych — serwer nie da go zmienić. */
 const isSystemAccount = (user: AdminUser): boolean => user.email.endsWith('@alphapump.local');
@@ -26,6 +33,12 @@ export function UsersPage() {
   const me = useQuery({ queryKey: ['me'], queryFn: () => getMe() });
   const users = useQuery({ queryKey: ['users'], queryFn: () => listUsers() });
   const [editing, setEditing] = useState<{ id: string; nickname: string } | null>(null);
+  /**
+   * Świeżo nadane hasło tymczasowe. W stanie komponentu, a nie w cache'u
+   * zapytań: zamknięcie karty ma je usunąć bez śladu, a `staleTime: 0` i tak
+   * kazałby je pobrać ponownie — czego zrobić się nie da i nie powinno.
+   */
+  const [issued, setIssued] = useState<PasswordResetResult | null>(null);
 
   const change = useMutation({
     mutationFn: ({ id, input }: { id: string; input: UpdateUserInput }) => updateUser(id, input),
@@ -33,6 +46,14 @@ export function UsersPage() {
       setEditing(null);
       void queryClient.invalidateQueries({ queryKey: ['users'] });
       void queryClient.invalidateQueries({ queryKey: ['stats'] });
+    },
+  });
+
+  const resetPassword = useMutation({
+    mutationFn: (id: string) => resetUserPassword(id),
+    onSuccess: (result) => {
+      setIssued(result);
+      void queryClient.invalidateQueries({ queryKey: ['users'] });
     },
   });
 
@@ -46,6 +67,8 @@ export function UsersPage() {
   return (
     <div className="flex flex-col gap-3">
       {change.error !== null && <Problem error={change.error} />}
+      {resetPassword.error !== null && <Problem error={resetPassword.error} />}
+      {issued !== null && <TemporaryPassword result={issued} onDismiss={() => setIssued(null)} />}
 
       <Table head={['Account', 'Role', 'State', 'Sets', 'Exercises', '']}>
         {rows.map((user) => {
@@ -93,16 +116,22 @@ export function UsersPage() {
               </Cell>
 
               <Cell>
-                {user.banned ? (
-                  <div className="flex flex-col gap-1">
-                    <Badge tone="danger">zablokowane</Badge>
-                    {user.banReason !== null && (
-                      <span className="text-xs text-muted">{user.banReason}</span>
-                    )}
-                  </div>
-                ) : (
-                  <Badge tone="success">aktywne</Badge>
-                )}
+                <div className="flex flex-col gap-1">
+                  {user.banned ? (
+                    <>
+                      <Badge tone="danger">zablokowane</Badge>
+                      {user.banReason !== null && (
+                        <span className="text-xs text-muted">{user.banReason}</span>
+                      )}
+                    </>
+                  ) : (
+                    <Badge tone="success">aktywne</Badge>
+                  )}
+                  {/* Odróżnia „zresetowałem i osoba już ustawiła swoje" od
+                      „zresetowałem i nadal nikt tego nie odebrał". Bez tego
+                      jedyną różnicą byłaby czyjaś pamięć. */}
+                  {user.passwordResetAt !== null && <Badge tone="accent">hasło tymczasowe</Badge>}
+                </div>
               </Cell>
 
               <Cell className="tabular-nums">{user.setCount}</Cell>
@@ -136,6 +165,18 @@ export function UsersPage() {
                         }
                       >
                         {user.role === 'admin' ? 'Revoke role' : 'Grant role'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        // Reset kasuje sesje konta, więc na własnym wylogowałby
+                        // administratora w chwili, w której panel pokazuje mu
+                        // hasło do przepisania. Serwer odmawia, panel nie kusi.
+                        disabled={resetPassword.isPending || self}
+                        title={self ? 'Własne hasło zmieniasz zwykłą zmianą hasła' : ''}
+                        onClick={() => resetPassword.mutate(user.id)}
+                      >
+                        Reset password
                       </Button>
                       <Button
                         size="sm"

@@ -391,6 +391,7 @@ export async function importArchive(
                   authorId: entry.authorId,
                   loggingType: entry.exercise.loggingType,
                   primaryTagId: entry.exercise.primaryTagId,
+                  intensity: entry.exercise.intensity,
                   note: entry.exercise.note,
                   translations: entry.exercise.translations,
                   createdAt: new Date(entry.exercise.createdAt),
@@ -407,6 +408,7 @@ export async function importArchive(
                   // raz przy tworzeniu, a jego zmiana unieważniłaby historyczne
                   // serie tego ćwiczenia.
                   primaryTagId: sql`excluded.primary_tag_id`,
+                  intensity: sql`excluded.intensity`,
                   note: sql`excluded.note`,
                   translations: sql`excluded.translations`,
                   updatedAt: sql`excluded.updated_at`,
@@ -576,8 +578,10 @@ export async function importArchive(
                   cycleId: cycle.id,
                   metric: goal.metric,
                   target: goal.target,
+                  stretchTarget: goal.stretchTarget,
                   exerciseId: goal.exerciseId === null ? null : exerciseIdMap.get(goal.exerciseId)!,
                   tagId: goal.tagId,
+                  intensity: goal.intensity,
                   position,
                 })),
               );

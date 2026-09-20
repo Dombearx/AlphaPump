@@ -28,7 +28,7 @@ Aplikacja ma obsługiwać dwie metody logowania:
 - Google,
 - e-mail + hasło.
 
-Potwierdzenie adresu e-mail nie jest wymagane. Reset hasła przez e-mail nie jest częścią MVP, więc logowanie e-mail + hasło nie wymaga na starcie wdrażania procesu odzyskiwania hasła. 
+Potwierdzenie adresu e-mail nie jest wymagane. Reset hasła przez e-mail nie jest częścią MVP, więc logowanie e-mail + hasło nie wymaga na starcie wdrażania procesu odzyskiwania hasła. Odzyskanie dostępu do konta przechodzi przez administratora: nadaje on hasło tymczasowe z panelu i przekazuje je poza systemem, a użytkownik ustawia sobie własne przy pierwszym logowaniu — do tego czasu aplikacja nie pokazuje mu nic poza formularzem hasła. 
 
 Każdy użytkownik może wygenerować wiele tokenów API. Tokeny służą do korzystania z API poza interfejsem aplikacji, na przykład przez bota Discord działającego w tym samym VPN. 
 
@@ -162,12 +162,14 @@ Z widoku dnia da się zapisać serię **głosem**, obok zwykłej drogi przez wyb
 
 Nagranie nie jest jedynym wejściem. To samo da się **napisać** — jednym zdaniem w polu tekstowym na tym samym ekranie — a wtedy przepływ omija rozpoznawanie mowy w całości i idzie prosto do modelu. Nie jest to wariant awaryjny, tylko druga pełnoprawna droga: klawiatura telefonu ma własny mikrofon, więc „podyktuj klawiaturą" działa również tam, gdzie wdrożenie nie ma dostawcy transkrypcji; napisane zdanie da się poprawić przed wysłaniem, czego z nagraniem zrobić się nie da; a mówić do telefonu nie zawsze wypada i nie wszędzie jest na tyle cicho, żeby cokolwiek z tego wyszło.
 
-Reguły są trzy i wszystkie trzy są twarde:
+Reguły są twarde:
 
 - **Model dopasowuje do biblioteki, a nie do samych ćwiczeń dyktującego.** Biblioteka jest wspólna i telefon pokazuje ją w całości, więc dyktowanie sięga po to samo: ćwiczenie widoczne na liście w aplikacji ma dać się podyktować, także wtedy, gdy użytkownik nie zapisał na nie jeszcze ani jednej serii. Kontekst jednego wywołania ma limit pozycji, więc pierwszeństwo mają ćwiczenia tego użytkownika (te, na które ma serie, i te, które sam założył), za nimi te, których nazwa pada w nagraniu, a na końcu reszta biblioteki. Gdy biblioteka jest dłuższa niż ten limit, a model odpowie, że nie pasuje żadne z pokazanych, dostaje dalszy ciąg listy — dopiero wyczerpanie biblioteki (do trzystu pozycji) kończy się odesłaniem do wyboru z listy. Nowego ćwiczenia dyktowanie nie tworzy: ćwiczenie to nie sama nazwa, ale też typ logowania i tag główny, a od nich zależą rekordy i cykle.
 - **Serwer nie zapisuje serii.** Oddaje wypełniony formularz; zapis dzieje się na telefonie i tylko tam. Pomiary spoza typu logowania ćwiczenia są odrzucane, a seria niepełna otwiera formularz z tym, co zrozumiał model, i czeka na resztę.
 - **O tym, czy zatwierdzać każdą serię, decyduje użytkownik.** W ustawieniach stoi przełącznik: domyślnie rozpoznane wartości wchodzą do formularza i czekają na naciśnięcie „Add set", a po jego włączeniu seria zapisuje się od razu, a ekran mówi, co zapisał, i zostaje gotowy na następną. Wartością domyślną jest zatwierdzanie, bo seria zapisana na podstawie źle usłyszanej liczby psuje rekord i wykres, a widać to tygodnie później — kto sprawdzi, że model trafia, przestawi przełącznik sam. Przełącznik nie omija kompletności: serii bez pól wymaganych przez jej typ logowania nie da się zapisać, więc taka trafia do formularza niezależnie od ustawienia.
-- **Gdy model nie potrafi wskazać ćwiczenia albo nagranie jest niejednoznaczne**, aplikacja pokazuje transkrypcję wraz z jednozdaniowym powodem i proponuje zwykły wybór z listy. Zgadywanie jest tu gorsze niż pytanie: seria dopisana do niewłaściwego ćwiczenia psuje rekord, wykres i ranking, a zauważa się ją tygodnie później.
+- **Nazwa przekręcona przez rozpoznawanie mowy to wciąż ta nazwa.** Zdanie przychodzi z rozpoznawania mowy — z telefonu albo z zegarka — więc regularnie różni się od nazwy w bibliotece jednym znakiem albo końcówką. Gdy model nie wskaże pozycji, serwer szuka usłyszanej nazwy jeszcze raz sam: porównuje ją z nazwami z biblioteki (również obcojęzycznymi) słowo po słowie, wybaczając literówkę. Wskazuje wyłącznie nazwę, która znalazła się w zdaniu **w całości** — poprawianie pisowni tak, skróty i synonimy zostawione modelowi, bo nazwa pokryta w części trafia w sąsiednie ćwiczenie równie chętnie jak we właściwe.
+- **Kto nie powiedział, co robi, robi dalej to, co robił.** Zdanie z samymi liczbami („jeszcze osiem", „osiem na siedemdziesiąt") jest kolejną serią ćwiczenia z **poprzedniej serii tego treningu** — i tak zostaje zapisane, z ćwiczeniem wziętym z tamtej serii. Ciężar dokłada się wyłącznie wtedy, gdy nie padł w zdaniu. Dzień liczy urządzenie, bo tylko ono wie, czy trening trwa: przy pierwszej serii dnia nie ma czego podstawić — seria z wczoraj nie jest podpowiedzią, tylko zgadywaniem — i wtedy aplikacja pyta.
+- **Gdy model nie potrafi wskazać ćwiczenia albo nagranie jest niejednoznaczne**, aplikacja pokazuje transkrypcję wraz z jednozdaniowym powodem i proponuje zwykły wybór z listy. Zgadywanie jest tu gorsze niż pytanie: seria dopisana do niewłaściwego ćwiczenia psuje rekord, wykres i ranking, a zauważa się ją tygodnie później. Dotyczy to nazwy, która **padła** i w nic nie trafiła — podstawienie pod nią ostatniego ćwiczenia zapisałoby serię pod czymś, o czym użytkownik nie mówił.
 
 Dyktowanie jest **skrótem, a nie drogą jedyną**: wymaga łączności z serwerem (transkrypcji i modelu nie da się policzyć na telefonie), więc offline i przy wyłączonej funkcji zapis serii przez formularz działa bez żadnej zmiany. Konkretny dostawca rozpoznawania mowy nie jest częścią wymagania — jest decyzją wdrożeniową.
 
@@ -176,6 +178,24 @@ Dyktowanie jest **skrótem, a nie drogą jedyną**: wymaga łączności z serwer
 W widoku dodawania serii tagi objęte pozycjami celu aktywnego cyklu są oznaczone wewnątrz przycisku tagu: gwiazdką, dopóki została w nich robota, i ptaszkiem po jej dokończeniu. Tło takiego tagu jest wypełnione od lewej w proporcji wykonania: cztery serie z ośmiu zaplanowanych dla tagu to wypełnienie w połowie, a tag zrobiony w całości jest wypełniony do końca — oznaczenie i wypełnienie nie znikają w momencie dokończenia roboty. Gdy w jeden tag celuje kilka pozycji celu, wypełnienie pokazuje udział zrobionej roboty w całej zaplanowanej dla tego tagu, a nie średnią z udziałów pozycji: osiem serii rozpisanych na dwie pozycje liczy się tak samo, jak osiem serii w jednej. Metryk nie da się do siebie dodać, więc gdy w tagu stoją pozycje w różnych metrykach, każda daje swój udział, a tag dostaje ich średnią. Oznaczenie ma się mieścić w miejscu, które filtr tagów zajmuje i bez niego — osobnej sekcji z listą pozostałych pozycji nie ma. Tag spoza cyklu nie ma żadnego oznaczenia ani wypełnienia. Pozycja celu wskazująca konkretne ćwiczenie oznacza jego tag główny. Jest to tylko podpowiedź, gdzie szukać ćwiczenia, i nie oznacza ręcznego przypisania serii do cyklu. 
 
 Każda zapisana seria jest automatycznie dopasowywana przez system do wszystkich pasujących cykli. 
+
+### Kolejność ćwiczeń na liście
+
+Lista ćwiczeń w widoku dodawania serii ma odpowiadać na pytanie, z którym użytkownik na nią wchodzi: **co wykonać teraz**. Na górze stoją więc ćwiczenia, które jednocześnie domykają braki aktywnych cykli i angażują partie jak najbardziej rozdzielne z tymi, które użytkownik obciążył ostatnimi seriami tego dnia. Typowy trening to dwa ćwiczenia wykonywane na zmianę, seria za serią, więc po serii jednego z nich na górze listy ma stanąć to drugie, a po jego serii — z powrotem pierwsze. Wynika to wyłącznie z serii zapisanych tego dnia: aplikacja nie prowadzi żadnego osobnego planu treningu ani nie pamięta niczego między wejściami na ekran.
+
+Reguły doboru:
+- liczy się brak w pozycji celu **aktywnego** cyklu — wskazującej wprost to ćwiczenie albo jego tag główny — i tym mocniej, im więcej w tej pozycji zostało,
+- ćwiczenie dzielące tagi z tym, co wykonano przed chwilą, idzie niżej; ostatnio wykonane ćwiczenie waży najmocniej, a każde wcześniejsze z tego dnia coraz słabiej,
+- wspólny tag główny odsuwa mocniej niż wspólny tag dodatkowy — seria na triceps zaraz po serii na plecy mocno angażującej triceps jest serią wykonaną w słabości,
+- kolejne serie tego samego ćwiczenia pod rząd liczą się jak jedno jego wykonanie,
+- pierwsze wejście w danym dniu nie ma z czego liczyć rozdzielności, więc rozstrzygają same braki w cyklu,
+- rozdzielność partii działa także bez żadnego cyklu — wtedy jest jedynym kryterium.
+
+Ćwiczenia oznaczone tagiem cardio są z tego doboru **wyłączone**: nie są podpowiadane, ale nie są też spychane na dół listy. Cardio jest osobną kategorią treningu i dobieranie go po partiach mięśniowych nie ma sensu, a zakopanie go pod listą siłową zabierałoby drogę do zapisania serii komuś, kto właśnie wrócił z biegu.
+
+Kolejność, w jakiej ćwiczenia stały wcześniej — najczęściej wykonywane przez użytkownika na górze — nie znika: rozstrzyga remisy, czyli całą listę poza kilkoma pozycjami wyciągniętymi na górę. Przy wybranym filtrze tagu dobór jest wyłączony, bo filtr jest wskazaniem użytkownika, czego szuka. Lista nie dostaje z tego tytułu żadnego nowego elementu interfejsu — ani znacznika przy wierszu, ani osobnej sekcji: odpowiedzią na „co teraz wykonać" jest jej pierwszy wiersz.
+
+W ustawieniach stoi przełącznik wyłączający cały ten dobór i przywracający kolejność po liczbie własnych serii. Domyślnie dobór jest włączony.
 
 ## Kalendarz
 
@@ -195,12 +215,17 @@ Każda pozycja celu w cyklu może być zdefiniowana jako:
 - określona liczba serii dla wskazanego tagu,
 - określona liczba serii dla wskazanego ćwiczenia,
 - określona suma czasu dla wskazanego ćwiczenia lub tagu,
-- określona suma dystansu dla wskazanego ćwiczenia lub tagu.
+- określona suma dystansu dla wskazanego ćwiczenia lub tagu,
+- określona liczba serii, suma czasu albo dystansu dla wskazanej **intensywności** wysiłku.
 
 Przykłady:
 - 12 serii na biceps,
 - 6 serii podciągnięć,
-- 10 km biegu.
+- 10 km biegu,
+- 150 minut wysiłku o umiarkowanej intensywności.
+
+Pozycja celu może mieć **dwa poziomy**: próg minimalny i wyższy. Cykl liczy je
+oba — po osiągnięciu progu minimalnego pokazuje, ile zostało do wyższego.
 
 Jeżeli seria pasuje do kilku aktywnych cykli, ma zaliczać się do wszystkich pasujących cykli jednocześnie. 
 
@@ -209,6 +234,37 @@ W przypadku cykli opartych o tagi uwzględniany jest tylko główny tag ćwiczen
 Cykl może zostać zresetowany przez ustawienie nowej daty początku liczenia. Reset nie usuwa historii poprzednich realizacji. System ma umożliwiać później sprawdzenie, na jakim poziomie użytkownik zrealizował cykl w poprzednich okresach, na przykład że miesiąc wcześniej osiągnął 90 procent celu. 
 
 Cykle mogą być aktywne i archiwalne. Użytkownik musi mieć możliwość przeglądania także historycznych realizacji cykli. 
+
+### Intensywność wysiłku i cykl WHO
+
+Ćwiczenie może mieć przypisaną intensywność wysiłku: niską, umiarkowaną albo
+wysoką. Jest to cecha ćwiczenia — tak jak typ logowania i tag główny — a nie
+pojedynczej serii: marsz jest lekki, a interwały ciężkie niezależnie od dnia,
+w którym zostały zapisane. Pole jest opcjonalne i domyślnie puste; ćwiczenie bez
+ustawionej intensywności nie zalicza się do żadnego celu intensywnościowego.
+
+Intensywność nie jest tagiem dodatkowym z dwóch powodów: tagi dodatkowe
+z założenia **nie** zaliczają serii do cykli, a tag główny jest jeden i opisuje
+partię mięśniową. Nie jest też wyliczana z pomiarów serii — aplikacja nie zbiera
+tętna ani mocy, a czas i dystans mówią o objętości, nie o wysiłku.
+
+Aplikacja udostępnia wbudowany, **opcjonalny** cykl WHO, oparty o wytyczne WHO
+dotyczące aktywności fizycznej dla dorosłych. Nie powstaje sam: użytkownik dodaje
+go z ekranu nowego cyklu, widząc przed zapisem, co dokładnie dostaje, a wyłącza
+go tak jak każdy inny cykl — archiwizując albo usuwając.
+
+Cykl WHO jest tygodniowy i ma jedną pozycję celu o dwóch poziomach: 150 minut
+wysiłku o umiarkowanej intensywności tygodniowo (podstawowe korzyści zdrowotne)
+oraz 300 minut (korzyści dodatkowe). Wytyczne traktują minutę wysiłku wysokiej
+intensywności jak dwie minuty umiarkowanego, więc w celu o intensywności
+umiarkowanej wysiłek wysoki liczy się podwójnie, a lekki nie liczy się wcale.
+Dzięki temu jedna pozycja wyraża całą regułę „150 minut umiarkowanego **albo**
+75 minut wysokiego **albo** równoważna kombinacja", zamiast rozpadać się na dwa
+progi wymagane naraz. Kto chce widzieć rozbicie na poszczególne poziomy osobno,
+dokłada sobie do cyklu pozycje w zakresach „niska" i „wysoka".
+
+Wymagania WHO dotyczące ćwiczeń wzmacniających mięśnie w co najmniej dwa dni
+w tygodniu cykl WHO nie pilnuje: cykle nie mają metryki „liczba dni".
 
 ## Rekordy indywidualne
 
@@ -369,6 +425,9 @@ MVP zawiera prosty panel administracyjny. Panel służy do podstawowego zarządz
 
 Zakres panelu administracyjnego obejmuje:
 - zarządzanie użytkownikami,
+- reset hasła użytkownika: administrator nadaje hasło tymczasowe, kopiuje je jednorazowo z panelu
+  i przekazuje właścicielowi konta, a ten przy najbliższym logowaniu ustawia sobie własne. Jest to
+  zastępnik resetu przez e-mail, którego MVP nie ma — serwer nie ma czym wysłać wiadomości,
 - podstawowe zarządzanie bazą ćwiczeń,
 - podstawowe zarządzanie tagami,
 - podstawowy wgląd w dane systemowe,
@@ -396,6 +455,7 @@ Najważniejsze reguły biznesowe:
 - każdy użytkownik ma jeden profil,
 - każde ćwiczenie ma dokładnie jeden główny tag,
 - główny tag decyduje o zaliczaniu serii do cykli tagowych,
+- intensywność ćwiczenia decyduje o zaliczaniu serii do cykli intensywnościowych,
 - jedna seria może zaliczać się do wielu cykli jednocześnie,
 - typ logowania ćwiczenia po utworzeniu jest niezmienny,
 - usunięcie lub edycja serii przelicza rekordy, cykle, wykresy i rankingi,
@@ -428,7 +488,11 @@ Przykładowe kryteria akceptacyjne dla MVP:
 - po powrocie internetu dane synchronizują się bez blokowania pracy,
 - równoległa praca na dwóch urządzeniach offline nie powoduje po synchronizacji ani utraty serii, ani duplikatów,
 - cykl poprawnie zlicza serie, czas lub dystans zgodnie z definicją celu,
+- cykl WHO uznaje 75 minut wysiłku wysokiej intensywności za równoważne 150 minutom umiarkowanego, a wysiłku lekkiego nie zalicza,
+- cykl z dwoma poziomami pokazuje osobno osiągnięcie progu minimalnego i wyższego,
 - po usunięciu serii postęp cyklu zmniejsza się odpowiednio,
+- lista ćwiczeń przy dodawaniu serii stawia na górze ćwiczenia domykające braki aktywnych cykli, a po zapisaniu serii proponuje ćwiczenie angażujące możliwie rozdzielne partie — tak, że dwa ćwiczenia robione na zmianę podpowiadają się naprzemiennie,
+- ćwiczeń cardio ten dobór nie podpowiada, a przełącznik w ustawieniach przywraca kolejność po liczbie własnych serii,
 - po dodaniu serii rekordowej użytkownik dostaje informację o rekordzie,
 - wykres ćwiczenia pokazuje historię odpowiednich metryk,
 - kalendarz pokazuje liczbę serii dla każdego dnia, a kafelek dnia jest podświetlony tym mocniej, im więcej serii tego dnia zapisano,

@@ -83,6 +83,13 @@ describe('ćwiczenie', () => {
     expect(exerciseSchema.safeParse(exercise).success).toBe(true);
   });
 
+  it('intensywność jest opcjonalna i domyślnie nieokreślona', () => {
+    // Ćwiczenie zapisane przed wprowadzeniem tego pola musi się wczytać.
+    expect(exerciseSchema.parse(exercise).intensity).toBeNull();
+    expect(exerciseSchema.parse({ ...exercise, intensity: 'high' }).intensity).toBe('high');
+    expect(exerciseSchema.safeParse({ ...exercise, intensity: 'extreme' }).success).toBe(false);
+  });
+
   it('nie pozwala powtórzyć tagu głównego wśród dodatkowych', () => {
     const result = exerciseSchema.safeParse({ ...exercise, additionalTagIds: [ID_C] });
     expect(result.success).toBe(false);
@@ -209,12 +216,30 @@ describe('cykl', () => {
     expect(cycleSchema.safeParse(cycle).success).toBe(true);
   });
 
-  it('pozycja celu musi wskazywać dokładnie jedno: ćwiczenie albo tag', () => {
+  it('pozycja celu musi wskazywać dokładnie jedno: ćwiczenie, tag albo intensywność', () => {
     expect(cycleGoalSchema.safeParse({ ...goal, exerciseId: ID_B }).success).toBe(false);
     expect(cycleGoalSchema.safeParse({ ...goal, tagId: null }).success).toBe(false);
     expect(cycleGoalSchema.safeParse({ ...goal, tagId: null, exerciseId: ID_B }).success).toBe(
       true,
     );
+    expect(cycleGoalSchema.safeParse({ ...goal, tagId: null, intensity: 'moderate' }).success).toBe(
+      true,
+    );
+    expect(cycleGoalSchema.safeParse({ ...goal, intensity: 'moderate' }).success).toBe(false);
+  });
+
+  it('próg wyższy musi przekraczać minimalny', () => {
+    expect(cycleGoalSchema.safeParse({ ...goal, stretchTarget: 24 }).success).toBe(true);
+    expect(cycleGoalSchema.safeParse({ ...goal, stretchTarget: 12 }).success).toBe(false);
+    expect(cycleGoalSchema.safeParse({ ...goal, stretchTarget: 6 }).success).toBe(false);
+  });
+
+  it('pozycja bez nowych pól jest dalej poprawna — jeden poziom, zakres bez zmian', () => {
+    // Wiersz z archiwum albo z paczki telefonu sprzed tej zmiany nie zna ani
+    // progu wyższego, ani intensywności. Musi się wczytać, a nie odbić.
+    const parsed = cycleGoalSchema.parse(goal);
+    expect(parsed.stretchTarget).toBeNull();
+    expect(parsed.intensity).toBeNull();
   });
 
   it('wymaga przynajmniej jednej pozycji celu', () => {

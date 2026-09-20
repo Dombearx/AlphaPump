@@ -57,6 +57,7 @@ function stubLayers(
       recorded.last = request;
       return Promise.resolve({
         exerciseIndex: 0,
+        exerciseName: 'wyciskanie',
         weightKg: 82.5,
         reps: 8,
         durationS: null,
@@ -206,6 +207,7 @@ describe('dyktowanie serii', () => {
   it('bez dopasowania oddaje samą transkrypcję i powód', async () => {
     const { layers } = stubLayers('zrobiłem coś tam', {
       exerciseIndex: null,
+      exerciseName: 'coś tam',
       weightKg: null,
       reps: null,
       reason: 'Nie wiem, o które ćwiczenie chodzi',
@@ -395,10 +397,11 @@ describe('dyktowanie serii', () => {
     await harness.close();
   });
 
-  describe('sama liczba powtórzeń', () => {
-    /** Werdykt na „osiem": model nie ma z czego wskazać ćwiczenia ani ciężaru. */
+  describe('zdanie bez nazwy ćwiczenia', () => {
+    /** Werdykt na „osiem": w zdaniu nie padła nazwa ćwiczenia ani ciężar. */
     const REPS_ONLY = {
       exerciseIndex: null,
+      exerciseName: null,
       weightKg: null,
       reps: 8,
       reason: 'Usłyszałem samą liczbę',
@@ -440,6 +443,8 @@ describe('dyktowanie serii', () => {
     });
 
     it('bez serii w tym treningu mówi, czego zabrakło, i niczego nie zgaduje', async () => {
+      // Pierwsze zdanie nowego dnia brzmi tak samo jak dziesiąte zdanie
+      // trwającego treningu — ćwiczenie z wczoraj byłoby tu zgadywaniem.
       const { layers } = stubLayers('osiem', REPS_ONLY);
       const harness = await createHarness({ voice: layers });
       const user = await harness.signUp('pierwszaseria@example.com');
@@ -463,7 +468,7 @@ describe('dyktowanie serii', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.match).toBeNull();
-      expect(response.body.reason).toMatch(/nie ma jeszcze żadnej serii/);
+      expect(response.body.reason).toMatch(/w tym treningu nie ma jeszcze żadnej serii/);
 
       await harness.close();
     });
@@ -495,6 +500,113 @@ describe('dyktowanie serii', () => {
       expect(response.status).toBe(200);
       expect(response.body.match).toBeNull();
       expect(response.body.reason).toBe('Usłyszałem samą liczbę');
+
+      await harness.close();
+    });
+
+    it('ciężar podany w zdaniu zostaje, a z historii idzie samo ćwiczenie', async () => {
+      // „Jeszcze osiem na siedemdziesiąt" jest tym samym zdaniem co „osiem",
+      // tylko z ciężarem — i kosztowało to samo pytanie „które ćwiczenie?".
+      const { layers } = stubLayers('jeszcze osiem na siedemdziesiąt', {
+        ...REPS_ONLY,
+        weightKg: 70,
+      });
+      const harness = await createHarness({ voice: layers });
+      const user = await harness.signUp('zciezarem@example.com');
+
+      await harness.json('POST', '/sets', {
+        headers: user.headers,
+        body: {
+          exerciseId: BENCH,
+          performedOn: '2026-08-31',
+          weightG: 80_000,
+          reps: 10,
+          durationS: null,
+          distanceM: null,
+        },
+      });
+
+      const response = await harness.json<VoiceSetResponse>('POST', '/voice/text', {
+        headers: user.headers,
+        body: { text: 'jeszcze osiem na siedemdziesiąt', performedOn: '2026-08-31' },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body.match).toMatchObject({
+        exerciseId: BENCH,
+        weightG: 70_000,
+        reps: 8,
+        complete: true,
+      });
+
+      await harness.close();
+    });
+  });
+
+  describe('nazwa przekręcona przez rozpoznawanie mowy', () => {
+    /** Werdykt modelu, który usłyszał nazwę, ale nie wskazał pozycji z listy. */
+    const heard = (exerciseName: string) => ({
+      exerciseIndex: null,
+      exerciseName,
+      weightKg: 82.5,
+      reps: 8,
+      reason: 'Nie wiem, o które ćwiczenie chodzi',
+    });
+
+    it('znajduje ćwiczenie po nazwie, choć model go nie wskazał', async () => {
+      // Nazwa z biblioteki przekręcona tak, jak przekręca ją zegarek: po jednym
+      // znaku na słowo. Model odpowiedział „nie wiem" — i to jest ten przypadek,
+      // w którym „nie wiem" jest odpowiedzią, której nikt nie rozumie.
+      const heardText = 'flat barbel bench pres 82,5 na osiem';
+      const { layers } = stubLayers(heardText, heard('flat barbel bench pres'));
+      const harness = await createHarness({ voice: layers });
+      const user = await harness.signUp('literowka@example.com');
+
+      const response = await harness.json<VoiceSetResponse>('POST', '/voice/text', {
+        headers: user.headers,
+        body: { text: heardText, performedOn: '2026-08-31' },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body.match).toMatchObject({
+        exerciseId: BENCH,
+        weightG: 82_500,
+        reps: 8,
+        complete: true,
+      });
+      // Powód od modelu mówił „nie wiem" — a właśnie się okazało, że wiadomo.
+      expect(response.body.reason).toMatch(/Rozpoznane jako/);
+
+      await harness.close();
+    });
+
+    it('nazwa, której w bibliotece nie ma, dalej kończy się pytaniem', async () => {
+      // Podstawienie ćwiczenia z historii pod nazwę, która padła, zapisałoby
+      // serię pod czymś, o czym użytkownik nie mówił.
+      const { layers } = stubLayers('cośtamowanie 82,5 na osiem', heard('cośtamowanie'));
+      const harness = await createHarness({ voice: layers });
+      const user = await harness.signUp('nieznanenazwy@example.com');
+
+      await harness.json('POST', '/sets', {
+        headers: user.headers,
+        body: {
+          exerciseId: BENCH,
+          performedOn: '2026-08-31',
+          weightG: 80_000,
+          reps: 10,
+          durationS: null,
+          distanceM: null,
+        },
+      });
+
+      const response = await harness.json<VoiceSetResponse>('POST', '/voice/text', {
+        headers: user.headers,
+        body: { text: 'cośtamowanie 82,5 na osiem', performedOn: '2026-08-31' },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body.match).toBeNull();
+      expect(response.body.reason).toBe('Nie wiem, o które ćwiczenie chodzi');
 
       await harness.close();
     });
@@ -536,6 +648,10 @@ describe('biblioteka nie mieszcząca się w jednym kontekście', () => {
         seen.push(request);
         return Promise.resolve({
           exerciseIndex,
+          // Nazwa w nagraniu padła — nie trafiła tylko w nic z pokazanej kartki.
+          // Zdanie bez nazwy w ogóle nie chodzi po kartkach: tam ćwiczenie bierze
+          // się z poprzedniej serii, a nie z dalszego ciągu biblioteki.
+          exerciseName: transcript,
           weightKg: 60,
           reps: 10,
           durationS: null,

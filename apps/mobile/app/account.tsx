@@ -25,9 +25,11 @@ import { describeRunningBundle } from '../src/update/running';
 import { useRunningBundle } from '../src/update/use-update';
 import { expoDictationStore } from '../src/dictation/expo';
 import { expoBodyweightStore } from '../src/bodyweight/expo';
+import { expoExerciseOrderStore } from '../src/exercise-order/expo';
 import { BackgroundSettings } from '../src/ui/background';
 import { BodyweightSettings } from '../src/ui/bodyweight';
 import { DictationSettings } from '../src/ui/dictation';
+import { ExerciseOrderSettings } from '../src/ui/exercise-order';
 import { LanguageSettings } from '../src/ui/language';
 import { WatchAppSettings } from '../src/ui/watch-app';
 import { Button, Card, Loading, SectionTitle } from '../src/ui/primitives';
@@ -91,6 +93,8 @@ export default function AccountRoute() {
         </Card>
 
         <LanguageSettings />
+
+        <ExerciseOrderSettings store={expoExerciseOrderStore} />
 
         <DictationSettings store={expoDictationStore} />
 

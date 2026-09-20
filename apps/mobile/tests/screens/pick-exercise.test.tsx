@@ -1,5 +1,7 @@
 /**
- * Wybór ćwiczenia — sprawdza oznaczenie tagów objętych celami aktywnego cyklu.
+ * Wybór ćwiczenia — oznaczenie tagów objętych celami aktywnego cyklu oraz
+ * kolejność listy.
+ *
  * Oznaczeniem jest znak **wewnątrz** chipsa tagu (gwiazdka, dopóki coś zostało,
  * ptaszek po dokończeniu) i wypełnienie jego tła w proporcji zrobionej roboty
  * (patrz nagłówek `pick-exercise.tsx`). Znak sprawdzamy na tekście, który ekran
@@ -11,9 +13,15 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createCycle } from '../../src/db/cycles';
 import { createSet } from '../../src/db/sets';
+import type { ExerciseOrder, ExerciseOrderStore } from '../../src/exercise-order/state';
 import { PickExerciseScreen } from '../../src/screens/pick-exercise';
 import { EXERCISES, TAGS, TEST_USER } from '../local-database';
 import { mount, openLocalDatabase, screenText, type MountedScreen } from './harness';
+
+/** Magazyn ustawienia w pamięci — telefon trzyma je w pliku, test w zmiennej. */
+function orderStore(order: ExerciseOrder): ExerciseOrderStore {
+  return { read: () => Promise.resolve(order), write: () => Promise.resolve() };
+}
 
 const DAY = '2026-08-11';
 
@@ -48,7 +56,7 @@ describe('wybór ćwiczenia', () => {
       endsOn: null,
       goals: [{ metric: 'sets', target, ...goal }],
     });
-    await mount(<PickExerciseScreen day={DAY} />);
+    await mount(<PickExerciseScreen day={DAY} orderStore={orderStore('rotation')} />);
   };
 
   /** Seria wyciskania — ćwiczenia o tagu głównym „chest". */
@@ -122,5 +130,97 @@ describe('wybór ćwiczenia', () => {
     await withGoal({ exerciseId: null, tagId: TAGS.chest });
 
     expect(screenText()).not.toContain('Left in cycles');
+  });
+});
+
+/**
+ * Kolejność listy. Arytmetykę sprawdzają testy rdzenia, a tłumaczenie wierszy
+ * bazy — `tests/exercise-rotation.test.ts`; tutaj chodzi o to, czy ekran
+ * faktycznie tak ją rysuje i czy ustawienie na nią wpływa. Asercje stawiamy na
+ * kolejności nazw w tekście ekranu, bo to jest to, co użytkownik czyta.
+ */
+describe('kolejność ćwiczeń przy wyborze', () => {
+  let local: MountedScreen;
+
+  const CURL = 'Lying dumbbell curl';
+  const FRENCH = 'Lying triceps extension';
+
+  beforeEach(async () => {
+    local = await openLocalDatabase();
+
+    await createCycle(local.db, {
+      userId: TEST_USER.id,
+      deviceId: 'device-a',
+      name: 'Sierpień',
+      startsOn: '2026-08-01',
+      endsOn: null,
+      goals: [
+        { metric: 'sets', target: 12, exerciseId: null, tagId: TAGS.biceps },
+        { metric: 'sets', target: 12, exerciseId: null, tagId: TAGS.triceps },
+      ],
+    });
+  });
+
+  afterEach(() => local.close());
+
+  const addSet = (exerciseId: string, at: string) =>
+    createSet(
+      local.db,
+      {
+        userId: TEST_USER.id,
+        deviceId: 'device-a',
+        exerciseId,
+        performedOn: DAY,
+        values: {
+          weightG: 20_000,
+          reps: 10,
+          durationS: null,
+          distanceM: null,
+          bodyweightG: null,
+          note: null,
+        },
+      },
+      new Date(at),
+    );
+
+  /** Które z dwóch ćwiczeń stoi na liście wyżej. */
+  function higher(): string {
+    const text = screenText();
+    return text.indexOf(CURL) < text.indexOf(FRENCH) ? CURL : FRENCH;
+  }
+
+  it('podpowiada ćwiczenie z niedokończonej pozycji cyklu', async () => {
+    await mount(<PickExerciseScreen day={DAY} orderStore={orderStore('rotation')} />);
+
+    // Cała biblioteka wbudowana jest przed nimi w kolejności alfabetycznej,
+    // więc pierwszy wiersz listy dowodzi, że kolejność w ogóle się przestawiła.
+    expect(screenText().indexOf(CURL)).toBeLessThan(screenText().indexOf('Barbell squat'));
+  });
+
+  it('po serii na biceps na górze jest ćwiczenie na triceps', async () => {
+    await addSet(EXERCISES.curl!.id, '2026-08-11T10:00:00Z');
+    await mount(<PickExerciseScreen day={DAY} orderStore={orderStore('rotation')} />);
+
+    expect(higher()).toBe(FRENCH);
+  });
+
+  it('po serii na triceps wraca ćwiczenie na biceps', async () => {
+    // Zamiana bierze się wyłącznie z historii dnia — ekran niczego nie pamięta
+    // między wejściami, a mimo to za każdym razem wskazuje to drugie.
+    await addSet(EXERCISES.curl!.id, '2026-08-11T10:00:00Z');
+    await addSet(EXERCISES.frenchPress!.id, '2026-08-11T10:05:00Z');
+    await mount(<PickExerciseScreen day={DAY} orderStore={orderStore('rotation')} />);
+
+    expect(higher()).toBe(CURL);
+  });
+
+  it('wyłączone ustawienie zostawia kolejność po liczbie własnych serii', async () => {
+    await addSet(EXERCISES.curl!.id, '2026-08-11T10:00:00Z');
+    await mount(<PickExerciseScreen day={DAY} orderStore={orderStore('usage')} />);
+
+    // Jedyna seria dnia jest na uginaniu, więc bez podpowiadania to ono stoi
+    // na górze całej biblioteki — czyli dokładnie odwrotnie niż wyżej.
+    expect(screenText().indexOf(CURL)).toBeLessThan(screenText().indexOf('Barbell squat'));
+    expect(higher()).toBe(CURL);
   });
 });

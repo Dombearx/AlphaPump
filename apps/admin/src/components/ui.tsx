@@ -13,7 +13,7 @@
  */
 
 import { cva, type VariantProps } from 'class-variance-authority';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { cn } from '../lib/cn';
 
 /* ------------------------------------------------------------------ przycisk */
@@ -95,6 +95,83 @@ export function Input({ className, ...props }: InputProps) {
       )}
       {...props}
     />
+  );
+}
+
+/** Jak `Input`, ale `type` ustala podgląd, a nie wywołujący. */
+export type PasswordInputProps = Omit<InputProps, 'type'>;
+
+/**
+ * Pole hasła z podglądem.
+ *
+ * Kropki chronią przed czytaniem przez ramię, ale kosztują pewność, że wpisało
+ * się to, co się chciało — a panel prosi o hasło w dwóch miejscach, z czego
+ * w jednym trzeba je trafić dwa razy z rzędu. Podgląd zamienia domysł
+ * w sprawdzenie i jest tańszy od trzeciej nieudanej próby logowania.
+ *
+ * Domyślnie hasło jest zakryte i wraca do zakrycia przy każdym wejściu na
+ * ekran: odsłonięcie jest świadomym ruchem na chwilę, a nie ustawieniem, które
+ * zostaje na następną osobę przy tym samym komputerze. Każde pole trzyma swój
+ * stan, więc odsłonięcie hasła nie odsłania przy okazji jego powtórzenia.
+ *
+ * Przełącznik jest ikoną bez napisu, bo `Field` w panelu bywa po polsku i po
+ * angielsku, a oko wygląda tak samo w obu. Opis dla czytnika ekranu jest po
+ * angielsku, tak jak `accessibilityLabel` w aplikacji mobilnej.
+ */
+export function PasswordInput({ className, ...props }: PasswordInputProps) {
+  const [revealed, setRevealed] = useState(false);
+
+  return (
+    <div className="relative">
+      <Input
+        type={revealed ? 'text' : 'password'}
+        // Miejsce na przycisk, żeby koniec długiego hasła nie wjeżdżał pod oko.
+        className={cn('pr-10', className)}
+        {...props}
+      />
+      <button
+        type="button"
+        // Pole stoi w `<label>`, więc kliknięcie i tak wraca do inputa i go
+        // fokusuje. Bez tego przycisk zabrałby fokus na czas naciśnięcia,
+        // a kursor skoczyłby na koniec tekstu w środku pisania.
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => setRevealed((shown) => !shown)}
+        aria-pressed={revealed}
+        aria-label={revealed ? 'Hide password' : 'Show password'}
+        title={revealed ? 'Hide password' : 'Show password'}
+        className={cn(
+          'absolute inset-y-0 right-0 flex items-center px-3 text-muted',
+          'transition-colors hover:text-text focus-visible:text-text focus-visible:outline-none',
+        )}
+      >
+        <EyeIcon crossed={revealed} />
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Oko podglądu — przekreślone, kiedy hasło jest widoczne.
+ *
+ * Rysowane wprost, bo panel nie ma biblioteki ikon i jedna ikona jej nie
+ * uzasadnia. `aria-hidden`, bo znaczenie niesie etykieta przycisku.
+ */
+function EyeIcon({ crossed }: { crossed: boolean }) {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="size-4"
+    >
+      <path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6Z" />
+      <circle cx="12" cy="12" r="3" />
+      {crossed && <path d="m4 20 16-16" />}
+    </svg>
   );
 }
 

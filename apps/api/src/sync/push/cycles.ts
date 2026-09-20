@@ -112,8 +112,10 @@ export async function applyCycles(
       cycleId: row.id,
       metric: goal.metric,
       target: goal.target,
+      stretchTarget: goal.stretchTarget,
       exerciseId: goal.exerciseId,
       tagId: goal.tagId,
+      intensity: goal.intensity,
       position,
     }));
     await tx.insert(cycleGoals).values(written_goals);

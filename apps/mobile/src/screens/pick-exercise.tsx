@@ -7,8 +7,26 @@
  * w stosie: cofnięcie z formularza wraca do dnia, a nie do listy, z której przed
  * chwilą się wyszło.
  *
- * Kolejność listy jest po liczbie własnych serii malejąco — ćwiczenia, które
- * użytkownik faktycznie wykonuje, są u góry bez żadnego ustawiania.
+ * Kolejność listy rozstrzyga ustawienie „Suggest what to do next" (konto,
+ * domyślnie włączone). Z nim na górze stoją ćwiczenia, które domykają aktywne
+ * cykle i odciążają partie z ostatnich serii dnia — patrz `rotation.ts`
+ * w rdzeniu i `exercise-rotation.ts` obok. Bez niego zostaje kolejność po
+ * liczbie własnych serii malejąco: ćwiczenia, które użytkownik faktycznie
+ * wykonuje, u góry bez żadnego ustawiania. Ta druga kolejność nie znika także
+ * przy włączonym ustawieniu — sortowanie jest stabilne, więc rozstrzyga remisy,
+ * czyli całą listę poza kilkoma pozycjami wyciągniętymi na górę.
+ *
+ * Podpowiadanie jest wyłączone, gdy wybrany jest chips tagu: filtr jest
+ * **wskazaniem użytkownika**, co ma robić, i przestawianie mu wtedy kolejności
+ * byłoby kłóceniem się z nim o rzecz, którą już rozstrzygnął. Zapytanie układa
+ * wtedy listę po trafieniu w tag główny (patrz `exerciseLibrary`), a to jest
+ * kolejność, której ta lista właśnie potrzebuje.
+ *
+ * Na liście nie ma po tym żadnego śladu — ani znacznika przy podpowiedzianym
+ * wierszu, ani sekcji z nagłówkiem. Ekran jest pomiędzy dniem a formularzem
+ * i każdy jego element to koszt w najczęstszej czynności w aplikacji; skoro
+ * odpowiedzią na „co teraz wykonać" jest **pierwszy wiersz listy**, to lista
+ * w zupełności wystarczy za komunikat.
  *
  * Filtrowanie idzie po slugu, tym samym, który wylicza identyfikator ćwiczenia.
  * Dzięki temu „lawka" znajduje „Ławkę", a użytkownik nie musi trafiać w ogonki.
@@ -40,6 +58,7 @@ import { Keyboard, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSession } from '../auth/client';
 import {
+  cycleNeeds,
   cycleSummaries,
   earliestRelevantDay,
   tagCycleProgress,
@@ -50,6 +69,7 @@ import {
   allAdditionalTags,
   cycleGoalList,
   cycleList,
+  daySets,
   exerciseLibrary,
   groupAdditionalTags,
   setsForCycles,
@@ -57,11 +77,21 @@ import {
   type LibraryRow,
 } from '../db/queries';
 import { formatDate, today as currentDay } from '../day-labels';
+import type { ExerciseOrderStore } from '../exercise-order/state';
+import { useExerciseOrder } from '../exercise-order/use-exercise-order';
+import { orderLibrary } from '../exercise-rotation';
 import { filterExercises } from '../exercise-search';
 import { useLocalizedName } from '../language/provider';
 import { Button, Chip, ChipRow, EmptyState, Field, Loading, Row, TagDot } from '../ui/primitives';
 
-export function PickExerciseScreen({ day }: { day: IsoDate }) {
+export function PickExerciseScreen({
+  day,
+  orderStore,
+}: {
+  day: IsoDate;
+  /** Magazyn ustawienia kolejności; wstrzykuje go trasa, patrz `state.ts`. */
+  orderStore: ExerciseOrderStore;
+}) {
   // Nazwa do pokazania zależy od wyboru języka, więc powstaje przy renderowaniu
   // — patrz `language/provider.tsx`.
   const named = useLocalizedName();
@@ -89,12 +119,29 @@ export function PickExerciseScreen({ day }: { day: IsoDate }) {
   const from = useMemo(() => earliestRelevantDay(cycles, day), [cycles, day]);
   const sets = useLiveQuery(setsForCycles(db, userId, from), [userId, from]);
 
-  const cycleProgress = useMemo(
-    () => tagCycleProgress(cycleSummaries(cycles, sets.data ?? []), day),
-    [cycles, sets.data, day],
-  );
+  const summaries = useMemo(() => cycleSummaries(cycles, sets.data ?? []), [cycles, sets.data]);
+  const cycleProgress = useMemo(() => tagCycleProgress(summaries, day), [summaries, day]);
 
-  const matches = useMemo(() => filterExercises(library.data ?? [], query), [library.data, query]);
+  // Serie samego wskazanego dnia, w kolejności zapisu — z nich bierze się
+  // rozdzielność partii przy podpowiadaniu. `setsForCycles` obok sięga wstecz
+  // po okresy cykli i nie zna kolejności w obrębie dnia.
+  const { order } = useExerciseOrder(orderStore);
+  const todaySets = useLiveQuery(daySets(db, userId, day), [userId, day]);
+
+  const ordered = useMemo(() => {
+    const rows = library.data ?? [];
+    // Przy wybranym tagu kolejność zostawia zapytanie — patrz nagłówek pliku.
+    if (order !== 'rotation' || tagId !== null) return rows;
+
+    return orderLibrary(rows, {
+      sets: todaySets.data ?? [],
+      additional: extraTagsByExercise,
+      needs: cycleNeeds(summaries, day),
+      tags: tags.data ?? [],
+    });
+  }, [order, tagId, library.data, todaySets.data, extraTagsByExercise, summaries, day, tags.data]);
+
+  const matches = useMemo(() => filterExercises(ordered, query), [ordered, query]);
 
   if (isPending) return <Loading />;
   if (!session) return <Redirect href="/sign-in" />;

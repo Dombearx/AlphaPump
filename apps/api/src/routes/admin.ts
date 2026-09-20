@@ -15,9 +15,10 @@
  * dwa miejsca, w których trzeba pamiętać o `server_seq`, tombstonie i regule
  * „tag używany przez ćwiczenia nie znika".
  *
- * Zostają więc cztery rzeczy, których nigdzie indziej nie ma: lista i edycja
- * kont, przegląd liczb systemowych, zadanie porządkowe cache'u odpowiedzi
- * modelu i ręczne wyzwolenie przeglądu zgłoszeń zwrotnych (`services/triage`).
+ * Zostaje więc pięć rzeczy, których nigdzie indziej nie ma: lista i edycja kont,
+ * reset hasła konta, przegląd liczb systemowych, zadanie porządkowe cache'u
+ * odpowiedzi modelu i ręczne wyzwolenie przeglądu zgłoszeń zwrotnych
+ * (`services/triage`).
  *
  * ## Dwie blokady, które chronią administratora od siebie samego
  *
@@ -25,7 +26,9 @@
  * narzędziem do nadawania roli, więc administrator, który odbierze ją sobie,
  * zostaje bez drogi powrotu poza ręczną edycją bazy. Nie można też ruszyć konta
  * systemowego: jest autorem wszystkich ćwiczeń wbudowanych, a jego identyfikator
- * wchodzi w klucz ich identyfikatorów.
+ * wchodzi w klucz ich identyfikatorów. Reset hasła podlega obu, i własnego konta
+ * dotyczy dodatkowo trzecia: reset kasuje sesje, więc administrator wylogowałby
+ * się w chwili, w której panel pokazuje mu hasło do przepisania.
  */
 
 import { readdir, stat } from 'node:fs/promises';
@@ -35,6 +38,7 @@ import {
   adminUserListSchema,
   adminUserSchema,
   feedbackTriageReportSchema,
+  passwordResetResultSchema,
   systemStatsSchema,
   updateUserInputSchema,
   type AdminUser,
@@ -48,6 +52,7 @@ import { conflict, forbidden, notFound, unavailable } from '../errors.js';
 import { requireAdmin } from '../middleware/authenticate.js';
 import { validateJson, validateParam } from '../middleware/validate.js';
 import type { RouteSpec } from '../openapi.js';
+import { generateTemporaryPassword, revokeSessions, setAccountPassword } from '../passwords.js';
 import { idParamSchema } from '../schemas.js';
 import {
   cycles,
@@ -55,6 +60,7 @@ import {
   exerciseEmbeddings,
   exerciseRecords,
   exercises,
+  passwordResets,
   tags,
   users,
   workoutSets,
@@ -103,6 +109,24 @@ export const adminRoutes: RouteSpec[] = [
       { status: 403, description: 'Konto systemowe albo brak roli administratora' },
       { status: 404, description: 'No such account' },
       { status: 409, description: 'Próba zablokowania albo degradacji własnego konta' },
+    ],
+  },
+  {
+    method: 'post',
+    path: '/admin/users/:id/reset-password',
+    summary: 'Reset hasła konta',
+    description:
+      'Nadaje kontu hasło tymczasowe i kasuje jego sesje. Hasło jawne wraca w odpowiedzi ' +
+      '**jeden raz** — serwer nie ma czym wysłać wiadomości, więc przekazuje je administrator. ' +
+      'Do czasu ustawienia własnego hasła konto widzi wyłącznie ekran jego zmiany.',
+    tag: 'administracja',
+    security: 'admin',
+    params: idParamSchema,
+    responses: [
+      { status: 200, description: 'Hasło tymczasowe', schema: passwordResetResultSchema },
+      { status: 403, description: 'Konto systemowe albo brak roli administratora' },
+      { status: 404, description: 'No such account' },
+      { status: 409, description: 'Próba zresetowania hasła własnego konta' },
     ],
   },
   {
@@ -217,10 +241,20 @@ export function createAdminRouter(dependencies: AppDependencies, backupDir: stri
     return new Map(rows.map((row) => [row.userId, Number(row.value)]));
   };
 
+  /**
+   * Konta z hasłem tymczasowym czekającym na zmianę. Jednym zapytaniem, bo
+   * tabela ma tyle wierszy, ile trwających resetów — czyli zwykle zero.
+   */
+  const pendingResets = async (): Promise<Map<string, Date>> => {
+    const rows = await db.select().from(passwordResets);
+    return new Map(rows.map((row) => [row.userId, row.issuedAt]));
+  };
+
   const toDto = (
     row: typeof users.$inferSelect,
     setCount: number,
     exerciseCount: number,
+    passwordResetAt: Date | null,
   ): AdminUser => ({
     id: row.id,
     email: row.email,
@@ -230,6 +264,7 @@ export function createAdminRouter(dependencies: AppDependencies, backupDir: stri
     banReason: row.banReason,
     setCount,
     exerciseCount,
+    passwordResetAt: passwordResetAt === null ? null : passwordResetAt.toISOString(),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     deletedAt: null,
@@ -239,9 +274,12 @@ export function createAdminRouter(dependencies: AppDependencies, backupDir: stri
     const rows = await db.select().from(users).orderBy(asc(users.email));
     const sets = await setsByUser();
     const authored = await exercisesByAuthor();
+    const resets = await pendingResets();
 
     return context.json({
-      users: rows.map((row) => toDto(row, sets.get(row.id) ?? 0, authored.get(row.id) ?? 0)),
+      users: rows.map((row) =>
+        toDto(row, sets.get(row.id) ?? 0, authored.get(row.id) ?? 0, resets.get(row.id) ?? null),
+      ),
     });
   });
 
@@ -287,10 +325,71 @@ export function createAdminRouter(dependencies: AppDependencies, backupDir: stri
 
       const sets = await setsByUser();
       const authored = await exercisesByAuthor();
+      const resets = await pendingResets();
 
-      return context.json(toDto(row!, sets.get(id) ?? 0, authored.get(id) ?? 0));
+      return context.json(
+        toDto(row!, sets.get(id) ?? 0, authored.get(id) ?? 0, resets.get(id) ?? null),
+      );
     },
   );
+
+  /**
+   * Reset hasła — jedyna droga odzyskania dostępu do konta, jaką ma ten system.
+   *
+   * Poczty nie ma, więc nie ma „linku resetującego": administrator nadaje hasło
+   * tymczasowe i przekazuje je osobiście. Odpowiedź jest **jedynym** miejscem,
+   * w którym ta wartość istnieje jawnie — w bazie zostaje hash, a wiersz
+   * `password_resets` niesie wyłącznie informację, że konto ma je zmienić.
+   *
+   * Trzy skutki uboczne, wszystkie zamierzone:
+   *
+   * - **Sesje konta znikają.** Bez tego reset nic by nie znaczył dla telefonu,
+   *   który jest już zalogowany — a to zwykle jest ten telefon, o który chodzi.
+   * - **Konto po Google dostaje logowanie hasłem.** Wcześniej nie miało wiersza
+   *   z hasłem, więc reset nie miałby czego zmienić; logowanie Google działa dalej.
+   * - **Klucze API zostają.** To osobne poświadczenie bota, nie kopia hasła.
+   *
+   * Własnego hasła tędy się nie resetuje: operacja kasuje sesje, więc
+   * administrator wylogowałby sam siebie w chwili, w której panel pokazuje mu
+   * hasło do przepisania. Własne hasło zmienia się tam, gdzie zawsze — zwykłą
+   * zmianą hasła w better-auth.
+   */
+  router.post('/admin/users/:id/reset-password', validateParam(idParamSchema), async (context) => {
+    const principal = context.get('principal');
+    const { id } = context.req.valid('param');
+
+    if (id === SYSTEM_USER.id) {
+      throw forbidden('The system account authors the built-in library and cannot be changed');
+    }
+    if (id === principal.id) {
+      throw conflict(
+        'You cannot reset your own password here — the reset ends every session of that account',
+      );
+    }
+
+    const [existing] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+    if (!existing) throw notFound('No such account');
+
+    const password = generateTemporaryPassword();
+    await setAccountPassword(dependencies.auth, id, password);
+    await revokeSessions(dependencies.auth, id);
+
+    const issuedAt = new Date();
+    await db
+      .insert(passwordResets)
+      .values({ userId: id, issuedBy: principal.id, issuedAt })
+      .onConflictDoUpdate({
+        target: passwordResets.userId,
+        set: { issuedBy: principal.id, issuedAt },
+      });
+
+    return context.json({
+      userId: id,
+      email: existing.email,
+      password,
+      issuedAt: issuedAt.toISOString(),
+    });
+  });
 
   router.get('/admin/stats', async (context) => {
     // `count(*)::int` zamiast `count()` z Drizzle: `bigint` wraca ze sterownika

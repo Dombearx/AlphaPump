@@ -29,6 +29,7 @@ import {
   libraryExerciseSchema,
   libraryTagSchema,
   parseRows,
+  passwordResetResultSchema,
   systemStatsSchema,
   tagMergeReportSchema,
   tagSchema,
@@ -46,6 +47,7 @@ import {
   type IntegrityReport,
   type LibraryExercise,
   type LibraryTag,
+  type PasswordResetResult,
   type RejectedRow,
   type TranslationRefreshReport,
   type Translations,
@@ -172,7 +174,15 @@ export async function requestList<T>(
  * degradacji konta — same żądania i tak by odbijały, ale panel udawałby, że
  * wszystko jest w porządku.
  */
-export const meSchema = userSchema.extend({ credential: z.enum(['session', 'api-key']) });
+export const meSchema = userSchema.extend({
+  credential: z.enum(['session', 'api-key']),
+  /**
+   * Konto ma hasło nadane przez administratora i nie ustawiło jeszcze własnego.
+   * Panel pokazuje wtedy wyłącznie formularz zmiany hasła — także wtedy, gdy
+   * chodzi o konto administratora, bo reset dotyczy poświadczenia, nie roli.
+   */
+  mustChangePassword: z.boolean(),
+});
 
 export type Me = z.infer<typeof meSchema>;
 
@@ -194,6 +204,40 @@ export const updateUser = (
     body: input,
     fetchImpl,
   });
+
+/**
+ * Reset hasła konta.
+ *
+ * Odpowiedź niesie hasło **jawne** i jest jedynym miejscem, w którym ono
+ * istnieje: serwer trzyma sam hash i nie ma czym wysłać wiadomości. Panel
+ * pokazuje je raz, do skopiowania, i nie zapisuje nigdzie — ani w pamięci
+ * podręcznej zapytań, ani w `localStorage`. Zgubione znaczy „zresetuj jeszcze
+ * raz", i tak ma być.
+ */
+export const resetUserPassword = (
+  id: string,
+  fetchImpl?: typeof fetch,
+): Promise<PasswordResetResult> =>
+  request(`/admin/users/${id}/reset-password`, passwordResetResultSchema, {
+    method: 'POST',
+    fetchImpl,
+  });
+
+/**
+ * Ustawienie własnego hasła po resecie. Odpowiedź jest pusta (`204`), więc
+ * schematem jest `null` — `request` i tak sprawdza kształt, a `z.null()` jest
+ * tu prawdą, a nie obejściem.
+ */
+export const setOwnPassword = async (
+  newPassword: string,
+  fetchImpl?: typeof fetch,
+): Promise<void> => {
+  await request('/me/password', z.null(), {
+    method: 'POST',
+    body: { newPassword },
+    fetchImpl,
+  });
+};
 
 /* ----------------------------------------------------------- dane systemowe */
 

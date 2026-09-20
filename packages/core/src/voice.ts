@@ -30,15 +30,34 @@
  * o które chodzi" i normalnym wyborem z biblioteki — czyli tym samym, co dziś,
  * bez straty.
  *
- * ## Dlaczego samą liczbę powtórzeń uzupełnia kod, a nie model
+ * ## Dlaczego zdanie bez nazwy ćwiczenia uzupełnia kod, a nie model
  *
  * Bo „osiem" rzucone między seriami znaczy „to samo, co przed chwilą", a to,
  * co było przed chwilą, stoi w bazie — nie ma czego zgadywać. Model dostaje
  * historię po to, żeby zrozumieć zdanie, a nie po to, żeby je uzupełniać:
  * gdyby wolno mu było dopisywać ćwiczenie z historii, robiłby to także wtedy,
- * gdy usłyszał nazwę i jej nie rozpoznał. Dlatego werdykt „sama liczba
- * powtórzeń" jest wykrywany po kształcie (`isRepsOnlyVerdict`), a ćwiczenie
- * i ciężar dopisuje `carryOverLastSet` z ostatniej serii tego treningu.
+ * gdy usłyszał nazwę i jej nie rozpoznał. Dlatego zdanie bez nazwy jest
+ * wykrywane po kształcie werdyktu (`isExerciselessVerdict`), a ćwiczenie
+ * i brakujący ciężar dopisuje `carryOverLastSet` z poprzedniej serii tego
+ * treningu.
+ *
+ * Kształtem jest tu **brak nazwy**, a nie „same powtórzenia": „jeszcze osiem
+ * na osiemdziesiąt" to dokładnie to samo zdanie, tylko z ciężarem, i kosztowało
+ * użytkownika to samo pytanie „które ćwiczenie?", na które odpowiedź stoi
+ * w bazie. Ciężar podany w nagraniu zostaje podany — historia dokłada wyłącznie
+ * to, czego w zdaniu nie było.
+ *
+ * ## Dlaczego przekręconej nazwy szukamy jeszcze raz, już bez modelu
+ *
+ * Bo tekst przychodzi z rozpoznawania mowy — z zegarka albo z klawiatury
+ * telefonu — i regularnie różni się od nazwy w bibliotece jednym znakiem.
+ * Model, któremu wolno zgadywać, dopisałby serię do nie tego ćwiczenia; model,
+ * któremu zgadywać nie wolno (a nie wolno, patrz wyżej), mówi „nie wiem"
+ * i odsyła użytkownika do listy. Trzecie wyjście jest deterministyczne:
+ * `matchSpokenExercise` porównuje usłyszaną nazwę z nazwami z listy po słowach,
+ * wybaczając literówkę, i wskazuje pozycję tylko wtedy, gdy **każdy** człon
+ * nazwy z biblioteki znalazł się w tym, co powiedziano. To nie jest zgadywanie
+ * — to jest to samo porównanie, które w bibliotece ostrzega o duplikatach.
  *
  * ## Dlaczego pomiary spoza typu logowania są wycinane
  *
@@ -60,6 +79,7 @@ import {
   type SetMeasurements,
 } from './logging-type.js';
 import { displayNameSchema, loggingTypeSchema, noteSchema, uuidSchema } from './schemas.js';
+import { countCloseTokens, nameTokens } from './similarity.js';
 import { gramsToKilograms, kilogramsToGrams } from './units.js';
 
 /**
@@ -140,6 +160,22 @@ export interface VoiceRecentSet {
 export const voiceSetVerdictSchema = z.object({
   /** Pozycja z listy ćwiczeń albo `null`, gdy żadna nie pasuje. */
   exerciseIndex: z.int().min(0).nullable(),
+  /**
+   * Nazwa ćwiczenia **tak, jak padła w nagraniu** — albo `null`, gdy nie padła
+   * żadna.
+   *
+   * To pole nie dubluje `exerciseIndex`, tylko odpowiada na inne pytanie:
+   * indeks mówi, **które** ćwiczenie to jest, a ta nazwa — czy użytkownik
+   * w ogóle jakieś wymienił. Bez tego rozróżnienia „nie wskazałem pozycji"
+   * jest jednym stanem dla dwóch sytuacji, które wymagają przeciwnych reakcji:
+   * przy nazwie przekręconej przez rozpoznawanie mowy trzeba jej poszukać
+   * po podobieństwie (`matchSpokenExercise`), a przy zdaniu bez nazwy —
+   * dopisać ćwiczenie z poprzedniej serii (`carryOverLastSet`).
+   *
+   * Model wypełnia je nawet wtedy, gdy nazwy nie rozpoznał: przepisanie tego,
+   * co usłyszał, jest zadaniem, w którym nie ma jak się pomylić.
+   */
+  exerciseName: z.string().max(120).nullable(),
   /** Ciężar w **kilogramach** — tak, jak się o nim mówi; ułamki dozwolone. */
   weightKg: z.number().min(0).nullable(),
   reps: z.int().min(1).nullable(),
@@ -263,40 +299,117 @@ export function applyVoiceVerdict(
   };
 }
 
-/**
- * Czy z całego zdania została sama liczba powtórzeń — bez ćwiczenia i bez
- * żadnego innego pomiaru.
- *
- * Tak wygląda werdykt na „osiem" rzucone między seriami: model nie ma z czego
- * wskazać ćwiczenia, a historii dopisać mu nie wolno. Rozpoznanie tego jednego
- * kształtu jest sygnałem, że resztę da się dopisać **z bazy** — czyli tam,
- * gdzie pomyłka jest niemożliwa, a nie tylko mało prawdopodobna.
- */
-export function isRepsOnlyVerdict(verdict: VoiceSetVerdict): boolean {
+/** Czy werdykt niesie jakikolwiek pomiar — jest z czego złożyć serię. */
+function hasMeasurement(verdict: VoiceSetVerdict): boolean {
   return (
-    verdict.exerciseIndex === null &&
-    verdict.reps !== null &&
-    verdict.weightKg === null &&
-    verdict.durationS === null &&
-    verdict.distanceM === null &&
-    verdict.bodyweightKg === null
+    verdict.reps !== null ||
+    verdict.durationS !== null ||
+    verdict.distanceM !== null ||
+    verdict.weightKg !== null
   );
 }
 
 /**
- * Dopisuje do werdyktu ćwiczenie i ciężar z poprzedniej serii tego treningu.
+ * Czy w zdaniu **nie padła nazwa ćwiczenia**, ale padły liczby.
+ *
+ * Tak wygląda werdykt na „osiem" albo „jeszcze osiem na osiemdziesiąt" rzucone
+ * między seriami: model nie ma z czego wskazać ćwiczenia, bo użytkownik go nie
+ * wymienił, a historii dopisać mu nie wolno. Rozpoznanie tego kształtu jest
+ * sygnałem, że ćwiczenie da się dopisać **z bazy** — czyli tam, gdzie pomyłka
+ * jest niemożliwa, a nie tylko mało prawdopodobna.
+ *
+ * Nazwa, która padła, ale nie trafiła w żadną pozycję listy, jest czymś
+ * przeciwnym: tam użytkownik powiedział, co robi, więc podstawienie ćwiczenia
+ * z historii zapisałoby serię pod ćwiczeniem, o którym nie mówił. Takie zdanie
+ * idzie do `matchSpokenExercise`, a gdy i to nie trafi — do użytkownika.
+ */
+export function isExerciselessVerdict(verdict: VoiceSetVerdict): boolean {
+  return verdict.exerciseIndex === null && verdict.exerciseName === null && hasMeasurement(verdict);
+}
+
+/** Człony nazwy bez liczb — „80" z „push up 80" nie jest częścią nazwy. */
+function spokenTokens(value: string): string[] {
+  return nameTokens(value).filter((token) => !/^\d+$/.test(token));
+}
+
+/**
+ * Pozycja ćwiczenia, którego nazwa **padła w tym, co powiedziano** — albo `null`.
+ *
+ * Wejściem jest nazwa usłyszana przez model (`exerciseName`) albo, gdy model nie
+ * wypełnił jej wcale, cała transkrypcja: reguła jest ta sama w obu wypadkach,
+ * bo szukamy nazwy z biblioteki **wewnątrz** zdania, a nie zdania wewnątrz nazwy.
+ *
+ * Wskazana zostaje nazwa, której **każdy** człon znalazł się w zdaniu, a przy
+ * kilku takich — ta najdłuższa: „przysiad bułgarski" wskaże „Przysiad
+ * bułgarski", a nie „Przysiad", choć oba są w tym zdaniu w całości. Remis
+ * rozstrzyga kolejność listy, czyli ta sama reguła, którą dostaje model:
+ * pierwsze stoją ćwiczenia, które ten człowiek faktycznie wykonuje.
+ *
+ * Całość, a nie większość — i to jest cała ostrożność tej warstwy. Pokrycie
+ * częściowe wygląda na hojniejsze („zgubił jeden człon z czterech, przecież
+ * wiadomo, o co chodzi"), a kosztuje dopasowanie nie tego ćwiczenia:
+ * „wyciskanie … leżąc" pokrywa w dwóch trzecich „Wyciskanie francuskie leżąc",
+ * czyli ruch na triceps, o którym nikt nie mówił. Ta warstwa naprawia
+ * **pisownię**; od skrótów i synonimów jest model, który widzi całą listę naraz.
+ * Miękkie zostaje samo porównanie członów (`tokenCloseness`), więc „w całości"
+ * znaczy „każdy człon nazwy ma w zdaniu swój odpowiednik", a nie „znak w znak".
+ *
+ * Porównanie idzie po `tokenCloseness`, więc jedna literówka w członie nazwy nie
+ * gubi dopasowania — i to jest cały powód, dla którego ta funkcja istnieje.
+ */
+export function matchSpokenExercise(
+  exercises: readonly VoiceExercise[],
+  spoken: string,
+): number | null {
+  const heard = spokenTokens(spoken);
+  if (heard.length === 0) return null;
+
+  let best: { index: number; length: number } | null = null;
+
+  for (const [index, exercise] of exercises.entries()) {
+    // Nazwa kanoniczna i nazwy w pozostałych językach są równoprawne: dyktuje
+    // się w języku, w którym się myśli.
+    for (const variant of [exercise.name, ...exercise.aliases]) {
+      const tokens = spokenTokens(variant);
+      if (tokens.length === 0) continue;
+
+      // Nazwa ma się znaleźć w zdaniu **w całości**, człon po członie.
+      if (countCloseTokens(tokens, heard) < tokens.length) continue;
+      if (best === null || tokens.length > best.length) {
+        best = { index, length: tokens.length };
+      }
+    }
+  }
+
+  return best?.index ?? null;
+}
+
+/**
+ * Dopisuje do werdyktu ćwiczenie z poprzedniej serii **tego treningu** —
+ * i ciężar, jeśli w zdaniu go nie było.
  *
  * `recent` musi być posortowane **od najnowszej** — tak samo, jak jedzie do
  * modelu; brana jest pierwsza pozycja, czyli ostatnia zapisana seria.
  *
+ * Reguła jest taka, jak brzmi na siłowni: kto nie powiedział, co robi, robi
+ * dalej to, co robił — ale „dalej" kończy się wraz z treningiem. Seria z innego
+ * dnia nie jest podpowiedzią, tylko zgadywaniem: pierwsze zdanie nowego dnia
+ * brzmi tak samo jak dziesiąte zdanie trwającego treningu, a ćwiczenie wzięte
+ * wtedy z wczoraj zapisałoby serię pod czymś, czego nikt dziś nie robił.
+ *
+ * Ciężar dokłada się **wyłącznie tam, gdzie go nie podano**: „jeszcze osiem"
+ * bierze ciężar poprzedniej serii, a „jeszcze osiem na siedemdziesiąt" zostaje
+ * przy siedemdziesięciu. Czasu ani dystansu poprzednia seria nie podpowiada —
+ * one zmieniają się co serię.
+ *
  * `null` znaczy „nie ma z czego uzupełnić" i wychodzi w dwóch sytuacjach:
  * ostatnia seria jest z innego dnia (czyli w tym treningu nie ma jeszcze
  * żadnej) albo jej ćwiczenia nie ma na liście podanej modelowi — a poza tą
- * listą nie ma jak go wskazać. Obie kończą się pytaniem do użytkownika, bo
- * cena zgadywania jest tu ta sama co przy dopasowaniu ćwiczenia.
+ * listą nie ma jak go wskazać. Obie kończą się pytaniem do użytkownika, bo cena
+ * zgadywania jest tu ta sama co przy dopasowaniu ćwiczenia.
  *
  * Dzień jest **z urządzenia**, a nie z zegara serwera: seria należy do dnia
- * kalendarzowego tego, kto ją zapisuje, więc tylko on wie, czy trwa jeszcze
+ * kalendarzowego tego, kto ją zapisuje, więc tylko ono wie, czy trwa jeszcze
  * ten sam trening.
  */
 export function carryOverLastSet(
@@ -312,14 +425,14 @@ export function carryOverLastSet(
   if (index === -1) return null;
 
   const { weightG } = last.measurements;
+  const carriedWeight = weightG === null ? null : gramsToKilograms(weightG);
 
   return {
     ...verdict,
     exerciseIndex: index,
-    // Pozostałe pomiary zostają takie, jakie przyszły od modelu: powtórzenia są
-    // tym, co użytkownik właśnie powiedział, a czasu ani dystansu poprzednia
-    // seria nie ma prawa podpowiedzieć — one zmieniają się co serię.
-    weightKg: weightG === null ? null : gramsToKilograms(weightG),
-    reason: `Sama liczba powtórzeń — ćwiczenie i ciężar z poprzedniej serii: ${last.exerciseName}.`,
+    // Pomiary z nagrania zostają nienaruszone: uzupełniamy to, czego nie
+    // powiedziano, a nie to, co usłyszeliśmy.
+    weightKg: verdict.weightKg ?? carriedWeight,
+    reason: `Bez nazwy ćwiczenia — ćwiczenie z poprzedniej serii: ${last.exerciseName}.`,
   };
 }

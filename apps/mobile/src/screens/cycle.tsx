@@ -139,6 +139,20 @@ export function CycleScreen({ cycleId }: { cycleId: string }) {
             {isArchived ? ' · archived' : ''}
           </Text>
           <ProgressBar ratio={progress.ratio} done={progress.completed} />
+          {/* Drugi poziom pokazujemy dopiero wtedy, gdy cykl w ogóle go ma —
+              inaczej każdy zwykły cel dostawałby wiersz o niczym. */}
+          {progress.hasStretch && (
+            <Text
+              className={progress.stretchCompleted ? 'text-xs text-success' : 'text-xs text-muted'}
+            >
+              Higher level: {formatRatio(progress.stretchRatio)}
+              {progress.level === 'higher'
+                ? ' · reached'
+                : progress.level === 'minimal'
+                  ? ' · minimum reached'
+                  : ''}
+            </Text>
+          )}
         </Card>
 
         <View className="gap-2">
@@ -158,6 +172,16 @@ export function CycleScreen({ cycleId }: { cycleId: string }) {
                 {!goal.completed && (
                   <Text className="text-xs text-muted">
                     {formatMetric(goal.metric, goal.remaining)} left
+                  </Text>
+                )}
+                {goal.stretchTarget !== null && (
+                  <Text
+                    className={
+                      goal.stretchCompleted ? 'text-xs text-success' : 'text-xs text-muted'
+                    }
+                  >
+                    Higher target {formatMetric(goal.metric, goal.stretchTarget)}
+                    {goal.stretchCompleted ? ' · reached' : ''}
                   </Text>
                 )}
               </Card>

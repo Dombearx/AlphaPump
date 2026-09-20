@@ -19,7 +19,6 @@ import {
   Pressable,
   ScrollView,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -29,6 +28,7 @@ import { appConfig, isGoogleSignInConfigured } from '../src/config/index';
 import { db } from '../src/db/client';
 import { cacheSessionUser } from '../src/db/users';
 import { COLORS } from '../src/theme';
+import { Field } from '../src/ui/primitives';
 
 type Mode = 'sign-in' | 'sign-up';
 
@@ -166,22 +166,5 @@ export default function SignInScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
-  );
-}
-
-type FieldProps = {
-  label: string;
-} & React.ComponentProps<typeof TextInput>;
-
-function Field({ label, ...input }: FieldProps) {
-  return (
-    <View className="gap-1">
-      <Text className="text-sm uppercase tracking-wide text-muted">{label}</Text>
-      <TextInput
-        className="rounded-2xl border border-border bg-surface p-4 text-base text-text"
-        placeholderTextColor={COLORS.muted}
-        {...input}
-      />
-    </View>
   );
 }

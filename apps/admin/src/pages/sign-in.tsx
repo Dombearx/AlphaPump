@@ -8,7 +8,7 @@
  */
 
 import { useState } from 'react';
-import { Button, Card, Field, Input, Problem } from '../components/ui';
+import { Button, Card, Field, Input, PasswordInput, Problem } from '../components/ui';
 import { signIn } from '../lib/auth';
 
 export function SignInPage() {
@@ -49,8 +49,7 @@ export function SignInPage() {
             />
           </Field>
           <Field label="Password">
-            <Input
-              type="password"
+            <PasswordInput
               autoComplete="current-password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}

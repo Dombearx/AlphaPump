@@ -10,6 +10,7 @@
 
 import { z } from 'zod';
 import { isIsoDate } from './dates.js';
+import { INTENSITIES } from './intensity.js';
 import { languageSchema } from './languages.js';
 import { LOGGING_TYPES, requiredMeasurements, usesBodyweight } from './logging-type.js';
 import { isSlug, slug } from './slug.js';
@@ -88,6 +89,34 @@ export const userSchema = z
 
 export type User = z.infer<typeof userSchema>;
 
+/**
+ * Najkrótsze dopuszczalne hasło — ta sama liczba, którą better-auth dostaje
+ * w `emailAndPassword.minPasswordLength`.
+ *
+ * Stała jest tutaj, bo pilnują jej **trzy** miejsca: konfiguracja better-auth
+ * (rejestracja i logowanie), generator hasła tymczasowego w API i formularz
+ * ustawienia własnego hasła. Wpisana z ręki w każdym z nich rozjechałaby się
+ * przy pierwszej zmianie — a rozjazd wyszedłby dopiero komuś, kto próbuje
+ * ustawić hasło i dostaje odmowę bez powodu.
+ */
+export const MIN_PASSWORD_LENGTH = 8;
+
+/**
+ * Ustawienie własnego hasła po resecie wykonanym przez administratora
+ * (`POST /me/password`).
+ *
+ * Nie ma tu `currentPassword` i to jest cała różnica względem zwykłej zmiany
+ * hasła w better-auth: tamta potwierdza tożsamość starym hasłem, a ta jest
+ * dostępna **wyłącznie** dla konta z hasłem tymczasowym — czyli takiego, którego
+ * stare hasło zna administrator, bo sam je przed chwilą nadał. Pytanie o nie
+ * niczego by nie dowiodło.
+ */
+export const setOwnPasswordInputSchema = z.object({
+  newPassword: z.string().min(MIN_PASSWORD_LENGTH).max(128),
+});
+
+export type SetOwnPasswordInput = z.infer<typeof setOwnPasswordInputSchema>;
+
 /* ----------------------------------------------------------------------- tag */
 
 export const tagSchema = z
@@ -131,6 +160,14 @@ export type UpdateTagInput = z.infer<typeof updateTagInputSchema>;
 
 export const loggingTypeSchema = z.enum(LOGGING_TYPES);
 
+/**
+ * Intensywność wysiłku. Domyślne `null` („nieokreślona") jest tu **wartością
+ * domyślną schematu**, a nie tylko dopuszczalną: pole doszło do istniejącej
+ * encji, więc wiersz bez niego — z archiwum sprzed zmiany albo z telefonu
+ * ze starszą wersją aplikacji — musi dalej się wczytywać.
+ */
+export const intensitySchema = z.enum(INTENSITIES);
+
 export const exerciseSchema = z
   .object({
     id: uuidSchema,
@@ -140,6 +177,8 @@ export const exerciseSchema = z
     loggingType: loggingTypeSchema,
     /** Dokładnie jeden tag główny — to on decyduje o zaliczaniu serii do cykli. */
     primaryTagId: uuidSchema,
+    /** Patrz `intensity.ts`: cecha ćwiczenia, nie pojedynczej serii. */
+    intensity: intensitySchema.nullable().default(null),
     additionalTagIds: z.array(uuidSchema),
     note: noteSchema.nullable(),
     gym: gymSchema.nullable(),
@@ -162,6 +201,7 @@ export const createExerciseInputSchema = z.object({
   /** Typ logowania jest ustalany tu raz na zawsze — zmiana wymaga nowego ćwiczenia. */
   loggingType: loggingTypeSchema,
   primaryTagId: uuidSchema,
+  intensity: intensitySchema.nullable().default(null),
   additionalTagIds: z.array(uuidSchema).default([]),
   note: noteSchema.nullable().default(null),
   gym: gymSchema.nullable().default(null),
@@ -260,36 +300,67 @@ export type GoalMetric = (typeof GOAL_METRICS)[number];
 export const goalMetricSchema = z.enum(GOAL_METRICS);
 
 /**
- * Pozycja celu wskazuje **albo** ćwiczenie, **albo** tag — nigdy oba i nigdy
- * żadnego. Kształt z dwoma polami nullowalnymi, a nie unia, bo tak wygląda
- * wiersz w bazie po obu stronach synchronizacji.
+ * Pozycja celu wskazuje **dokładnie jedno**: ćwiczenie, tag albo intensywność —
+ * nigdy dwa i nigdy żadnego. Kształt z polami nullowalnymi, a nie unia, bo tak
+ * wygląda wiersz w bazie po obu stronach synchronizacji.
+ *
+ * `stretchTarget` jest drugim, wyższym progiem tej samej pozycji. Wymóg „większy
+ * od `target`" nie jest ozdobą: dwa poziomy, z których wyższy jest niżej,
+ * pokazywałyby cykl ukończony na poziomie wyższym, zanim osiągnie minimalny.
  */
 const cycleGoalFields = z.object({
   id: uuidSchema,
   metric: goalMetricSchema,
   /** Liczba serii, sekundy albo metry — zależnie od metryki. */
   target: z.int().positive(),
+  /** Próg wyższy („dodatkowe korzyści zdrowotne" w cyklu WHO); `null` = jeden poziom. */
+  stretchTarget: z.int().positive().nullable().default(null),
   exerciseId: uuidSchema.nullable(),
   tagId: uuidSchema.nullable(),
+  intensity: intensitySchema.nullable().default(null),
 });
 
 const EXACTLY_ONE_SCOPE = {
-  message: 'Pozycja celu musi wskazywać dokładnie jedno: ćwiczenie albo tag',
+  message: 'Pozycja celu musi wskazywać dokładnie jedno: ćwiczenie, tag albo intensywność',
 } as const;
 
-const hasExactlyOneScope = (goal: { exerciseId: string | null; tagId: string | null }): boolean =>
-  (goal.exerciseId === null) !== (goal.tagId === null);
+const RISING_LEVELS = {
+  message: 'Próg wyższy musi być większy od minimalnego',
+  path: ['stretchTarget'],
+};
 
-export const cycleGoalSchema = cycleGoalFields.refine(hasExactlyOneScope, EXACTLY_ONE_SCOPE);
+const hasExactlyOneScope = (goal: {
+  exerciseId: string | null;
+  tagId: string | null;
+  intensity: string | null;
+}): boolean =>
+  [goal.exerciseId, goal.tagId, goal.intensity].filter((scope) => scope !== null).length === 1;
+
+const hasRisingLevels = (goal: { target: number; stretchTarget: number | null }): boolean =>
+  goal.stretchTarget === null || goal.stretchTarget > goal.target;
+
+export const cycleGoalSchema = cycleGoalFields
+  .refine(hasExactlyOneScope, EXACTLY_ONE_SCOPE)
+  .refine(hasRisingLevels, RISING_LEVELS);
 
 export type CycleGoal = z.infer<typeof cycleGoalSchema>;
 
 /** Pozycja celu przed zapisem — identyfikator nadaje klient przy tworzeniu cyklu. */
 export const cycleGoalInputSchema = cycleGoalFields
   .omit({ id: true })
-  .refine(hasExactlyOneScope, EXACTLY_ONE_SCOPE);
+  .refine(hasExactlyOneScope, EXACTLY_ONE_SCOPE)
+  .refine(hasRisingLevels, RISING_LEVELS);
 
 export type CycleGoalInput = z.infer<typeof cycleGoalInputSchema>;
+
+/**
+ * Pozycja celu tak, jak podaje ją wołający — pola z wartością domyślną wolno
+ * pominąć. Kształt **przed** walidacją, więc to jego oczekują funkcje
+ * przyjmujące cel do zapisania; `CycleGoalInput` jest tym, co z nich wychodzi.
+ * Bez tego rozróżnienia każdy zwykły cel musiałby wypisywać `stretchTarget:
+ * null, intensity: null` tylko po to, żeby przejść przez typy.
+ */
+export type CycleGoalDraft = z.input<typeof cycleGoalInputSchema>;
 
 export const cycleSchema = z
   .object({
