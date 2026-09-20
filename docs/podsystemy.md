@@ -786,20 +786,36 @@ ręcznie, a nie osobny tryb. Bez ustawienia formularz zachowuje się dokładnie 
 jak zachowywał się wcześniej.
 
 **Ustawienie wygrywa z masą przepisaną z poprzedniej serii.** Podpowiedź bierze
-z historii wszystko poza masą ciała, bo ta jedna wartość ma źródło lepsze niż
-historia: użytkownik sam ją utrzymuje. Gdyby wygrywała historia, wpisanie nowej
-masy w ustawieniach nie zmieniłoby w formularzu niczego aż do ręcznej poprawki.
-Wyjątkiem jest masa **powiedziana w dyktowaniu** — dotyczy tej jednej serii
-i jest świeższa niż cokolwiek zapisanego wcześniej, więc zostaje.
+z historii serii wszystko poza masą ciała, bo ta jedna wartość ma źródło lepsze
+niż seria sprzed tygodni: użytkownik sam ją utrzymuje. Gdyby wygrywała seria,
+wpisanie nowej masy w ustawieniach nie zmieniłoby w formularzu niczego aż do
+ręcznej poprawki. Wyjątkiem jest masa **powiedziana w dyktowaniu** — dotyczy tej
+jednej serii i jest świeższa niż cokolwiek zapisanego wcześniej, więc zostaje.
+
+Dyktowanie dochodzi do serii dwiema drogami i **obie** podstawiają masę
+z ustawień: przez formularz robi to jego trasa, a w trybie „zapisz od razu",
+który formularza nie dotyka — `dictatedSetValues` w `src/voice-draft.ts`. Bez
+tego drugiego ta sama seria miałaby masę wpisana z palca, a podyktowana nie
+miałaby jej wcale.
+
+Rejestr trzyma **historię**, a nie jedną liczbę: listę pomiarów po jednym na
+dzień, z której masą aktualną jest ten najświeższy. Powodem jest to, po co
+w ogóle zapisuje się swoją masę — zmiana („−2 kg od maja") jest informacją,
+a pojedyncza liczba nie jest. Karta konta pokazuje kilka ostatnich pomiarów wraz
+z różnicą do poprzedniego; ważenie się dwa razy tego samego dnia nadpisuje wpis,
+bo poprawka literówki nie jest zmianą masy ciała. Puste pole zapisane przyciskiem
+kasuje ustawienie **razem z historią** i jest to jedyna droga wyjścia, więc karta
+mówi o tym wprost.
 
 Wartość leży **per urządzenie**, w pliku obok tapety i języka (`src/bodyweight/`),
-i trzymana jest w gramach — tak jak każdy ciężar w bazie. Zgłoszenie mówi o jednej,
-aktualnej wartości, a nie o historii masy ciała, więc nie ma tu ani kolumny
-w tabeli użytkowników, ani pola w protokole synchronizacji. Reguły (zakres,
-uszkodzony rejestr) siedzą w czystym `src/bodyweight/state.ts` i mają testy
-w Node; `src/bodyweight/expo.ts` tylko je wykonuje. Masę czyta **trasa**
-formularza serii i podaje ekranowi liczbą — dzięki temu ekran nie ciągnie za sobą
-`expo-file-system` i renderuje się w testach poza telefonem.
+i trzymana jest w gramach — tak jak każdy ciężar w bazie. Masa ciała nie bierze
+udziału ani w rekordach, ani w rankingach, więc na serwerze nie ma dla niej
+roboty: nie ma tu ani kolumny w tabeli użytkowników, ani pola w protokole
+synchronizacji. Reguły (zakres, jeden pomiar na dzień, uszkodzony rejestr) siedzą
+w czystym `src/bodyweight/state.ts` i mają testy w Node; `src/bodyweight/expo.ts`
+tylko je wykonuje. Masę czyta **trasa** formularza serii i podaje ekranowi liczbą
+— dzięki temu ekran nie ciągnie za sobą `expo-file-system` i renderuje się
+w testach poza telefonem.
 
 ### Kalendarz i wykresy
 
