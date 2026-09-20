@@ -214,10 +214,20 @@ function replyIdle() {
   reply(STATUS.READY, 'Ready', 'Hold the watch close and say the exercise with the numbers.');
   var shown = screens;
 
-  idleSummary(function (title, body) {
+  idleSummary(function (title, body, offline) {
     // Ekran zdążył się zmienić — użytkownik już dyktuje albo potwierdza serię,
     // a spóźniona lista nie ma prawa zabrać mu tego, co widzi.
-    if (title === null || screens !== shown) return;
+    if (screens !== shown) return;
+
+    // Brak łącza mówi się **zamiast** listy i na tym samym ekranie gotowości:
+    // dyktować wolno dalej, ale kto to zobaczy przed naciśnięciem SELECT, nie
+    // podyktuje serii, której na końcu nie da się zapisać.
+    if (offline) {
+      reply(STATUS.READY, 'Offline', 'No answer from the API — is the phone on the VPN?');
+      return;
+    }
+
+    if (title === null) return;
     reply(STATUS.READY, title, body);
   });
 }
@@ -614,6 +624,13 @@ function serverProblem(status, body, raw) {
  * warto spróbować jeszcze raz. Reszta nie mija — zła liczba w zdaniu, martwy
  * token, wyłączone dyktowanie i zły adres oddadzą przy powtórzeniu dokładnie to
  * samo, a przycisk obiecywałby wtedy coś, czego nie ma.
+ *
+ * `offline` jest czymś innym niż `retryable` i dlatego stoi osobno: mówi, że
+ * żądanie **nie dojechało do serwera** — cisza albo przekroczony czas. Awaria
+ * serwera nadaje się do powtórzenia tak samo, ale znaczy coś przeciwnego niż
+ * brak łącza: skoro API odpowiedziało, to telefon je dosięga. Po tym rozróżnieniu
+ * ekran główny poznaje, czy jest dokąd dyktować. Odpowiedź serwera — jakakolwiek —
+ * zostawia je puste.
  */
 function request(method, path, payload, done) {
   var settings = readSettings();
@@ -662,11 +679,11 @@ function request(method, path, payload, done) {
   };
 
   xhr.ontimeout = function () {
-    done('The server took too long to answer.', null, true);
+    done('The server took too long to answer.', null, true, true);
   };
 
   xhr.onerror = function () {
-    done('No answer from the server — is the phone on the VPN?', null, true);
+    done('No answer from the server — is the phone on the VPN?', null, true, true);
   };
 
   xhr.send(payload ? JSON.stringify(payload) : null);
@@ -788,9 +805,11 @@ function setsOn(sets, day) {
  * którym urządzeniem został zapisany.
  */
 function todaysSummary(day, done) {
-  request('GET', '/sets?from=' + day + '&to=' + day, null, function (problem, body) {
+  var path = '/sets?from=' + day + '&to=' + day;
+
+  request('GET', path, null, function (problem, body, _retryable, offline) {
     if (problem || !body || !body.length) {
-      done(null, null);
+      done(null, null, offline);
       return;
     }
     withNames(setExercises(body), function (names) {
@@ -813,11 +832,24 @@ function todaysSummary(day, done) {
  * `done(null)` znaczy „nie ma czego pokazać" — pusty dzień, pusty cykl albo
  * nieudane żądanie. Każde z nich zostawia ekran spoczynku takim, jaki był, bo
  * lista jest tu dodatkiem, a nie warunkiem dyktowania.
+ *
+ * Trzeci argument mówi osobno, że żądanie **nie dosięgło serwera** — i to jest
+ * cała informacja o łączu, jakiej ten ekran potrzebuje. Osobnego pytania o nie
+ * nie ma i nie ma po co: lista i tak jedzie przy każdym wejściu na ekran
+ * spoczynku, więc jej własna cisza jest odpowiedzią na pytanie „czy jest dokąd
+ * dyktować".
  */
 function idleSummary(done) {
   var day = today();
 
-  request('GET', '/cycles', null, function (problem, cycles) {
+  request('GET', '/cycles', null, function (problem, cycles, _retryable, offline) {
+    // Bez łącza drugie żądanie odbiłoby się o to samo — a ekran wie już, co
+    // pokazać.
+    if (offline) {
+      done(null, null, true);
+      return;
+    }
+
     var active = problem || !cycles || !cycles.length ? [] : activePeriods(cycles, day);
     if (active.length === 0) {
       todaysSummary(day, done);
@@ -827,9 +859,9 @@ function idleSummary(done) {
     var range = setsRange(active, day);
     var path = '/sets?from=' + range.from + '&to=' + range.to;
 
-    request('GET', path, null, function (setsProblem, sets) {
+    request('GET', path, null, function (setsProblem, sets, _setsRetryable, setsOffline) {
       if (setsProblem || !sets) {
-        done(null, null);
+        done(null, null, setsOffline);
         return;
       }
 

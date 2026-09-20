@@ -57,6 +57,15 @@ same podyktowane z zegarka — dzień treningowy jest jeden, niezależnie od teg
 czym został zapisany. Kolejność liczy się po czasie zapisu, bo pozycja z API
 numeruje serie w obrębie jednego ćwiczenia.
 
+Kiedy telefon **nie dosięga API** — cisza w sieci albo przekroczony czas —
+zamiast listy staje na tym ekranie „Offline" z pytaniem o VPN. Dyktować dalej
+wolno, bo to tylko wskaźnik, ale widać go, **zanim** ktokolwiek naciśnie SELECT:
+seria podyktowana bez łącza i tak nie miałaby gdzie się zapisać. Osobnego
+pytania o stan łącza nie ma — odpowiada na nie cisza tego samego żądania, które
+i tak jedzie po listę. Odpowiedź serwera, choćby błędem, brakiem łącza nie jest:
+skoro API odpowiedziało, to telefon je dosięga — i wtedy zostaje ekran taki, jaki
+był.
+
 Podsumowanie dochodzi **po** ekranie gotowości, osobną wiadomością, i niczego
 nie blokuje: dyktowanie jest tak samo szybkie jak przedtem, a gdy telefon nie
 dosięgnie serwera, zostaje ekran sprzed tej listy. Przewijania nie ma świadomie —
