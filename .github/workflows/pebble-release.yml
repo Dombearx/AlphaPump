@@ -79,7 +79,9 @@ jobs:
         id: wydanie
         run: |
           set -euo pipefail
-          wersja="$(jq -r .version package.json)"
+          wersja_bazowa="$(jq -r .version package.json)"   # major.minor zostają ręczne
+          build="$(git rev-list --count HEAD -- .)"        # trzeci człon rośnie sam
+          wersja="${wersja_bazowa%.*}.${build}"
           nazwa="alphapump-${wersja}.pbw"
 
           mkdir -p wydanie
