@@ -17,6 +17,7 @@ import { exerciseTags, exercises, outbox, tags } from '@alphapump/db/sqlite';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  LoggingTypeMismatchError,
   NameTakenError,
   NotAllowedError,
   RepeatedTagError,
@@ -173,6 +174,22 @@ describe('ćwiczenia w bazie lokalnej', () => {
     // Deterministyczne id sprawia, że duplikat z drugiego urządzenia po prostu
     // się zsumuje — nie ma czego remapować ani przepinać.
     expect(second).toEqual({ id: first.id, created: false });
+    expect(await local.db.select().from(outbox)).toHaveLength(1);
+  });
+
+  it('ta sama nazwa z innym typem logowania nie podmienia po cichu istniejącego', async () => {
+    await add('Hip stretch', { loggingType: 'weight_reps' });
+
+    await expect(add('Hip stretch', { loggingType: 'bodyweight_time' })).rejects.toThrow(
+      LoggingTypeMismatchError,
+    );
+
+    // Pierwszy zapis zostaje bez zmian — drugie żądanie nic nie dopisało do kolejki.
+    const [row] = await local.db
+      .select()
+      .from(exercises)
+      .where(eq(exercises.id, computeExerciseId(TEST_USER.id, 'Hip stretch')));
+    expect(row?.loggingType).toBe('weight_reps');
     expect(await local.db.select().from(outbox)).toHaveLength(1);
   });
 

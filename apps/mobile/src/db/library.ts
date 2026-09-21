@@ -41,6 +41,7 @@ import {
   type SqliteDatabase,
 } from '@alphapump/db/sqlite';
 import { and, eq, isNull, ne } from 'drizzle-orm';
+import { LOGGING_TYPE_LABELS } from '../measurements';
 import { enqueue } from '../sync/outbox';
 import { ExerciseNotFoundError } from './sets';
 import { withTransaction } from './transaction';
@@ -73,6 +74,25 @@ export class NameTakenError extends Error {
   constructor(name: string) {
     super(`You already have an exercise named "${name}"`);
     this.name = 'NameTakenError';
+  }
+}
+
+/**
+ * Ta sama nazwa (i siłownia) już istnieje, ale z **innym** typem logowania.
+ *
+ * Typ logowania da się wybrać wyłącznie przy tworzeniu i nie da się go już
+ * zmienić (patrz `updateExercise`) — cichy powrót do istniejącego wiersza
+ * ukryłby przed użytkownikiem, że jego wybór został odrzucony, a ćwiczenie
+ * zostało z typem sprzed tej próby.
+ */
+export class LoggingTypeMismatchError extends Error {
+  constructor(name: string, existingType: LoggingType) {
+    super(
+      `You already have an exercise named "${name}" logged as ` +
+        `${LOGGING_TYPE_LABELS[existingType]}. Logging type can't change after creation — ` +
+        'use a different name for the new one.',
+    );
+    this.name = 'LoggingTypeMismatchError';
   }
 }
 
@@ -238,10 +258,16 @@ async function replaceAdditionalTags(
 /**
  * Dodaje ćwiczenie do wspólnej biblioteki.
  *
- * Gdy autor ma już żywe ćwiczenie o tej nazwie, nie nadpisujemy go — oddajemy
- * jego identyfikator z `created: false`. To jest ta sama odpowiedź, którą daje
- * serwer (200 zamiast 201), i to ona sprawia, że dwukrotne dodanie tej samej
- * nazwy jest nieszkodliwe zamiast wywracać zapis.
+ * Gdy autor ma już żywe ćwiczenie o tej nazwie **i tym samym typie logowania**,
+ * nie nadpisujemy go — oddajemy jego identyfikator z `created: false`. To jest
+ * ta sama odpowiedź, którą daje serwer (200 zamiast 201), i to ona sprawia, że
+ * dwukrotne dodanie tej samej nazwy jest nieszkodliwe zamiast wywracać zapis.
+ *
+ * Gdy typ logowania się różni, cichy powrót do istniejącego wiersza byłby
+ * mylący: użytkownik wybrałby np. „bodyweight and time", a dostałby z
+ * powrotem stare ćwiczenie z „weight and reps" bez żadnego wyjaśnienia, dlaczego
+ * jego wybór nie zadziałał. Rzucamy więc `LoggingTypeMismatchError` zamiast
+ * udawać sukces.
  */
 export async function createExercise(
   db: SqliteDatabase,
@@ -264,7 +290,12 @@ export async function createExercise(
 
   const id = computeExerciseId(command.userId, input.name, input.gym);
   const [existing] = await db.select().from(exercises).where(eq(exercises.id, id)).limit(1);
-  if (existing && existing.deletedAt === null) return { id, created: false };
+  if (existing && existing.deletedAt === null) {
+    if (existing.loggingType !== input.loggingType) {
+      throw new LoggingTypeMismatchError(input.name, existing.loggingType);
+    }
+    return { id, created: false };
+  }
 
   const values = {
     id,
