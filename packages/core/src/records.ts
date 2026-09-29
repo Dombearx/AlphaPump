@@ -195,6 +195,66 @@ export function evaluateRecord<T extends SetMeasurements>(
 }
 
 /**
+ * Łańcuch poprawiania jednego rekordu — od niego wstecz, aż do wyniku, który
+ * nie zbił już niczego.
+ *
+ * Rekordy są frontem Pareto, więc „poprzedni rekord" nie jest pojęciem z góry
+ * danym: jedna seria potrafi zbić kilka wyników naraz, a dwa nieporównywalne
+ * rekordy (15 kg × 10 i 10 kg × 20) mają **osobne** historie. Dlatego historia
+ * powstaje z odtworzenia frontu seria po serii: zapamiętujemy, co każda z nich
+ * zbiła w chwili, gdy padła, a potem idziemy po tych powiązaniach wstecz od
+ * wskazanego rekordu. Wynik jest w kolejności odwrotnie chronologicznej, czyli
+ * tak, jak się go czyta: najpierw dzisiejszy rekord, na końcu najstarszy wynik
+ * w tej linii.
+ *
+ * Kolejność wejścia nie ma znaczenia — serie są tu sortowane, bo cała ta
+ * funkcja jest o czasie, a odwrócony wiersz dałby cichy i wiarygodnie
+ * wyglądający fałsz.
+ *
+ * Pusta lista znaczy „ta seria nigdy nie była rekordem" (była zdominowana albo
+ * remisowała) — także wtedy, gdy `setId` nie pasuje do żadnej serii.
+ */
+export function recordProgression<T extends SetMeasurements & ChronologicalSet>(
+  loggingType: LoggingType,
+  sets: readonly T[],
+  setId: string,
+): T[] {
+  const chronological = [...sets].sort(compareSetsChronologically);
+
+  /** Każda seria, która weszła na front, wraz z tym, co wtedy zbiła. */
+  const steps = new Map<string, { set: T; beaten: T[] }>();
+  let front: { set: T; point: ParetoPoint }[] = [];
+
+  for (const set of chronological) {
+    const point = projectSet(loggingType, set);
+    if (point === null) continue;
+    if (front.some((entry) => dominates(entry.point, point) || pointsEqual(entry.point, point))) {
+      continue;
+    }
+
+    const beaten = front.filter((entry) => dominates(point, entry.point));
+    steps.set(set.id, { set, beaten: beaten.map((entry) => entry.set) });
+    front = [...front.filter((entry) => !dominates(point, entry.point)), { set, point }];
+  }
+
+  const lineage: T[] = [];
+  const visited = new Set<string>();
+  const queue = [setId];
+  while (queue.length > 0) {
+    const id = queue.shift() as string;
+    if (visited.has(id)) continue;
+    visited.add(id);
+
+    const step = steps.get(id);
+    if (step === undefined) continue;
+    lineage.push(step.set);
+    for (const ancestor of step.beaten) queue.push(ancestor.id);
+  }
+
+  return lineage.sort((a, b) => compareSetsChronologically(b, a));
+}
+
+/**
  * Rekordy dla wielu ćwiczeń naraz — używane po edycji serii oraz po każdym
  * pullu synchronizacji, gdy trzeba przeliczyć dotknięte ćwiczenia.
  */

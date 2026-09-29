@@ -484,14 +484,25 @@ export function LogScreen({
             </View>
 
             <View className="gap-2">
-              <SectionTitle>Records</SectionTitle>
+              <View className="flex-row items-center justify-between">
+                <SectionTitle>Records</SectionTitle>
+                {records.length > 0 && (
+                  <Text className="text-xs text-muted">tap to see how it improved</Text>
+                )}
+              </View>
               {records.length === 0 ? (
                 <Text className="text-muted">
                   The first complete set will become a record right away.
                 </Text>
               ) : (
+                // Wejście w rekord prowadzi do jego historii: co zbił ten wynik
+                // i co zbił tamten. Komunikat „rekord!" bez poprzedniej wartości
+                // nie mówi, o ile to jest lepiej.
                 records.slice(0, RECORDS_SHOWN).map((record) => (
-                  <Row key={record.id}>
+                  <Row
+                    key={record.id}
+                    onPress={() => router.push(`/library/${exerciseId}/record/${record.id}`)}
+                  >
                     <Text className="flex-1 text-text">{formatSet(loggingType, record)}</Text>
                     <Text className="text-xs text-muted">{record.performedOn}</Text>
                   </Row>

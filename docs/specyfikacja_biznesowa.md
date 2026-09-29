@@ -298,6 +298,8 @@ system ma wyświetlić informację o rekordzie przy zapisie serii, analogicznie 
 
 Jeśli nowa seria jest dokładnym remisem z istniejącym rekordem, aplikacja nie pokazuje specjalnej informacji. 
 
+Wejście w rekord na liście rekordów ćwiczenia otwiera historię jego poprawiania: obecny rekord, wynik, który zbił, wynik zbity przez tamten i tak dalej, aż do najstarszego wyniku w tej linii. Każdy wpis pokazuje wartość serii i datę jej ustanowienia, a kolejność jest odwrotnie chronologiczna. Poprawa jest tu tym samym, czym przy zapisie serii — dominacją na froncie Pareto — więc dwa nieporównywalne rekordy (15 kg × 10 i 10 kg × 20) mają osobne historie, a wynik, który nigdy rekordem nie był, w żadnej z nich się nie pojawia. Gdy rekord jest pierwszym wynikiem swojej linii, widok mówi to wprost, zamiast pokazywać listę bez wyjaśnienia. 
+
 Po edycji lub usunięciu serii rekordy muszą zostać przeliczone historycznie od nowa dla danego ćwiczenia. 
 
 ## Rekordy globalne ćwiczeń

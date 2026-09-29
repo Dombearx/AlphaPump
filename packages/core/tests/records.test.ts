@@ -8,6 +8,7 @@ import {
   paretoFront,
   pointsEqual,
   projectSet,
+  recordProgression,
 } from '../src/records.js';
 import type { LoggingType } from '../src/logging-type.js';
 import { makeSet, weightReps, type TestSet } from './helpers.js';
@@ -279,6 +280,85 @@ describe('compareSetsChronologically', () => {
     expect(compareSetsChronologically(first, second)).toBeLessThan(0);
     expect(compareSetsChronologically(second, first)).toBeGreaterThan(0);
     expect(compareSetsChronologically(first, first)).toBe(0);
+  });
+});
+
+describe('recordProgression', () => {
+  /** Trzy kolejne rekordy, każdy zbija poprzedni. */
+  const chain = () => ({
+    najstarszy: weightReps(80, 5, { id: 'a', performedOn: '2026-08-01' }),
+    sredni: weightReps(90, 5, { id: 'b', performedOn: '2026-08-08' }),
+    obecny: weightReps(100, 5, { id: 'c', performedOn: '2026-08-15' }),
+  });
+
+  it('oddaje łańcuch od obecnego rekordu do najstarszego wyniku w tej linii', () => {
+    const { najstarszy, sredni, obecny } = chain();
+
+    const historia = recordProgression('weight_reps', [najstarszy, sredni, obecny], 'c');
+
+    expect(historia.map((set) => set.id)).toEqual(['c', 'b', 'a']);
+  });
+
+  it('nie zależy od kolejności, w jakiej serie przyszły z bazy', () => {
+    const { najstarszy, sredni, obecny } = chain();
+
+    const historia = recordProgression('weight_reps', [obecny, najstarszy, sredni], 'c');
+
+    expect(historia.map((set) => set.id)).toEqual(['c', 'b', 'a']);
+  });
+
+  it('pomija serie, które rekordem nigdy nie były', () => {
+    const { najstarszy, sredni, obecny } = chain();
+    const slabsza = weightReps(85, 4, { id: 'x', performedOn: '2026-08-10' });
+
+    const historia = recordProgression('weight_reps', [najstarszy, sredni, slabsza, obecny], 'c');
+
+    expect(historia.map((set) => set.id)).toEqual(['c', 'b', 'a']);
+  });
+
+  it('dla pierwszego rekordu oddaje jego samego — nie ma czego porównać', () => {
+    const pierwsza = weightReps(80, 5, { id: 'a' });
+
+    expect(recordProgression('weight_reps', [pierwsza], 'a').map((set) => set.id)).toEqual(['a']);
+  });
+
+  it('zbiera wszystkie rekordy zbite jednym wynikiem', () => {
+    // 100 × 5 zbija naraz dwa nieporównywalne dotąd rekordy.
+    const ciezszy = weightReps(95, 3, { id: 'a', performedOn: '2026-08-01' });
+    const dluzszy = weightReps(80, 5, { id: 'b', performedOn: '2026-08-02' });
+    const obecny = weightReps(100, 5, { id: 'c', performedOn: '2026-08-15' });
+
+    const historia = recordProgression('weight_reps', [ciezszy, dluzszy, obecny], 'c');
+
+    expect(historia.map((set) => set.id)).toEqual(['c', 'b', 'a']);
+  });
+
+  it('trzyma osobno historie dwóch nieporównywalnych rekordów', () => {
+    const lekki = weightReps(50, 20, { id: 'a', performedOn: '2026-08-01' });
+    const lepszyLekki = weightReps(50, 22, { id: 'b', performedOn: '2026-08-05' });
+    const ciezki = weightReps(100, 5, { id: 'c', performedOn: '2026-08-10' });
+
+    const historia = recordProgression('weight_reps', [lekki, lepszyLekki, ciezki], 'b');
+
+    expect(historia.map((set) => set.id)).toEqual(['b', 'a']);
+  });
+
+  it('oddaje pustą listę dla serii, która rekordem nie jest', () => {
+    const { najstarszy, sredni, obecny } = chain();
+    const slabsza = weightReps(85, 4, { id: 'x' });
+
+    expect(recordProgression('weight_reps', [najstarszy, sredni, slabsza, obecny], 'x')).toEqual(
+      [],
+    );
+    expect(recordProgression('weight_reps', [najstarszy], 'nie-ma-takiej')).toEqual([]);
+  });
+
+  it('zachowuje rekord zbity później — historia nie kończy się na dzisiejszym froncie', () => {
+    const { najstarszy, sredni, obecny } = chain();
+
+    // `computeRecords` widzi dziś tylko jeden rekord, a historia ma pokazać trzy.
+    expect(computeRecords('weight_reps', [najstarszy, sredni, obecny])).toHaveLength(1);
+    expect(recordProgression('weight_reps', [najstarszy, sredni, obecny], 'c')).toHaveLength(3);
   });
 });
 
