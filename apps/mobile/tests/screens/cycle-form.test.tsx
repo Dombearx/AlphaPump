@@ -80,4 +80,30 @@ describe('formularz cyklu', () => {
     // „triceps" wyglądałby, jakby miał liczyć dipy — a nie liczy.
     expect(screenText()).toContain("A tag goal only counts an exercise's primary tag");
   });
+
+  it('pozwala zmienić liczbę serii istniejącej pozycji bez usuwania jej', async () => {
+    // Zgłoszenie #136: jedynym sposobem na zmianę 4 serii na 8 było usunięcie
+    // pozycji i dodanie jej od nowa, bo wiersz nie dawał się edytować wprost.
+    await user().type(screen.getByLabelText('Name'), 'Sierpień');
+    await user().click(screen.getByRole('button', { name: 'chest' }));
+    await user().type(screen.getByLabelText('Target'), '4');
+    await user().click(screen.getByRole('button', { name: 'Add item' }));
+
+    await user().click(screen.getByRole('button', { name: 'Edit item' }));
+    expect((screen.getByLabelText('Target') as HTMLInputElement).value).toBe('4');
+
+    await user().clear(screen.getByLabelText('Target'));
+    await user().type(screen.getByLabelText('Target'), '8');
+    await user().click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(screenText()).toContain('Sets · 8');
+
+    await user().click(screen.getByRole('button', { name: 'Save cycle' }));
+
+    const saved = await local.db.select().from(cycles);
+    const goals = await local.db.select().from(cycleGoals);
+    // Jedna pozycja, nie dwie — podmieniona w miejscu, a nie dołożona obok.
+    expect(goals).toHaveLength(1);
+    expect(goals[0]).toMatchObject({ target: 8, cycleId: saved[0]?.id });
+  });
 });

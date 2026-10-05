@@ -7,6 +7,11 @@
  * z metryki. Formularz, który próbowałby pokazać to wszystko naraz dla kilku
  * pozycji, byłby nie do obsłużenia jedną ręką.
  *
+ * Edycja pozycji używa tego samego formularza co dodawanie — tapnięcie „Edit"
+ * ładuje jej pola do kompozytora celu, a zapis podmienia pozycję w miejscu,
+ * zamiast dokładać kolejną. Bez tego jedynym sposobem na zmianę np. liczby
+ * serii było usunięcie pozycji i dodanie jej od nowa.
+ *
  * Daty wpisuje się jako `YYYY-MM-DD`, z przyciskami skrótu na najczęstsze
  * przypadki. Natywny wybierak dat wygląda inaczej na każdej platformie
  * i wymagałby kolejnej zależności — przy dwóch polach w całej aplikacji nie
@@ -49,6 +54,7 @@ import {
   GOAL_METRIC_LABELS,
   INTENSITY_GOAL_LABELS,
   formatMetric,
+  metricInputValue,
   metricPlaceholder,
   metricUnit,
   parseMetricTarget,
@@ -99,6 +105,7 @@ export function CycleFormScreen({ mode }: { mode: CycleFormMode }) {
   const [durationDays, setDurationDays] = useState<string>('30');
   const [openEnded, setOpenEnded] = useState(false);
   const [goals, setGoals] = useState<GoalDraft[]>([]);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(mode.kind === 'create');
@@ -162,6 +169,18 @@ export function CycleFormScreen({ mode }: { mode: CycleFormMode }) {
         color: null,
       })),
     );
+  };
+
+  const editingGoal = editingIndex === null ? null : (goals[editingIndex] ?? null);
+
+  /** Dodanie nowej pozycji albo podmiana edytowanej — o tym decyduje `editingIndex`. */
+  const submitGoal = (goal: GoalDraft) => {
+    setGoals((current) =>
+      editingIndex === null
+        ? [...current, goal]
+        : current.map((existing, position) => (position === editingIndex ? goal : existing)),
+    );
+    setEditingIndex(null);
   };
 
   const duration = Number.parseInt(durationDays, 10);
@@ -331,7 +350,7 @@ export function CycleFormScreen({ mode }: { mode: CycleFormMode }) {
               </Text>
             ) : (
               goals.map((goal, index) => (
-                <Row key={`${goal.label}-${String(index)}`}>
+                <Row key={`${goal.label}-${String(index)}`} selected={editingIndex === index}>
                   {goal.color !== null && <TagDot color={goal.color} />}
                   <View className="flex-1">
                     <Text className="text-text">{goal.label}</Text>
@@ -343,11 +362,23 @@ export function CycleFormScreen({ mode }: { mode: CycleFormMode }) {
                     </Text>
                   </View>
                   <IconButton
+                    label="Edit item"
+                    glyph="✎"
+                    onPress={() => {
+                      setEditingIndex(index);
+                      scrollToEnd();
+                    }}
+                  />
+                  <IconButton
                     label="Remove item"
                     glyph="×"
-                    onPress={() =>
-                      setGoals((current) => current.filter((_, position) => position !== index))
-                    }
+                    onPress={() => {
+                      setGoals((current) => current.filter((_, position) => position !== index));
+                      setEditingIndex((current) => {
+                        if (current === null || current === index) return null;
+                        return current > index ? current - 1 : current;
+                      });
+                    }}
                   />
                 </Row>
               ))
@@ -355,9 +386,12 @@ export function CycleFormScreen({ mode }: { mode: CycleFormMode }) {
           </View>
 
           <GoalComposer
+            key={editingIndex ?? 'new'}
             tags={tags.data ?? []}
             exercises={library.data ?? []}
-            onAdd={(goal) => setGoals((current) => [...current, goal])}
+            editing={editingGoal}
+            onSubmit={submitGoal}
+            onCancel={() => setEditingIndex(null)}
             onFocusTarget={scrollToEnd}
           />
 
@@ -381,7 +415,7 @@ export function CycleFormScreen({ mode }: { mode: CycleFormMode }) {
 }
 
 /**
- * Dodawanie jednej pozycji celu.
+ * Dodawanie albo edycja jednej pozycji celu.
  *
  * Zakres jest **dokładnie jeden**: ćwiczenie, tag albo intensywność. Ten
  * warunek pilnuje schemat, baza i serwer; tutaj po prostu nie da się wybrać
@@ -390,11 +424,18 @@ export function CycleFormScreen({ mode }: { mode: CycleFormMode }) {
  * Próg wyższy jest opcjonalny i pusty domyślnie. Cykl z dwoma poziomami ma sens
  * tam, gdzie istnieje „minimum" i „więcej niż minimum" — tak jak w wytycznych
  * WHO — a nie w każdym celu, jaki ktoś sobie postawi.
+ *
+ * Edycja istniejącej pozycji używa dokładnie tego samego formularza — wywołujący
+ * wymusza nowy stan komponentu przez `key` przy zmianie edytowanej pozycji,
+ * więc stan startowy liczy się raz, wprost z `editing`, zamiast gonić go
+ * osobnym efektem.
  */
 function GoalComposer({
   tags,
   exercises,
-  onAdd,
+  editing,
+  onSubmit,
+  onCancel,
   onFocusTarget,
 }: {
   tags: NamedTag[];
@@ -406,19 +447,32 @@ function GoalComposer({
     tagTranslations: Translations | null;
     tagColor: string;
   }[];
-  onAdd: (goal: GoalDraft) => void;
+  /** Pozycja wczytana do formularza do edycji, albo `null` przy dodawaniu nowej. */
+  editing: GoalDraft | null;
+  onSubmit: (goal: GoalDraft) => void;
+  /** Wyjście z edycji bez zapisu — dostępne tylko wtedy, gdy `editing` nie jest `null`. */
+  onCancel: () => void;
   /** Klawiatura zasłania przyciski pod polem „Cel" — przewiń je w widok przy fokusie. */
   onFocusTarget: () => void;
 }) {
   const named = useLocalizedName();
-  const [metric, setMetric] = useState<GoalMetric>('sets');
-  const [scope, setScope] = useState<'tag' | 'exercise' | 'intensity'>('tag');
-  const [tagId, setTagId] = useState<string | null>(null);
-  const [exerciseId, setExerciseId] = useState<string | null>(null);
-  const [intensity, setIntensity] = useState<Intensity | null>(null);
+  const [metric, setMetric] = useState<GoalMetric>(editing?.metric ?? 'sets');
+  const [scope, setScope] = useState<'tag' | 'exercise' | 'intensity'>(() => {
+    if (editing === null) return 'tag';
+    if (editing.exerciseId !== null) return 'exercise';
+    if (editing.tagId !== null) return 'tag';
+    return 'intensity';
+  });
+  const [tagId, setTagId] = useState<string | null>(editing?.tagId ?? null);
+  const [exerciseId, setExerciseId] = useState<string | null>(editing?.exerciseId ?? null);
+  const [intensity, setIntensity] = useState<Intensity | null>(editing?.intensity ?? null);
   const [query, setQuery] = useState('');
-  const [target, setTarget] = useState('');
-  const [stretch, setStretch] = useState('');
+  const [target, setTarget] = useState(
+    editing === null ? '' : metricInputValue(editing.metric, editing.target),
+  );
+  const [stretch, setStretch] = useState(
+    editing?.stretchTarget == null ? '' : metricInputValue(editing.metric, editing.stretchTarget),
+  );
 
   const matches = useMemo(() => filterExercises(exercises, query).slice(0, 6), [exercises, query]);
 
@@ -427,7 +481,7 @@ function GoalComposer({
   const stretchTarget =
     stretch.trim().length === 0 ? null : parseMetricTarget(metric, stretch.trim());
 
-  const add = () => {
+  const submit = () => {
     const value = parseMetricTarget(metric, target);
     if (value === null) return;
     const levels = { target: value, stretchTarget };
@@ -435,7 +489,7 @@ function GoalComposer({
     if (scope === 'tag') {
       const tag = tags.find((candidate) => candidate.id === tagId);
       if (tag === undefined) return;
-      onAdd({
+      onSubmit({
         metric,
         ...levels,
         exerciseId: null,
@@ -447,7 +501,7 @@ function GoalComposer({
     } else if (scope === 'exercise') {
       const exercise = exercises.find((candidate) => candidate.id === exerciseId);
       if (exercise === undefined) return;
-      onAdd({
+      onSubmit({
         metric,
         ...levels,
         exerciseId: exercise.id,
@@ -458,7 +512,7 @@ function GoalComposer({
       });
     } else {
       if (intensity === null) return;
-      onAdd({
+      onSubmit({
         metric,
         ...levels,
         exerciseId: null,
@@ -491,7 +545,7 @@ function GoalComposer({
 
   return (
     <Card className="gap-3">
-      <SectionTitle>Add item</SectionTitle>
+      <SectionTitle>{editing === null ? 'Add item' : 'Edit item'}</SectionTitle>
 
       <ChipRow>
         {METRICS.map((option) => (
@@ -600,7 +654,16 @@ function GoalComposer({
         hint="A second level above the target, for goals that have a “minimum” and a “more than the minimum”. Must be higher than the target."
       />
 
-      <Button variant="secondary" label="Add item" disabled={!ready} onPress={add} />
+      <View className="flex-row gap-2">
+        {editing !== null && <Button variant="secondary" label="Cancel" grow onPress={onCancel} />}
+        <Button
+          variant="secondary"
+          label={editing === null ? 'Add item' : 'Save changes'}
+          disabled={!ready}
+          grow
+          onPress={submit}
+        />
+      </View>
 
       {scope === 'tag' && (
         <Text className="text-xs text-muted">
