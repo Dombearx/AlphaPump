@@ -13,9 +13,11 @@ import {
   formatDuration,
   formatSet,
   formatWeight,
+  metricInputValue,
   parseCount,
   parseDistance,
   parseDuration,
+  parseMetricTarget,
   parseWeight,
 } from '../src/measurements';
 
@@ -103,6 +105,20 @@ describe('pozostałe pola', () => {
   it('ciężar pokazuje się w kilogramach, po polsku', () => {
     expect(formatWeight(80_000)).toBe('80');
     expect(formatWeight(82_500)).toBe('82.5');
+  });
+});
+
+describe('wartość celu z powrotem w polu', () => {
+  it('dystans zostaje gołą liczbą, bez jednostki doklejonej przez podgląd', () => {
+    // `formatMetric` dokleja „m"/„km" do napisu — pole formularza tego nie
+    // przeczyta z powrotem, więc wartość do edycji musi wyglądać inaczej.
+    expect(metricInputValue('distance', 800)).toBe('800');
+    expect(parseMetricTarget('distance', metricInputValue('distance', 5000))).toBe(5000);
+  });
+
+  it('serie i czas wchodzą z powrotem tak, jak wyszły', () => {
+    expect(metricInputValue('sets', 8)).toBe('8');
+    expect(parseMetricTarget('duration', metricInputValue('duration', 95))).toBe(95);
   });
 });
 

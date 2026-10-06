@@ -283,6 +283,24 @@ export function parseMetricTarget(metric: GoalMetric, text: string): number | nu
   }
 }
 
+/**
+ * Wartość celu do wstawienia z powrotem w pole „Target" przy edycji istniejącej
+ * pozycji. Inna niż `formatMetric`, bo tamta dokleja jednostkę do napisu (dystans
+ * jako „800 m" albo „5 km") z myślą o samym czytaniu — `parseMetricTarget` takiego
+ * napisu z powrotem nie przeczyta. Czas wyjątkowo zostaje w `mm:ss`, bo to jedyny
+ * z trzech formatów, który pole wejściowe i tak rozumie.
+ */
+export function metricInputValue(metric: GoalMetric, value: number): string {
+  switch (metric) {
+    case 'sets':
+      return String(value);
+    case 'duration':
+      return formatDuration(value);
+    case 'distance':
+      return String(value);
+  }
+}
+
 export function metricUnit(metric: GoalMetric): string {
   switch (metric) {
     case 'sets':
