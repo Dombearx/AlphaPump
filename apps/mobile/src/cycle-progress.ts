@@ -17,7 +17,10 @@ import {
   computeCycleProgress,
   currentCyclePeriod,
   previousCyclePeriod,
+  previousCyclePeriods,
   remainingGoals,
+  toIsoDate,
+  type ClosedCycleRange,
   type CycleMatchable,
   type CycleMatchableExercise,
   type CycleProgress,
@@ -31,6 +34,13 @@ import type { CycleGoalRow, CycleListRow, CycleSetRow } from './db/queries';
 export interface CycleWithGoals extends CycleMatchable {
   name: string;
   archivedAt: Date | null;
+  /**
+   * Początek liczenia zapisany w bazie — kotwica okresów, której przewijanie do
+   * bieżącego okresu nie rusza. `startsOn` bywa od niej późniejszy, bo niesie
+   * okno widoczne na ekranie, a nie kotwicę.
+   */
+  anchorStartsOn: IsoDate;
+  createdAt: Date;
   goals: CycleGoalRow[];
 }
 
@@ -59,6 +69,9 @@ export function withGoals(
     .map((cycle) => ({
       ...cycle,
       ...(cycle.archivedAt === null ? currentCyclePeriod(cycle, today) : null),
+      // Kotwica zostaje obok przewiniętego okna: z niej liczy się historia
+      // poprzednich okresów (patrz `cycleHistoryPeriods`).
+      anchorStartsOn: cycle.startsOn,
       goals: goals.filter((goal) => goal.cycleId === cycle.id),
     }))
     .filter((cycle) => cycle.goals.length > 0);
@@ -100,27 +113,55 @@ export function cycleSummaries(
 }
 
 /**
- * Realizacja poprzedniego okresu — „miesiąc wcześniej osiągnął 90 procent".
+ * Dzień, przed którym cyklu jeszcze nie było — dolna granica jego historii.
  *
- * Liczona z tych samych serii, na zakresie przesuniętym w tył o długość cyklu.
- * Nie ma osobnej tabeli realizacji i nie musi być: skoro postęp jest daną
+ * Bierzemy wcześniejszą z dwóch dat. Dzień założenia jest potrzebny po resecie:
+ * reset przesuwa kotwicę w przyszłość, a historii sprzed resetu urwać nie wolno
+ * — to ona jest całą treścią zdania „miesiąc wcześniej osiągnął 90 procent".
+ * Kotwica jest potrzebna dla cyklu wpisanego wstecz, z datą początku
+ * wcześniejszą niż dzień, w którym użytkownik go założył.
+ */
+function cycleOrigin(cycle: CycleWithGoals): IsoDate {
+  const created = toIsoDate(cycle.createdAt);
+  return cycle.anchorStartsOn < created ? cycle.anchorStartsOn : created;
+}
+
+/**
+ * Okresy historii cyklu, od najnowszego — same zakresy dat, bez liczenia
+ * postępu. Rozdzielenie nie jest kosmetyczne: dolną granicę odczytu serii
+ * (`setsForCycles`) trzeba znać **przed** odczytem, a wyznacza ją najstarszy
+ * pokazywany okres.
+ *
+ * `limit` ucina listę od najstarszej strony — patrz `previousCyclePeriods`.
+ */
+export function cycleHistoryPeriods(cycle: CycleWithGoals, limit: number): ClosedCycleRange[] {
+  return previousCyclePeriods(cycle, cycleOrigin(cycle), limit);
+}
+
+export interface CyclePeriodProgress {
+  period: ClosedCycleRange;
+  progress: CycleProgress;
+}
+
+/**
+ * Realizacja minionych okresów — „miesiąc wcześniej osiągnął 90 procent",
+ * a przed nim 60 i 100.
+ *
+ * Każdy okres liczy się z tych samych serii, na zakresie podmienionym na jego
+ * okno. Nie ma osobnej tabeli realizacji i nie musi być: skoro postęp jest daną
  * pochodną, historia siedzi w seriach, a te zostają także po resecie.
  */
-export function previousPeriodProgress(
+export function cycleHistory(
   cycle: CycleWithGoals,
+  periods: readonly ClosedCycleRange[],
   sets: readonly CycleSetRow[],
-  offset = 1,
-): { period: { startsOn: IsoDate; endsOn: IsoDate }; progress: CycleProgress } | null {
-  const period = previousCyclePeriod(cycle, offset);
-  if (period === null || period.endsOn === null) return null;
+): CyclePeriodProgress[] {
+  const exerciseById = exerciseResolver(sets);
 
-  const progress = computeCycleProgress(
-    { ...cycle, startsOn: period.startsOn, endsOn: period.endsOn },
-    sets,
-    exerciseResolver(sets),
-  );
-
-  return { period: { startsOn: period.startsOn, endsOn: period.endsOn }, progress };
+  return periods.map((period) => ({
+    period,
+    progress: computeCycleProgress({ ...cycle, ...period }, sets, exerciseById),
+  }));
 }
 
 /** Od kiedy trzeba czytać serie, żeby policzyć podane cykle i ich poprzednie okresy. */

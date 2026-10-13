@@ -533,6 +533,11 @@ export function cycleList(db: SqliteDatabase, userId: string, archived = false) 
       startsOn: cycles.startsOn,
       endsOn: cycles.endsOn,
       archivedAt: cycles.archivedAt,
+      // Dzień założenia cyklu — dolna granica jego historii okresów. Bez niego
+      // arytmetyka okresów cofa się w nieskończoność, bo każdy okres ma
+      // poprzednika, także taki, którego cykl nigdy nie obejmował (patrz
+      // `cycleHistoryPeriods`).
+      createdAt: cycles.createdAt,
     })
     .from(cycles)
     .where(

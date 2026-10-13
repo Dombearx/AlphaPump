@@ -336,3 +336,42 @@ export function previousCyclePeriod(range: CycleRange, offset = 1): CycleRange |
   const startsOn = addDays(range.startsOn, -offset * length);
   return { startsOn, endsOn: addDays(startsOn, length - 1) };
 }
+
+/** Okres cyklu — zakres domknięty, bo okres bez końca nie istnieje. */
+export interface ClosedCycleRange {
+  startsOn: IsoDate;
+  endsOn: IsoDate;
+}
+
+/**
+ * Wszystkie okresy poprzedzające bieżący, od najnowszego — czyli historia
+ * realizacji cyklu, a nie sam ostatni jej wpis.
+ *
+ * `since` jest dolną granicą: okres zaczynający się przed tym dniem to już
+ * czas, którego cykl nie obejmował, i na nim historia się kończy. Bez granicy
+ * arytmetyka cofałaby się w nieskończoność, bo każdy okres ma poprzednika.
+ *
+ * `limit` ucina listę od strony najstarszego okresu. Cykl tygodniowy liczony
+ * przez dwa lata ma ich ponad setkę, a każdy kolejny pokazany okres cofa też
+ * dolną granicę odczytu serii — stąd stronicowanie, a nie jedna lista
+ * wszystkiego naraz.
+ *
+ * Realizacji nigdzie nie trzymamy i nie ma czego trzymać: postęp każdego
+ * okresu liczy się z serii przez `computeCycleProgress`, a te zostają także po
+ * resecie.
+ */
+export function previousCyclePeriods(
+  range: CycleRange,
+  since: IsoDate,
+  limit: number,
+): ClosedCycleRange[] {
+  const periods: ClosedCycleRange[] = [];
+
+  for (let offset = 1; periods.length < limit; offset += 1) {
+    const period = previousCyclePeriod(range, offset);
+    if (period === null || period.endsOn === null || period.startsOn < since) break;
+    periods.push({ startsOn: period.startsOn, endsOn: period.endsOn });
+  }
+
+  return periods;
+}
