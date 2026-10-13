@@ -158,6 +158,24 @@ describe('autoryzacja', () => {
     expect(response.body.error.code).toBe('unauthorized');
   });
 
+  /**
+   * #139: sesja telefonu żyje offline w `SecureStore`, a odświeżyć ją da się
+   * wyłącznie w VPN-ie. Domyślne 7 dni better-autha kończyły się więc
+   * wylogowaniem bez odwrotu, zanim ktoś zdążył akurat włączyć VPN.
+   */
+  it('wydaje sesję żyjącą znacznie dłużej niż domyślny tydzień', async () => {
+    const user = await harness.signUp('dluga-sesja@example.com');
+    const session = await harness.json<{ session: { expiresAt: string } }>(
+      'GET',
+      '/api/auth/get-session',
+      { headers: user.headers },
+    );
+
+    expect(session.status).toBe(200);
+    const msUntilExpiry = new Date(session.body.session.expiresAt).getTime() - Date.now();
+    expect(msUntilExpiry).toBeGreaterThan(1000 * 60 * 60 * 24 * 30);
+  });
+
   it('healthcheck odpowiada bez uwierzytelnienia', async () => {
     const response = await harness.json<{ status: string; database: string }>('GET', '/health');
     expect(response.status).toBe(200);

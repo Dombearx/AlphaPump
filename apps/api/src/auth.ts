@@ -5,7 +5,7 @@
  * jednego: e-mail z hasłem i Google są natywne, wiele tokenów API daje plugin
  * `apiKey`, a role użytkownik/administrator — plugin `admin`.
  *
- * Dwie rzeczy są ustawione świadomie wbrew domyślnym:
+ * Trzy rzeczy są ustawione świadomie wbrew domyślnym:
  *
  * - **`useSecureCookies: false`.** API działa po HTTP wewnątrz VPN, a ciasteczko
  *   z flagą `Secure` nigdy by po HTTP nie dojechało. Szyfrowanie i wzajemne
@@ -15,6 +15,11 @@
  *   ma więc czym wysłać wiadomości i nie udaje, że ma. Odzyskanie dostępu idzie
  *   przez administratora: hasło tymczasowe nadane z panelu i zmieniane przy
  *   pierwszym logowaniu (`routes/admin.ts`, `routes/me.ts`, `passwords.ts`).
+ * - **`session.expiresIn` liczony w latach, nie w tygodniu domyślnym.** Telefon
+ *   trzyma lokalną sesję w `SecureStore` i rusza z nią offline — a dociągnąć
+ *   świeżą może wyłącznie w VPN-ie. Domyślne 7 dni better-autha kończyły się więc
+ *   wylogowaniem, od którego nie da się odzyskać bez akurat włączonego VPN-a
+ *   (#139), mimo że cała reszta aplikacji ma działać offline bez ograniczeń.
  *
  * Identyfikatory kont są UUIDv7, a nie domyślnymi napisami better-auth, bo
  * `users.id` wchodzi do klucza deterministycznego identyfikatora ćwiczenia.
@@ -66,6 +71,10 @@ export function createAuth(db: Database, config: AppConfig) {
       database: { generateId: () => uuidv7() },
       useSecureCookies: false,
       defaultCookieAttributes: { secure: false, sameSite: 'lax' },
+    },
+
+    session: {
+      expiresIn: 60 * 60 * 24 * 365,
     },
 
     emailAndPassword: {
