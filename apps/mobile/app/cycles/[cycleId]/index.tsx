@@ -1,5 +1,5 @@
 /**
- * Pojedynczy cykl: postęp, poprzedni okres, reset i archiwum.
+ * Pojedynczy cykl: postęp, historia poprzednich okresów, reset i archiwum.
  */
 
 import { isUuid } from '@alphapump/core';

@@ -9,6 +9,7 @@ import {
   goalScope,
   isDayWithinCycle,
   previousCyclePeriod,
+  previousCyclePeriods,
   remainingGoals,
   resetCycleRange,
   setMatchesGoal,
@@ -322,6 +323,31 @@ describe('okresy cyklu', () => {
 
   it('cykl bez końca nie ma poprzedniego okresu', () => {
     expect(previousCyclePeriod({ startsOn: '2026-08-01', endsOn: null })).toBeNull();
+  });
+
+  describe('previousCyclePeriods', () => {
+    it('oddaje wszystkie minione okresy, od najnowszego, aż do dolnej granicy', () => {
+      expect(previousCyclePeriods(sierpien, '2026-05-01', 10)).toEqual([
+        { startsOn: '2026-07-01', endsOn: '2026-07-31' },
+        { startsOn: '2026-05-31', endsOn: '2026-06-30' },
+      ]);
+      // Kolejny okres zaczynałby się 30 kwietnia, czyli przed granicą — i to na
+      // nim historia się urywa, a nie ciągnie w nieskończoność.
+    });
+
+    it('ucina listę od najstarszej strony', () => {
+      expect(previousCyclePeriods(sierpien, '2020-01-01', 2)).toEqual([
+        { startsOn: '2026-07-01', endsOn: '2026-07-31' },
+        { startsOn: '2026-05-31', endsOn: '2026-06-30' },
+      ]);
+      expect(previousCyclePeriods(sierpien, '2020-01-01', 0)).toEqual([]);
+    });
+
+    it('cykl bez końca nie ma historii okresów', () => {
+      expect(
+        previousCyclePeriods({ startsOn: '2026-08-01', endsOn: null }, '2020-01-01', 5),
+      ).toEqual([]);
+    });
   });
 
   it('postęp poprzedniego okresu liczy się tym samym kodem, na podmienionym zakresie', () => {

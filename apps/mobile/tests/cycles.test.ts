@@ -15,9 +15,10 @@ import { cycleGoals, cycles as cyclesTable, outbox } from '@alphapump/db/sqlite'
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  cycleHistory,
+  cycleHistoryPeriods,
   cycleSummaries,
   earliestRelevantDay,
-  previousPeriodProgress,
   remainingTargets,
   tagCycleProgress,
   withGoals,
@@ -45,6 +46,12 @@ import {
 
 const AUTHOR = { userId: TEST_USER.id, deviceId: 'device-a' };
 const DAY = '2026-08-11';
+/**
+ * Zegar zapisu cyklu. Dzień założenia jest dolną granicą historii okresów, więc
+ * cykl sierpniowy musi powstać w sierpniu — przy domyślnym `new Date()` data
+ * założenia wyprzedzałaby daty w teście i historia wychodziłaby pusta.
+ */
+const CREATED_AT = new Date('2026-08-01T09:00:00Z');
 const BACK_TAG = tagId('Back');
 
 const reps = (weightKg: number, count: number): SetValues => ({
@@ -74,13 +81,17 @@ describe('cykle w bazie lokalnej', () => {
   };
 
   const create = (goals: CycleGoalDraft[] = [CHEST_GOAL]) =>
-    createCycle(local.db, {
-      ...AUTHOR,
-      name: 'Sierpień na klatkę',
-      startsOn: '2026-08-01',
-      endsOn: '2026-08-31',
-      goals,
-    });
+    createCycle(
+      local.db,
+      {
+        ...AUTHOR,
+        name: 'Sierpień na klatkę',
+        startsOn: '2026-08-01',
+        endsOn: '2026-08-31',
+        goals,
+      },
+      CREATED_AT,
+    );
 
   const addBench = (day = DAY) =>
     createSet(local.db, {
@@ -267,7 +278,14 @@ describe('cykle w bazie lokalnej', () => {
 
     it('cykl bez pozycji celu nie trafia na listę', () => {
       const rows = [
-        { id: 'c-1', name: 'Pusty', startsOn: '2026-08-01', endsOn: null, archivedAt: null },
+        {
+          id: 'c-1',
+          name: 'Pusty',
+          startsOn: '2026-08-01',
+          endsOn: null,
+          archivedAt: null,
+          createdAt: CREATED_AT,
+        },
       ];
       expect(withGoals(rows, [], DAY)).toEqual([]);
     });
@@ -288,7 +306,8 @@ describe('cykle w bazie lokalnej', () => {
       expect(summaries[0]?.progress.goals[0]?.current).toBe(0);
 
       // …ale sama seria nadal jest i poprzedni okres da się policzyć.
-      const previous = previousPeriodProgress(cycles[0] as CycleWithGoals, sets);
+      const cycle = cycles[0] as CycleWithGoals;
+      const [previous] = cycleHistory(cycle, cycleHistoryPeriods(cycle, 10), sets);
       // Okno sprzed resetu, odtworzone z długości cyklu — bez żadnej tabeli
       // realizacji, bo historia siedzi w seriach.
       expect(previous?.period).toEqual({ startsOn: '2026-08-01', endsOn: '2026-08-31' });
@@ -296,13 +315,17 @@ describe('cykle w bazie lokalnej', () => {
     });
 
     it('cykl kontynuuje się sam po minięciu końca, bez ręcznego resetu', async () => {
-      const id = await createCycle(local.db, {
-        ...AUTHOR,
-        name: 'Dwa tygodnie na klatkę',
-        startsOn: '2026-08-01',
-        endsOn: '2026-08-14',
-        goals: [CHEST_GOAL],
-      });
+      const id = await createCycle(
+        local.db,
+        {
+          ...AUTHOR,
+          name: 'Dwa tygodnie na klatkę',
+          startsOn: '2026-08-01',
+          endsOn: '2026-08-14',
+          goals: [CHEST_GOAL],
+        },
+        CREATED_AT,
+      );
 
       // Seria w okresie bezpośrednio poprzedzającym bieżący (15–28 sierpnia).
       await addBench('2026-08-20');
@@ -323,22 +346,109 @@ describe('cykle w bazie lokalnej', () => {
       expect(summary?.progress.goals[0]?.current).toBe(1);
 
       // Poprzedni okres jest wyprowadzony automatycznie z nowego okna.
-      const previous = previousPeriodProgress(summary?.cycle as CycleWithGoals, sets);
+      const cycle = summary?.cycle as CycleWithGoals;
+      const [previous] = cycleHistory(cycle, cycleHistoryPeriods(cycle, 10), sets);
       expect(previous?.period).toEqual({ startsOn: '2026-08-15', endsOn: '2026-08-28' });
       expect(previous?.progress.goals[0]?.current).toBe(1);
     });
 
-    it('cykl bez końca nie ma poprzedniego okresu', async () => {
-      await createCycle(local.db, {
-        ...AUTHOR,
-        name: 'Bez końca',
-        startsOn: '2026-08-01',
-        endsOn: null,
-        goals: [{ metric: 'sets', target: 4, exerciseId: null, tagId: TAGS.chest }],
-      });
+    it('historia pokazuje wszystkie minione okresy, nie tylko ostatni', async () => {
+      await createCycle(
+        local.db,
+        {
+          ...AUTHOR,
+          name: 'Dwa tygodnie na klatkę',
+          startsOn: '2026-08-01',
+          endsOn: '2026-08-14',
+          goals: [CHEST_GOAL],
+        },
+        CREATED_AT,
+      );
 
-      const { cycles, sets } = await load();
-      expect(previousPeriodProgress(cycles[0] as CycleWithGoals, sets)).toBeNull();
+      // Po jednej serii w każdym z dwóch minionych okresów: pierwszym (1–14
+      // sierpnia) i drugim (15–28 sierpnia). Trzeci, od 29 sierpnia, jest
+      // bieżący 8 września.
+      await addBench('2026-08-05');
+      await addBench('2026-08-20');
+
+      const today = '2026-09-08';
+      const rows = await cycleList(local.db, TEST_USER.id, false);
+      const goals = await cycleGoalList(local.db, TEST_USER.id);
+      const cycle = withGoals(rows, goals, today)[0] as CycleWithGoals;
+
+      const periods = cycleHistoryPeriods(cycle, 10);
+      // Serie czytamy od najstarszego pokazywanego okresu — tak jak ekran.
+      const sets = await setsForCycles(local.db, TEST_USER.id, periods.at(-1)!.startsOn);
+      const history = cycleHistory(cycle, periods, sets);
+
+      expect(history.map((entry) => entry.period)).toEqual([
+        { startsOn: '2026-08-15', endsOn: '2026-08-28' },
+        { startsOn: '2026-08-01', endsOn: '2026-08-14' },
+      ]);
+      expect(history.map((entry) => entry.progress.goals[0]?.current)).toEqual([1, 1]);
+    });
+
+    it('historia nie sięga przed dzień, w którym cykl powstał', async () => {
+      // Okres sierpniowy jest arytmetycznym poprzednikiem wrześniowego, ale
+      // cyklu w sierpniu jeszcze nie było — i nie ma czego w nim rozliczać.
+      await createCycle(
+        local.db,
+        {
+          ...AUTHOR,
+          name: 'Wrzesień na klatkę',
+          startsOn: '2026-09-01',
+          endsOn: '2026-09-30',
+          goals: [CHEST_GOAL],
+        },
+        new Date('2026-09-01T09:00:00Z'),
+      );
+
+      const rows = await cycleList(local.db, TEST_USER.id, false);
+      const goals = await cycleGoalList(local.db, TEST_USER.id);
+      const cycle = withGoals(rows, goals, '2026-09-15')[0] as CycleWithGoals;
+
+      expect(cycleHistoryPeriods(cycle, 10)).toEqual([]);
+    });
+
+    it('cykl wpisany wstecz ma historię od swojej daty początku', async () => {
+      // Cykl sierpniowy wpisany we wrześniu: dzień założenia jest późniejszy od
+      // początku liczenia, więc granicą jest ten początek, a nie założenie.
+      await createCycle(
+        local.db,
+        {
+          ...AUTHOR,
+          name: 'Sierpień wpisany we wrześniu',
+          startsOn: '2026-08-01',
+          endsOn: '2026-08-31',
+          goals: [CHEST_GOAL],
+        },
+        new Date('2026-09-20T09:00:00Z'),
+      );
+
+      const rows = await cycleList(local.db, TEST_USER.id, false);
+      const goals = await cycleGoalList(local.db, TEST_USER.id);
+      const cycle = withGoals(rows, goals, '2026-09-20')[0] as CycleWithGoals;
+
+      expect(cycleHistoryPeriods(cycle, 10)).toEqual([
+        { startsOn: '2026-08-01', endsOn: '2026-08-31' },
+      ]);
+    });
+
+    it('cykl bez końca nie ma poprzednich okresów', async () => {
+      await createCycle(
+        local.db,
+        {
+          ...AUTHOR,
+          name: 'Bez końca',
+          startsOn: '2026-08-01',
+          endsOn: null,
+          goals: [{ metric: 'sets', target: 4, exerciseId: null, tagId: TAGS.chest }],
+        },
+        CREATED_AT,
+      );
+
+      const { cycles } = await load();
+      expect(cycleHistoryPeriods(cycles[0] as CycleWithGoals, 10)).toEqual([]);
     });
 
     it('archiwizacja przenosi cykl do drugiego widoku i z powrotem', async () => {

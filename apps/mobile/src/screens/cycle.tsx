@@ -1,30 +1,41 @@
 /**
- * Pojedynczy cykl: postęp, poprzedni okres, reset i archiwum.
+ * Pojedynczy cykl: postęp, historia poprzednich okresów, reset i archiwum.
  *
  * ## Reset bez utraty historii
  *
  * Reset to przesunięcie **początku liczenia**, a nie skasowanie dorobku. Serie
- * zostają nietknięte, więc realizacja poprzedniego okresu jest dalej do
- * policzenia — i właśnie ją pokazuje sekcja „Poprzedni okres". Nie ma żadnej
+ * zostają nietknięte, więc realizacja minionych okresów jest dalej do
+ * policzenia — i właśnie ją pokazuje sekcja „Previous periods". Nie ma żadnej
  * tabeli realizacji do utrzymania: skoro postęp jest liczony z serii, wystarczy
  * policzyć go dla okna sprzed resetu.
  *
- * Okno poprzedniego okresu jest wyprowadzane z długości cyklu — to okres tej
- * samej długości, przyklejony do bieżącego od dołu. Dla celu miesięcznego
- * resetowanego co miesiąc jest to dokładnie miesiąc wcześniej, czyli ten
- * przypadek, o który chodzi w specyfikacji. Cykl bez daty końca nie ma długości,
- * więc nie ma też poprzedniego okresu — i wtedy tej sekcji po prostu nie ma.
+ * Okna minionych okresów są wyprowadzane z długości cyklu — to okresy tej samej
+ * długości, doklejane do bieżącego od dołu. Dla celu miesięcznego resetowanego
+ * co miesiąc pierwszy z nich jest dokładnie miesiąc wcześniej, czyli ten
+ * przypadek, o który chodzi w specyfikacji. Lista sięga wstecz do dnia, przed
+ * którym cyklu jeszcze nie było (patrz `cycleHistoryPeriods`), a nie do
+ * ostatniego okresu: „na jakim poziomie zrealizował cykl w poprzednich
+ * okresach" to pytanie o całą historię, nie o jej jeden wpis.
+ *
+ * Cykl bez daty końca nie ma długości, więc nie ma też okresów — i wtedy tej
+ * sekcji po prostu nie ma.
+ *
+ * Okresów pokazujemy stronę naraz. Cykl tygodniowy liczony od roku ma ich
+ * pięćdziesiąt, a każdy kolejny cofa dolną granicę odczytu serii — jedna lista
+ * wszystkiego naraz kazałaby przeczytać całą historię treningową, żeby pokazać
+ * ekran, na który wchodzi się po procent z tego miesiąca.
  */
 
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { Stack, useRouter } from 'expo-router';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Alert, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
+  cycleHistory,
+  cycleHistoryPeriods,
   cycleSummaries,
   earliestRelevantDay,
-  previousPeriodProgress,
   withGoals,
 } from '../cycle-progress';
 import { db } from '../db/client';
@@ -36,8 +47,19 @@ import { useLocalAuthor } from '../hooks';
 import { useLocalizedName } from '../language/provider';
 import { formatMetric } from '../measurements';
 import { useRequestSync } from '../sync/provider';
-import { Button, Card, EmptyState, Loading, ProgressBar, Row } from '../ui/primitives';
+import {
+  Button,
+  Card,
+  EmptyState,
+  Loading,
+  ProgressBar,
+  Row,
+  SectionTitle,
+} from '../ui/primitives';
 import { formatRange, formatRatio } from './cycles';
+
+/** Ile minionych okresów dokłada jedno naciśnięcie „Show earlier periods". */
+const HISTORY_PAGE = 12;
 
 export function CycleScreen({ cycleId }: { cycleId: string }) {
   const router = useRouter();
@@ -58,7 +80,26 @@ export function CycleScreen({ cycleId }: { cycleId: string }) {
     [active.data, archived.data, goals.data, today],
   );
 
-  const from = useMemo(() => earliestRelevantDay(cycles, today), [cycles, today]);
+  const [periodLimit, setPeriodLimit] = useState(HISTORY_PAGE);
+
+  // Okresy wyznaczamy z samych dat cyklu, **przed** odczytem serii: to one mówią,
+  // od którego dnia trzeba te serie przeczytać.
+  const opened = useMemo(() => cycles.find((item) => item.id === cycleId), [cycles, cycleId]);
+
+  // O jeden okres więcej, niż pokazujemy — wyłącznie po to, żeby wiedzieć, czy
+  // jest co doczytać.
+  const periods = useMemo(
+    () => (opened === undefined ? [] : cycleHistoryPeriods(opened, periodLimit + 1)),
+    [opened, periodLimit],
+  );
+  const shownPeriods = useMemo(() => periods.slice(0, periodLimit), [periods, periodLimit]);
+
+  const from = useMemo(() => {
+    const base = earliestRelevantDay(cycles, today);
+    const oldest = shownPeriods.at(-1)?.startsOn;
+    return oldest !== undefined && oldest < base ? oldest : base;
+  }, [cycles, shownPeriods, today]);
+
   const sets = useLiveQuery(setsForCycles(db, userId, from), [userId, from]);
 
   const summary = useMemo(
@@ -66,9 +107,9 @@ export function CycleScreen({ cycleId }: { cycleId: string }) {
     [cycles, sets.data, cycleId],
   );
 
-  const previous = useMemo(
-    () => (summary === undefined ? null : previousPeriodProgress(summary.cycle, sets.data ?? [])),
-    [summary, sets.data],
+  const history = useMemo(
+    () => (opened === undefined ? [] : cycleHistory(opened, shownPeriods, sets.data ?? [])),
+    [opened, shownPeriods, sets.data],
   );
 
   if (author === null) return <Loading />;
@@ -189,18 +230,29 @@ export function CycleScreen({ cycleId }: { cycleId: string }) {
           })}
         </View>
 
-        {previous !== null && (
+        {history.length > 0 && (
           <View className="gap-2">
-            <Row>
-              <View className="flex-1">
-                <Text className="text-text">Previous period</Text>
-                <Text className="text-xs text-muted">
-                  {formatDate(previous.period.startsOn, today)} –{' '}
-                  {formatDate(previous.period.endsOn, today)}
+            <SectionTitle>Previous periods</SectionTitle>
+            {history.map((entry) => (
+              <Row key={entry.period.startsOn}>
+                <View className="flex-1">
+                  <Text className="text-text">
+                    {formatDate(entry.period.startsOn, today)} –{' '}
+                    {formatDate(entry.period.endsOn, today)}
+                  </Text>
+                </View>
+                <Text className={entry.progress.completed ? 'text-success' : 'text-muted'}>
+                  {formatRatio(entry.progress.ratio)}
                 </Text>
-              </View>
-              <Text className="text-muted">{formatRatio(previous.progress.ratio)}</Text>
-            </Row>
+              </Row>
+            ))}
+            {periods.length > shownPeriods.length && (
+              <Button
+                variant="secondary"
+                label="Show earlier periods"
+                onPress={() => setPeriodLimit((limit) => limit + HISTORY_PAGE)}
+              />
+            )}
           </View>
         )}
 
