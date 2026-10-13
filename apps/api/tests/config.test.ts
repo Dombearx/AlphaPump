@@ -107,7 +107,7 @@ describe('konfiguracja', () => {
     // wpisuje się (albo dyktuje) klawiaturą, która ma własny mikrofon.
     expect(loadConfig({ ...MINIMAL, OPENROUTER_API_KEY: 'model' }).voice).toMatchObject({
       speech: null,
-      model: 'google/gemini-2.5-flash',
+      model: 'openai/gpt-6-luna',
     });
   });
 
