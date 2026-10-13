@@ -190,7 +190,7 @@ const environmentSchema = z.object({
    * z transkrypcji, albo wprost z klawiatury, to **ten** model jest warunkiem
    * koniecznym dyktowania. Klucz transkrypcji dokłada do niego mikrofon.
    */
-  VOICE_MODEL: nonEmpty.default('google/gemini-2.5-flash'),
+  VOICE_MODEL: nonEmpty.default('openai/gpt-6-luna'),
   /**
    * Limit czasu na transkrypcję i na model, każdy z osobna. Dłuższy niż
    * `LLM_TIMEOUT_MS`, bo tu jest odwrotnie niż przy podpowiedzi o duplikacie:

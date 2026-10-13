@@ -100,7 +100,7 @@ services:
       SPEECH_TO_TEXT_URL: ${SPEECH_TO_TEXT_URL:-https://api.groq.com/openai/v1/audio/transcriptions}
       SPEECH_TO_TEXT_API_KEY: ${SPEECH_TO_TEXT_API_KEY:-}
       SPEECH_TO_TEXT_MODEL: ${SPEECH_TO_TEXT_MODEL:-whisper-large-v3-turbo}
-      VOICE_MODEL: ${VOICE_MODEL:-google/gemini-2.5-flash}
+      VOICE_MODEL: ${VOICE_MODEL:-openai/gpt-6-luna}
       VOICE_TIMEOUT_MS: ${VOICE_TIMEOUT_MS:-20000}
       # Ścieżka w kontenerze jest stała — host decyduje, co się pod nią kryje,
       # przez wolumin niżej. Aplikacja nie musi znać żadnej z tych decyzji.
