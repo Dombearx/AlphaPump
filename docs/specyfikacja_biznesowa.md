@@ -158,6 +158,10 @@ Jeśli użytkownik dodaje pierwszą serię danego ćwiczenia w danym dniu, syste
 
 Przykład: jeśli w poniedziałek zapisano serie 10, 9, 6, 4 powtórzenia, to w środę pierwsza seria ma podpowiedzieć 10. Jeśli w środę pierwsza wpisana seria będzie miała 8, to kolejna seria tego samego dnia ma już domyślnie podpowiadać 8. 
 
+### Animacja zwycięstwa
+
+Formularz zapisu serii ma pole „więcej niż mason" — opcjonalne, domyślnie odznaczone i dotyczące jednej serii, nie ustawień. Zaznaczenie go nie zmienia zapisywanych pomiarów ani niczego nie liczy: po **pomyślnym** dopisaniu takiej serii aplikacja pokazuje pełnoekranową, celowo przerysowaną animację triumfu (fajerwerki, fanfary, okrzyk). Animacja schodzi sama po chwili i daje się zamknąć tapnięciem, żeby nie dokładać kroku do zapisywania serii. Nie leci przy nieudanym zapisie, przy poprawianiu ani przy usuwaniu serii — pole jest widoczne wyłącznie przy dopisywaniu nowej. Jest to element motywacyjny i żart, a nie wynik: rekordy nadal liczą się same z danych. 
+
 ### Dyktowanie serii głosem
 
 Z widoku dnia da się zapisać serię **głosem**, obok zwykłej drogi przez wybór ćwiczenia z listy. Użytkownik nagrywa kilkanaście sekund, opisując wykonaną serię — nazwę ćwiczenia i liczby: ciężar, powtórzenia, czas albo dystans, zależnie od tego, co powiedział. Nagranie jedzie na serwer, tam zamienia się na tekst, a tekst — razem z listą ćwiczeń do wyboru i ostatnio zapisanymi seriami tego użytkownika — trafia do modelu, który wskazuje ćwiczenie i wyodrębnia pomiary. Historia ostatnich serii jest w tym kontekście po to, żeby dało się zrozumieć zdanie niepełne („jeszcze osiem") i ocenić, czy usłyszana liczba jest w skali danego ćwiczenia.

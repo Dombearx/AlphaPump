@@ -14,6 +14,10 @@
  *
  * Informacja o rekordzie pojawia się natychmiast po zapisie i **bez sieci** —
  * liczy ją `@alphapump/core` z serii leżących w bazie lokalnej.
+ *
+ * Obok niej stoi drugi, znacznie głośniejszy sygnał: pole „więcej niż mason"
+ * i animacja zwycięstwa po zapisaniu zaznaczonej serii. Rekord liczy się sam
+ * z danych, a to pole jest deklaracją użytkownika — opisuje je `src/victory.ts`.
  */
 
 import {
@@ -24,7 +28,7 @@ import {
 } from '@alphapump/core';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { Redirect, Stack, useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -68,7 +72,10 @@ import {
   Loading,
   Row,
   SectionTitle,
+  Toggle,
 } from '../ui/primitives';
+import { VictoryOverlay } from '../ui/victory';
+import { VICTORY_LABEL, victoryFires } from '../victory';
 import type { DictatedSet } from '../voice-draft';
 
 /** Ile rekordów pokazujemy — front Pareto bywa długi, a ekran ma być spokojny. */
@@ -134,6 +141,16 @@ export function LogScreen({
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<RecordOutcome | null>(null);
+  // „Więcej niż mason" to deklaracja o **tej jednej** serii, a nie ustawienie:
+  // zaznaczenie zjeżdża po zapisie, tak jak podyktowana seria. Nic z tego nie
+  // trafia do bazy — pole wybiera animację, a nie zapisywany wynik.
+  const [claimed, setClaimed] = useState(false);
+  /** Numer triumfu, którym leci animacja, albo `null`, gdy nic nie leci. */
+  const [victory, setVictory] = useState<number | null>(null);
+  // Licznik triumfów przeżywa zejście overlayu i **nie** ma przerysowywać
+  // ekranu, więc jest w ref: służy wyłącznie do tego, żeby druga animacja pod
+  // rząd krzyczała co innego niż pierwsza.
+  const triumphs = useRef(0);
 
   const exercise = details.data[0];
   const sets = useMemo(() => history.data ?? [], [history.data]);
@@ -208,8 +225,14 @@ export function LogScreen({
     setEditing(null);
     setProblem(null);
     setOutcome(record);
+    setClaimed(false);
     requestSync();
   };
+
+  // Overlay odlicza do samoczynnego zejścia od tego wywołania, więc musi być
+  // stabilne — bez `useCallback` każde przerysowanie ekranu (a lista dnia jedzie
+  // z `useLiveQuery`) zaczynałoby odliczanie od nowa i animacja nie schodziłaby.
+  const hideVictory = useCallback(() => setVictory(null), []);
 
   /**
    * Zapis nie może ruszyć bez identyfikatora urządzenia — to on rozstrzyga
@@ -253,7 +276,12 @@ export function LogScreen({
               ...who,
             });
 
+      // Animacja dopiero tutaj: seria już leży w bazie lokalnej, czyli — przy
+      // aplikacji offline-first — jest zapisana. Warunek czytamy przed
+      // `finish`, bo ono zdejmuje zaznaczenie.
+      const fires = victoryFires(mode, claimed);
       finish(saved.record.outcome);
+      if (fires) setVictory(triumphs.current++);
     });
 
   const remove = (setId: string) => {
@@ -276,6 +304,10 @@ export function LogScreen({
     setOutcome(null);
     setProblem(null);
     setDictation(null);
+    // Pole triumfu w edycji nie istnieje, więc zaznaczenie zjeżdża razem
+    // z wejściem w serię — inaczej zostałoby niewidoczne i odpaliłoby animację
+    // przy najbliższym dopisaniu, o którym nikt już tak nie myślał.
+    setClaimed(false);
     setDraft(draftOf(loggingType, set));
   };
 
@@ -423,6 +455,18 @@ export function LogScreen({
                   placeholder="optional"
                 />
 
+                {/* Pole triumfu stoi tylko przy dopisywaniu serii: poprawianie
+                    zapisanej wcześniej nie jest zwycięstwem, a przełącznik przy
+                    „Delete" wyglądałby jak ustawienie usuwania. */}
+                {editing === null && (
+                  <Toggle
+                    label={VICTORY_LABEL}
+                    hint="Tick it when this set beat the benchmark — saving will celebrate it properly."
+                    value={claimed}
+                    onChange={setClaimed}
+                  />
+                )}
+
                 {problem !== null && <Text className="text-danger">{problem}</Text>}
 
                 {outcome !== null && RECORD_MESSAGE[outcome] !== undefined && (
@@ -512,6 +556,8 @@ export function LogScreen({
           </ScrollView>
         </Pressable>
       </KeyboardAvoidingView>
+
+      {victory !== null && <VictoryOverlay round={victory} onDone={hideVictory} />}
     </SafeAreaView>
   );
 }
