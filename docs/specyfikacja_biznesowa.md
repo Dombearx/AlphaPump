@@ -324,6 +324,8 @@ W zależności od typu ćwiczenia wykresy pokazują odpowiednie metryki, takie j
 
 Interfejs wykresów ma być prosty i nieprzeładowany. Dopuszczalne jest proste przełączanie metryk na ekranie ćwiczenia. 
 
+Obok wykresu metryki ekran ćwiczenia pokazuje **front Pareto rekordów personalnych**: każdy wynik użytkownika jako punkt w dwóch osiach rekordu tego ćwiczenia (ciężar i powtórzenia, ciężar i czas albo dystans i czas), z punktami niezdominowanymi wyróżnionymi kolorem i spiętymi łamaną. Lista rekordów mówi, *co* jest rekordem; ten wykres pokazuje, jakiego **kształtu** jest front — gdzie jest wysoki, gdzie szeroki i których kombinacji jeszcze nie było. Przy ćwiczeniach, których rekordy mają jedną oś (własna masa ciała), wykresu nie ma: front jest tam jednym najlepszym wynikiem.
+
 ## Rankingi
 
 Aplikacja ma zawierać globalne rankingi użytkowników obejmujące wszystkich użytkowników aplikacji, przy założeniu że aplikacja jest używana przez jedną grupę znajomych. 
@@ -499,6 +501,7 @@ Przykładowe kryteria akceptacyjne dla MVP:
 - ćwiczeń cardio ten dobór nie podpowiada, a przełącznik w ustawieniach przywraca kolejność po liczbie własnych serii,
 - po dodaniu serii rekordowej użytkownik dostaje informację o rekordzie,
 - wykres ćwiczenia pokazuje historię odpowiednich metryk,
+- ekran ćwiczenia pokazuje front Pareto rekordów personalnych, wyróżniając wyniki niezdominowane na tle pozostałych,
 - kalendarz pokazuje liczbę serii dla każdego dnia, a kafelek dnia jest podświetlony tym mocniej, im więcej serii tego dnia zapisano,
 - ranking pokazuje globalną sumę $$kg \times powtórzenia$$ i dystansu,
 - użytkownik może podyktować serię głosem albo opisać ją jednym zdaniem z klawiatury, a rozpoznane wartości trafiają do formularza do zatwierdzenia,

@@ -831,6 +831,14 @@ minimalistycznych wykresach". Siatka kalendarza i punkty wykresu powstają
 w czystych modułach (`src/calendar.ts`, `src/chart-data.ts`), więc jedno i drugie
 ma testy bez renderowania ekranu.
 
+Pod wykresem metryki stoi na tym samym ekranie front Pareto rekordów
+(`src/pareto-chart.ts`): każdy wynik jako kropka w dwóch osiach rekordu, front
+wyróżniony kolorem i spięty schodkiem — bo między dwoma nieporównywalnymi
+rekordami żadnego innego rekordu nie ma. O tym, co jest rekordem, rozstrzyga
+`computeRecords` z `@alphapump/core`, czyli ten sam front, który liczy rekordy po
+zapisaniu serii; drugiej definicji tu nie ma. Ćwiczenia z jednoosiowym rekordem
+(własna masa ciała) tego wykresu nie dostają — front jest tam jednym wynikiem.
+
 ### Tapeta
 
 Własne zdjęcie w tle ustawia się w koncie (`src/ui/background.tsx`), a rysuje je

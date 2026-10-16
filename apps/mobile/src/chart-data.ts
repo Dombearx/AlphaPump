@@ -57,6 +57,15 @@ const AXIS_METRICS: Readonly<Record<MeasurementKey, ChartMetric>> = {
 };
 
 /**
+ * Metryka jednej osi rekordu — bierze ją też wykres frontu Pareto
+ * (`pareto-chart.ts`), żeby ta sama oś miała w obu wykresach tę samą etykietę
+ * i tę samą skalę.
+ */
+export function axisMetric(axis: MeasurementKey): ChartMetric {
+  return AXIS_METRICS[axis];
+}
+
+/**
  * Metryka sumaryczna typu logowania.
  *
  * Objętość (ciężar × powtórzenia) jest tą liczbą, po której widać pracę
