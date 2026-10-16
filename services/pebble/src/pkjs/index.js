@@ -281,6 +281,7 @@ var REQUIRED_MEASUREMENTS = {
   bodyweight_reps: ['reps'],
   bodyweight_time: ['durationS'],
   distance_time: ['distanceM', 'durationS'],
+  time: ['durationS'],
 };
 
 var MEASUREMENT_LABELS = {

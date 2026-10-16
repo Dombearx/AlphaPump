@@ -16,6 +16,12 @@ export const LOGGING_TYPES = [
   'bodyweight_time',
   /** dystans + czas */
   'distance_time',
+  /**
+   * sam czas — bieg czy rower liczony wyłącznie trwaniem wysiłku, bez dystansu.
+   * Od `bodyweight_time` różni się tym, że nie zapisuje masy ciała: tu nie jest
+   * ona obciążeniem, tylko polem do wypełnienia bez powodu.
+   */
+  'time',
 ] as const;
 
 export type LoggingType = (typeof LOGGING_TYPES)[number];
@@ -41,6 +47,7 @@ const RECORD_AXES: Readonly<Record<LoggingType, readonly MeasurementKey[]>> = {
   bodyweight_reps: ['reps'],
   bodyweight_time: ['durationS'],
   distance_time: ['distanceM', 'durationS'],
+  time: ['durationS'],
 };
 
 export function recordAxes(loggingType: LoggingType): readonly MeasurementKey[] {

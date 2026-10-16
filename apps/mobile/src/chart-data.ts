@@ -85,6 +85,12 @@ const TOTAL_METRIC: Readonly<Record<LoggingType, ChartMetric>> = {
     kind: 'distance',
     aggregate: 'total',
   },
+  time: {
+    key: 'totalDuration',
+    label: 'Total time',
+    kind: 'duration',
+    aggregate: 'total',
+  },
 };
 
 const SETS_METRIC: ChartMetric = {

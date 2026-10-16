@@ -197,6 +197,18 @@ describe('setInputSchemaFor', () => {
     const result = schema.safeParse({ ...base, ...puste, distanceM: 10_000, durationS: 3000 });
     expect(result.success).toBe(true);
   });
+
+  it('typ „sam czas" bierze czas, a odrzuca dystans i masę ciała', () => {
+    const schema = setInputSchemaFor('time');
+    expect(schema.safeParse({ ...base, ...puste, durationS: 1800 }).success).toBe(true);
+    expect(schema.safeParse({ ...base, ...puste }).success).toBe(false);
+    expect(schema.safeParse({ ...base, ...puste, durationS: 1800, distanceM: 5000 }).success).toBe(
+      false,
+    );
+    expect(
+      schema.safeParse({ ...base, ...puste, durationS: 1800, bodyweightG: 82_000 }).success,
+    ).toBe(false);
+  });
 });
 
 describe('cykl', () => {

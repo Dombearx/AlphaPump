@@ -37,6 +37,7 @@ export const LOGGING_TYPE_LABELS: Record<Exercise['loggingType'], string> = {
   bodyweight_reps: 'bodyweight + reps',
   bodyweight_time: 'bodyweight + time',
   distance_time: 'distance + time',
+  time: 'time only',
 };
 
 /** Pusty formularz. Tag główny celuje w pierwszy z listy — jakiś musi być wybrany. */

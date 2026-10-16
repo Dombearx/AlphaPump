@@ -120,7 +120,12 @@ Obsługiwane typy logowania serii:
 - ciężar + czas,
 - masa ciała + powtórzenia,
 - masa ciała + czas,
-- dystans + czas.
+- dystans + czas,
+- sam czas.
+
+Typ „sam czas" jest dla aktywności liczonych wyłącznie trwaniem wysiłku — biegu
+czy jazdy na rowerze o celu zdrowotnym, gdzie dystans nie jest tym, co użytkownik
+chce zapisywać. Od „masa ciała + czas" różni się tym, że nie zapisuje masy ciała.
 
 Dla ćwiczeń opartych o masę ciała użytkownik może wpisać wartość masy ciała. Masa ciała nie bierze udziału w liczeniu rekordów. 
 

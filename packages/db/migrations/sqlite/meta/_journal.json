@@ -71,6 +71,13 @@
       "when": 1789663222127,
       "tag": "0009_zippy_skullbuster",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1792167281860,
+      "tag": "0010_huge_reavers",
+      "breakpoints": true
     }
   ]
 }
