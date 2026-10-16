@@ -9,6 +9,12 @@
  * Zestaw metryk zależy od typu logowania: przy biegu nie ma czego pokazywać na
  * osi ciężaru. Liczy to `chart-data.ts`, ekran jedynie rysuje.
  *
+ * Pod wykresem metryki stoi drugi wykres — front Pareto rekordów. Jest tu,
+ * a nie na osobnym ekranie, bo odpowiada na to samo pytanie o to samo ćwiczenie,
+ * tylko w drugim wymiarze: wykres metryki pokazuje, czy idzie w górę w czasie,
+ * a front pokazuje kształt rekordów, których jednocześnie może być kilka.
+ * Punkty liczy `pareto-chart.ts`.
+ *
  * Wszystko pochodzi z bazy lokalnej — wykres jest odczytem, który zgodnie ze
  * specyfikacją musi działać bez internetu.
  */
@@ -24,8 +30,15 @@ import { exerciseDetails, exerciseHistory } from '../db/queries';
 import { formatDate, formatShortDate, today as currentDay } from '../day-labels';
 import { useLocalAuthor } from '../hooks';
 import { useLocalizedName } from '../language/provider';
-import { formatDistance, formatDuration, formatWeight, LOGGING_TYPE_LABELS } from '../measurements';
-import { BarChart } from '../ui/chart';
+import {
+  formatDistance,
+  formatDuration,
+  formatSet,
+  formatWeight,
+  LOGGING_TYPE_LABELS,
+} from '../measurements';
+import { paretoScatter } from '../pareto-chart';
+import { BarChart, ParetoChart } from '../ui/chart';
 import { Button, Card, Chip, ChipRow, EmptyState, Loading, SectionTitle } from '../ui/primitives';
 
 /** Ile dni treningowych mieści się na wykresie, żeby słupki zostały czytelne. */
@@ -57,6 +70,11 @@ export function ExerciseChartScreen({ exerciseId }: { exerciseId: string }) {
   const summary = useMemo(
     () => (metric === undefined ? null : chartSummary(metric, sets)),
     [metric, sets],
+  );
+
+  const scatter = useMemo(
+    () => (exercise === undefined ? null : paretoScatter(exercise.loggingType, sets)),
+    [exercise, sets],
   );
 
   if (author === null) return <Loading />;
@@ -113,6 +131,27 @@ export function ExerciseChartScreen({ exerciseId }: { exerciseId: string }) {
               {summary.points.length > points.length
                 ? `Recent training days: ${String(points.length)} of ${String(summary.points.length)}`
                 : `Training days: ${String(points.length)}`}
+            </Text>
+          </Card>
+        )}
+
+        {/* Front rekordów nie dotyczy ćwiczeń z jedną osią rekordu (własna masa
+            ciała) — tam rekord jest jedną liczbą, a nie kształtem, i wtedy
+            `paretoScatter` oddaje `null`. */}
+        {scatter !== null && (
+          <Card className="gap-3">
+            <SectionTitle>Record front</SectionTitle>
+            <ParetoChart
+              scatter={scatter}
+              labelOf={(point) => formatSet(exercise.loggingType, point.set)}
+              formatX={(value) => formatMetricValue(scatter.axes.x, value)}
+              formatY={(value) => formatMetricValue(scatter.axes.y, value)}
+            />
+            <Text className="text-xs text-muted">
+              Records: {scatter.front.length} of {scatter.points.length} results
+            </Text>
+            <Text className="text-xs text-muted">
+              A result is a record when no other set of yours beats it on both axes at once.
             </Text>
           </Card>
         )}
