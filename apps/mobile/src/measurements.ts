@@ -129,6 +129,8 @@ export function formatSet(loggingType: LoggingType, measurements: SetMeasurement
       return formatDuration(durationS ?? 0);
     case 'distance_time':
       return `${formatDistance(distanceM ?? 0)} in ${formatDuration(durationS ?? 0)}`;
+    case 'time':
+      return formatDuration(durationS ?? 0);
   }
 }
 
@@ -229,6 +231,7 @@ export const LOGGING_TYPE_LABELS: Readonly<Record<LoggingType, string>> = {
   bodyweight_reps: 'Bodyweight and reps',
   bodyweight_time: 'Bodyweight and time',
   distance_time: 'Distance and time',
+  time: 'Time only',
 };
 
 export const GOAL_METRIC_LABELS: Readonly<Record<GoalMetric, string>> = {

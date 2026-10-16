@@ -10,13 +10,14 @@ import {
 import { makeSet } from './helpers.js';
 
 describe('typy logowania', () => {
-  it('obejmują wszystkie pięć wariantów ze specyfikacji', () => {
+  it('obejmują wszystkie sześć wariantów ze specyfikacji', () => {
     expect(LOGGING_TYPES).toEqual([
       'weight_reps',
       'weight_time',
       'bodyweight_reps',
       'bodyweight_time',
       'distance_time',
+      'time',
     ]);
   });
 
@@ -37,6 +38,13 @@ describe('typy logowania', () => {
     expect(usesBodyweight('bodyweight_time')).toBe(true);
     expect(usesBodyweight('weight_reps')).toBe(false);
     expect(usesBodyweight('distance_time')).toBe(false);
+    expect(usesBodyweight('time')).toBe(false);
+  });
+
+  it('typ „sam czas" mierzy wyłącznie czas', () => {
+    expect(recordAxes('time')).toEqual(['durationS']);
+    expect(hasCompleteMeasurements('time', makeSet({ durationS: 1800 }))).toBe(true);
+    expect(hasCompleteMeasurements('time', makeSet({ distanceM: 5000 }))).toBe(false);
   });
 
   it('isLoggingType odrzuca wartości spoza listy', () => {

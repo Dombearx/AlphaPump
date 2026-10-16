@@ -1,0 +1,2 @@
+ALTER TABLE "exercises" DROP CONSTRAINT "exercises_logging_type_check";--> statement-breakpoint
+ALTER TABLE "exercises" ADD CONSTRAINT "exercises_logging_type_check" CHECK ("logging_type" IN ('weight_reps', 'weight_time', 'bodyweight_reps', 'bodyweight_time', 'distance_time', 'time'));

@@ -380,6 +380,34 @@ describe('rozpoznanie serii', () => {
     assert.match(eager.last().BODY, /missing weight/);
   });
 
+  it('typ „sam czas" też umie nazwać brakujący pomiar', async () => {
+    // Tabela pomiarów jest tu duplikatem `requiredMeasurements` z rdzenia:
+    // typ nieznany tej kopii nie ma czego wymienić i komunikat milknie.
+    const eager = sandbox({ ...SETTINGS, confirm: false });
+    eager.routes['POST http://api.test/voice/text'] = {
+      status: 200,
+      body: {
+        transcript: 'bike ride',
+        match: {
+          ...MATCH,
+          name: 'Bike ride',
+          loggingType: 'time',
+          weightG: null,
+          reps: null,
+          durationS: null,
+          complete: false,
+        },
+        reason: null,
+      },
+    };
+
+    eager.fire('appmessage', { payload: { TRANSCRIPT: 'bike ride' } });
+    await eager.settle();
+
+    assert.equal(eager.last().STATUS, STATUS.UNKNOWN);
+    assert.match(eager.last().BODY, /missing time/);
+  });
+
   it('wyłączone dyktowanie na serwerze mówi wprost, że to nie awaria sieci', async () => {
     phone.routes['POST http://api.test/voice/text'] = { status: 503, body: {} };
 

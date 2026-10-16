@@ -186,6 +186,41 @@ describe('serie', () => {
     expect(response.body).toMatchObject({ distanceM: 5_000, durationS: 1_800 });
   });
 
+  it('przyjmuje serię z samym czasem, a dystans przy niej odrzuca', async () => {
+    const walk = await harness.json<{ id: string }>('POST', '/exercises', {
+      headers: user.headers,
+      body: { name: 'Rower zdrowotny', loggingType: 'time', primaryTagId: tagId('quads') },
+    });
+    expect(walk.status).toBe(201);
+
+    const created = await harness.json<WorkoutSet>('POST', '/sets', {
+      headers: apiKey,
+      body: {
+        exerciseId: walk.body.id,
+        performedOn: '2026-08-08',
+        weightG: null,
+        reps: null,
+        durationS: 2_700,
+        distanceM: null,
+      },
+    });
+    expect(created.status).toBe(201);
+    expect(created.body).toMatchObject({ durationS: 2_700, distanceM: null });
+
+    const withDistance = await harness.json('POST', '/sets', {
+      headers: apiKey,
+      body: {
+        exerciseId: walk.body.id,
+        performedOn: '2026-08-08',
+        weightG: null,
+        reps: null,
+        durationS: 2_700,
+        distanceM: 8_000,
+      },
+    });
+    expect(withDistance.status).toBe(400);
+  });
+
   it('waliduje stan po scaleniu, a nie samą łatkę', async () => {
     const created = await harness.json<WorkoutSet>('POST', '/sets', {
       headers: apiKey,

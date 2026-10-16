@@ -51,6 +51,7 @@ const GROUPS: readonly { loggingType: LoggingType; heading: string }[] = [
   { loggingType: 'bodyweight_time', heading: 'bodyweight + time' },
   { loggingType: 'weight_time', heading: 'weight + time' },
   { loggingType: 'distance_time', heading: 'distance + time' },
+  { loggingType: 'time', heading: 'time only' },
 ];
 
 interface ExerciseRow {

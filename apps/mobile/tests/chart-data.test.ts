@@ -40,6 +40,7 @@ describe('metryki zależą od typu logowania', () => {
     ['bodyweight_reps', ['reps', 'totalReps', 'sets']],
     ['bodyweight_time', ['durationS', 'totalDuration', 'sets']],
     ['distance_time', ['distanceM', 'durationS', 'totalDistance', 'sets']],
+    ['time', ['durationS', 'totalDuration', 'sets']],
   ] as [LoggingType, string[]][])('%s ma metryki %j', (loggingType, keys) => {
     expect(metricsFor(loggingType).map((candidate) => candidate.key)).toEqual(keys);
   });

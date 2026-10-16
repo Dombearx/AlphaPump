@@ -34,6 +34,10 @@ describe('pola formularza', () => {
     expect(fieldsFor('bodyweight_reps').map((field) => field.key)).toEqual(['reps', 'bodyweightG']);
     expect(fieldsFor('weight_reps').map((field) => field.key)).not.toContain('bodyweightG');
   });
+
+  it('przy typie „sam czas" pyta wyłącznie o czas', () => {
+    expect(fieldsFor('time').map((field) => field.key)).toEqual(['durationS']);
+  });
 });
 
 describe('wpisywanie ciężaru', () => {
@@ -133,6 +137,9 @@ describe('seria jednym napisem', () => {
     expect(formatSet('bodyweight_time', measurements)).toBe('1:30');
     expect(formatSet('distance_time', { ...measurements, weightG: null, reps: null })).toBe(
       '5 km in 1:30',
+    );
+    expect(formatSet('time', { weightG: null, reps: null, durationS: 1800, distanceM: null })).toBe(
+      '30:00',
     );
   });
 });
