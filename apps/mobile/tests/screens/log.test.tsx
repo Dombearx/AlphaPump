@@ -90,6 +90,101 @@ describe('ekran zapisywania serii', () => {
     });
   });
 
+  describe('„więcej niż mason"', () => {
+    /** Overlay animacji — poznajemy go po wyjściu, bo tapnięcie je zamyka. */
+    const celebration = () => screen.queryByRole('button', { name: 'Dismiss the celebration' });
+
+    it('stoi w formularzu serii i startuje odznaczone', async () => {
+      await mount(<LogScreen day={DAY} exerciseId={EXERCISES.bench!.id} />);
+
+      expect((screen.getByLabelText('więcej niż mason') as HTMLInputElement).checked).toBe(false);
+      expect(celebration()).toBeNull();
+    });
+
+    it('samo zaznaczenie jeszcze nic nie odpala', async () => {
+      // Wymaganie ze zgłoszenia: animacja po **zapisaniu** serii, nie przy
+      // kliknięciu w pole.
+      await mount(<LogScreen day={DAY} exerciseId={EXERCISES.bench!.id} />);
+
+      await user().click(screen.getByLabelText('więcej niż mason'));
+
+      expect(celebration()).toBeNull();
+    });
+
+    it('po zapisaniu zaznaczonej serii leci animacja, a seria jest w bazie', async () => {
+      await mount(<LogScreen day={DAY} exerciseId={EXERCISES.bench!.id} />);
+
+      await user().type(screen.getByLabelText('Weight'), '120');
+      await user().type(screen.getByLabelText('Reps'), '3');
+      await user().click(screen.getByLabelText('więcej niż mason'));
+      await user().click(screen.getByRole('button', { name: 'Add set' }));
+
+      await waitFor(() => {
+        expect(celebration()).not.toBeNull();
+      });
+      expect(screenText()).toContain('WIĘCEJ NIŻ MASON!');
+      expect(await local.db.select().from(workoutSets)).toHaveLength(1);
+    });
+
+    it('odłożone zaznaczenie zjeżdża po zapisie', async () => {
+      // Deklaracja dotyczy jednej serii. Gdyby zostawała zaznaczona, druga seria
+      // pod rząd dostałaby fajerwerki, o które nikt nie prosił.
+      await mount(<LogScreen day={DAY} exerciseId={EXERCISES.bench!.id} />);
+
+      await user().type(screen.getByLabelText('Weight'), '120');
+      await user().type(screen.getByLabelText('Reps'), '3');
+      await user().click(screen.getByLabelText('więcej niż mason'));
+      await user().click(screen.getByRole('button', { name: 'Add set' }));
+
+      await waitFor(() => {
+        expect((screen.getByLabelText('więcej niż mason') as HTMLInputElement).checked).toBe(false);
+      });
+    });
+
+    it('nieudany zapis nie odpala animacji', async () => {
+      // Pusty formularz kończy się nazwaniem brakujących pomiarów — i niczym
+      // więcej. Fajerwerki nad komunikatem o błędzie byłyby kłamstwem.
+      await mount(<LogScreen day={DAY} exerciseId={EXERCISES.bench!.id} />);
+
+      await user().click(screen.getByLabelText('więcej niż mason'));
+      await user().click(screen.getByRole('button', { name: 'Add set' }));
+
+      expect(screenText()).toContain('Fill in: weight, reps');
+      expect(celebration()).toBeNull();
+    });
+
+    it('bez zaznaczenia zapis przebiega po cichu', async () => {
+      await mount(<LogScreen day={DAY} exerciseId={EXERCISES.bench!.id} />);
+
+      await user().type(screen.getByLabelText('Weight'), '80');
+      await user().type(screen.getByLabelText('Reps'), '8');
+      await user().click(screen.getByRole('button', { name: 'Add set' }));
+
+      await waitFor(async () => {
+        expect(await local.db.select().from(workoutSets)).toHaveLength(1);
+      });
+      expect(celebration()).toBeNull();
+    });
+
+    it('w edycji zapisanej serii pola nie ma', async () => {
+      await mount(<LogScreen day={DAY} exerciseId={EXERCISES.bench!.id} />);
+
+      await user().type(screen.getByLabelText('Weight'), '80');
+      await user().type(screen.getByLabelText('Reps'), '8');
+      await user().click(screen.getByRole('button', { name: 'Add set' }));
+
+      // Zapisana seria stoi na ekranie dwa razy: na liście dnia i na liście
+      // rekordów. W edycję wchodzi ta pierwsza.
+      await waitFor(() => {
+        expect(screen.getAllByText('80 kg × 8').length).toBeGreaterThan(0);
+      });
+      await user().click(screen.getAllByText('80 kg × 8')[0]!);
+
+      expect(screen.getByRole('button', { name: 'Save changes' })).toBeDefined();
+      expect(screen.queryByLabelText('więcej niż mason')).toBeNull();
+    });
+  });
+
   describe('pusty dzień', () => {
     it('tłumaczy, że nic tu jeszcze nie ma', async () => {
       await mount(<LogScreen day={DAY} exerciseId={EXERCISES.bench!.id} />);
