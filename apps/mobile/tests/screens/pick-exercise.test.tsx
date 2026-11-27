@@ -10,13 +10,14 @@
  * udział, w jakim dzieli chipsa pasek stojący pod jego treścią.
  */
 
+import { screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createCycle } from '../../src/db/cycles';
 import { createSet } from '../../src/db/sets';
 import type { ExerciseOrder, ExerciseOrderStore } from '../../src/exercise-order/state';
 import { PickExerciseScreen } from '../../src/screens/pick-exercise';
 import { EXERCISES, TAGS, TEST_USER } from '../local-database';
-import { mount, openLocalDatabase, screenText, type MountedScreen } from './harness';
+import { mount, openLocalDatabase, screenText, user, type MountedScreen } from './harness';
 
 /** Magazyn ustawienia w pamięci — telefon trzyma je w pliku, test w zmiennej. */
 function orderStore(order: ExerciseOrder): ExerciseOrderStore {
@@ -34,11 +35,33 @@ const DAY = '2026-08-11';
  * i żadnego udziału nie dostaje.
  */
 function chipFill(tag: string): string {
-  const chip = Array.from(document.querySelectorAll('button')).find((node) =>
-    [tag, `★${tag}`, `✓${tag}`].includes(node.textContent ?? ''),
-  );
+  const chip = tagChip(tag);
   const done = chip?.firstElementChild?.firstElementChild as HTMLElement | undefined;
   return done?.style.flexGrow ?? '';
+}
+
+/**
+ * Chips jednego tagu. Rozpoznajemy go po tym, że jego treścią jest **sama**
+ * nazwa tagu (ewentualnie ze znakiem cyklu przed nią) — wiersze listy też są
+ * przyciskami, ale ich treść jest dłuższa od nazwy tagu.
+ */
+function tagChip(tag: string): HTMLElement | undefined {
+  return chips().find((node) => [tag, `★${tag}`, `✓${tag}`].includes(node.textContent ?? ''));
+}
+
+function chips(): HTMLElement[] {
+  return Array.from(document.querySelectorAll('button'));
+}
+
+/** Pozycja chipsa tagu w rzędzie — po niej sprawdzamy kolejność tagów. */
+function tagChipIndex(tag: string): number {
+  const chip = tagChip(tag);
+  return chip === undefined ? -1 : chips().indexOf(chip);
+}
+
+/** Naciska chips odsłaniający tagi, z których nie ma ani jednej serii. */
+async function showHiddenTags(): Promise<void> {
+  await user().click(screen.getByRole('button', { name: /^\+\d+ more$/ }));
 }
 
 describe('wybór ćwiczenia', () => {
@@ -122,7 +145,11 @@ describe('wybór ćwiczenia', () => {
 
   it('nie wypełnia tagów spoza cyklu', async () => {
     await withGoal({ exerciseId: null, tagId: TAGS.chest });
+    // Tag bez serii i bez celu stoi pod „pokaż więcej" (patrz niżej), więc żeby
+    // sprawdzić, że nie ma wypełnienia, trzeba go najpierw odsłonić.
+    await showHiddenTags();
 
+    expect(tagChip('abs')).toBeDefined();
     expect(chipFill('abs')).toBe('');
   });
 
@@ -130,6 +157,90 @@ describe('wybór ćwiczenia', () => {
     await withGoal({ exerciseId: null, tagId: TAGS.chest });
 
     expect(screenText()).not.toContain('Left in cycles');
+  });
+});
+
+/**
+ * Rząd tagów: na wierzchu tagi z własnymi seriami, od tego z największą ich
+ * liczbą, a tagi bez ani jednej serii pod chipsem „+N more". Asercje stawiamy
+ * na chipsach, a nie na całym tekście ekranu: nazwa tagu stoi też w opisie
+ * każdego wiersza listy, więc z tekstu nie widać, czy tag jest w rzędzie.
+ */
+describe('rząd tagów przy wyborze ćwiczenia', () => {
+  let local: MountedScreen;
+
+  beforeEach(async () => {
+    local = await openLocalDatabase();
+  });
+
+  afterEach(() => local.close());
+
+  const addSet = (exerciseId: string) =>
+    createSet(local.db, {
+      userId: TEST_USER.id,
+      deviceId: 'device-a',
+      exerciseId,
+      performedOn: DAY,
+      values: {
+        weightG: 20_000,
+        reps: 10,
+        durationS: null,
+        distanceM: null,
+        bodyweightG: null,
+        note: null,
+      },
+    });
+
+  const show = () => mount(<PickExerciseScreen day={DAY} orderStore={orderStore('usage')} />);
+
+  it('tag z większą liczbą własnych serii stoi przed tagiem z mniejszą', async () => {
+    await addSet(EXERCISES.curl!.id);
+    await addSet(EXERCISES.bench!.id);
+    await addSet(EXERCISES.bench!.id);
+    await show();
+
+    // Alfabetycznie „biceps" jest przed „chest" — tu rozstrzyga historia.
+    expect(tagChipIndex('chest')).toBeLessThan(tagChipIndex('biceps'));
+  });
+
+  it('nie pokazuje tagu, z którego nie ma ani jednej serii', async () => {
+    await addSet(EXERCISES.bench!.id);
+    await show();
+
+    expect(tagChip('chest')).toBeDefined();
+    expect(tagChip('biceps')).toBeUndefined();
+  });
+
+  it('bez ani jednej serii wszystkie tagi są schowane', async () => {
+    await show();
+
+    expect(tagChip('chest')).toBeUndefined();
+    expect(screen.getByRole('button', { name: /^\+\d+ more$/ })).toBeDefined();
+  });
+
+  it('schowany tag daje się odsłonić i wybrać', async () => {
+    await addSet(EXERCISES.bench!.id);
+    await show();
+    await showHiddenTags();
+
+    const hidden = tagChip('biceps');
+    expect(hidden).toBeDefined();
+
+    await user().click(hidden!);
+    // Po wybraniu lista pokazuje wyłącznie ćwiczenia na biceps, a sam chips
+    // zostaje w rzędzie — inaczej filtru nie dałoby się zdjąć.
+    expect(screenText()).toContain('Lying dumbbell curl');
+    expect(screenText()).not.toContain('Flat barbell bench press');
+    expect(tagChip('biceps')).toBeDefined();
+  });
+
+  it('odsłonięte tagi można schować z powrotem', async () => {
+    await addSet(EXERCISES.bench!.id);
+    await show();
+    await showHiddenTags();
+    await user().click(screen.getByRole('button', { name: 'Fewer tags' }));
+
+    expect(tagChip('biceps')).toBeUndefined();
   });
 });
 

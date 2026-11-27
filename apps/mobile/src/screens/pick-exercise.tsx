@@ -31,6 +31,15 @@
  * Filtrowanie idzie po slugu, tym samym, który wylicza identyfikator ćwiczenia.
  * Dzięki temu „lawka" znajduje „Ławkę", a użytkownik nie musi trafiać w ogonki.
  *
+ * ## Rząd tagów
+ *
+ * W rzędzie stoją tagi, z których użytkownik ma **własne** serie, od tych
+ * z największą ich liczbą — czyli tak samo jak lista ćwiczeń pod nim: to, co
+ * faktycznie wykonuje, jest u góry bez żadnego ustawiania. Tagi bez ani jednej
+ * jego serii schodzą pod chips „+N more": słownik rośnie, a rząd nad listą ma
+ * zostać rzędem, nie spisem treści. Podział i kolejność liczy `tag-usage.ts`,
+ * licznik — `tagSetCounts`.
+ *
  * ## Podpowiedź z cyklu
  *
  * Tag objęty celem aktywnego cyklu ma znak **wewnątrz** swojego chipsa —
@@ -74,7 +83,9 @@ import {
   groupAdditionalTags,
   setsForCycles,
   tagLibrary,
+  tagSetCounts,
   type LibraryRow,
+  type TagLibraryRow,
 } from '../db/queries';
 import { formatDate, today as currentDay } from '../day-labels';
 import type { ExerciseOrderStore } from '../exercise-order/state';
@@ -82,6 +93,7 @@ import { useExerciseOrder } from '../exercise-order/use-exercise-order';
 import { orderLibrary } from '../exercise-rotation';
 import { filterExercises } from '../exercise-search';
 import { useLocalizedName } from '../language/provider';
+import { splitTagsByUsage, tagSetCountMap } from '../tag-usage';
 import { Button, Chip, ChipRow, EmptyState, Field, Loading, Row, TagDot } from '../ui/primitives';
 
 export function PickExerciseScreen({
@@ -101,8 +113,11 @@ export function PickExerciseScreen({
 
   const [query, setQuery] = useState('');
   const [tagId, setTagId] = useState<string | null>(null);
+  /** Czy rząd tagów pokazuje też te, z których nie ma ani jednej serii. */
+  const [allTags, setAllTags] = useState(false);
 
   const tags = useLiveQuery(tagLibrary(db), []);
+  const tagUsage = useLiveQuery(tagSetCounts(db, userId), [userId]);
   const library = useLiveQuery(exerciseLibrary(db, userId, { tagId }), [userId, tagId]);
   const extraTags = useLiveQuery(allAdditionalTags(db), []);
   const extraTagsByExercise = useMemo(
@@ -121,6 +136,21 @@ export function PickExerciseScreen({
 
   const summaries = useMemo(() => cycleSummaries(cycles, sets.data ?? []), [cycles, sets.data]);
   const cycleProgress = useMemo(() => tagCycleProgress(summaries, day), [summaries, day]);
+
+  // Na wierzchu zostają tagi z własnymi seriami (najczęstsze pierwsze), tagi
+  // objęte celem cyklu i ten właśnie wybrany — wybrany dlatego, że filtr bez
+  // widocznego chipsa byłby filtrem, którego nie da się zdjąć. Resztę schowanych
+  // odsłania jedno naciśnięcie, patrz `tag-usage.ts`.
+  const tagCounts = useMemo(() => tagSetCountMap(tagUsage.data ?? []), [tagUsage.data]);
+  const pinnedTags = useMemo(() => {
+    const pinned = new Set(cycleProgress.keys());
+    if (tagId !== null) pinned.add(tagId);
+    return pinned;
+  }, [cycleProgress, tagId]);
+  const tagRow = useMemo(
+    () => splitTagsByUsage(tags.data ?? [], tagCounts, pinnedTags),
+    [tags.data, tagCounts, pinnedTags],
+  );
 
   // Serie samego wskazanego dnia, w kolejności zapisu — z nich bierze się
   // rozdzielność partii przy podpowiadaniu. `setsForCycles` obok sięga wstecz
@@ -151,6 +181,17 @@ export function PickExerciseScreen({
     setTagId(id);
   };
 
+  const tagChip = (tag: TagLibraryRow) => (
+    <Chip
+      key={tag.id}
+      label={named(tag)}
+      color={tag.color}
+      progress={cycleProgress.get(tag.id)}
+      selected={tagId === tag.id}
+      onPress={() => pickTag(tagId === tag.id ? null : tag.id)}
+    />
+  );
+
   return (
     <SafeAreaView className="flex-1" edges={['bottom']}>
       <Stack.Screen options={{ title: 'Pick an exercise' }} />
@@ -169,16 +210,17 @@ export function PickExerciseScreen({
       <ScrollView contentContainerClassName="gap-2 px-4 pb-8" keyboardShouldPersistTaps="handled">
         <ChipRow wrap>
           <Chip label="All" selected={tagId === null} onPress={() => pickTag(null)} />
-          {(tags.data ?? []).map((tag) => (
+          {tagRow.shown.map(tagChip)}
+          {/* Przełącznik stoi **za** używanymi tagami, a nie na końcu rzędu:
+              inaczej skakałby o całą rozwiniętą resztę przy każdym naciśnięciu. */}
+          {tagRow.hidden.length > 0 && (
             <Chip
-              key={tag.id}
-              label={named(tag)}
-              color={tag.color}
-              progress={cycleProgress.get(tag.id)}
-              selected={tagId === tag.id}
-              onPress={() => pickTag(tagId === tag.id ? null : tag.id)}
+              label={allTags ? 'Fewer tags' : `+${String(tagRow.hidden.length)} more`}
+              selected={allTags}
+              onPress={() => setAllTags(!allTags)}
             />
-          ))}
+          )}
+          {allTags && tagRow.hidden.map(tagChip)}
         </ChipRow>
 
         {matches.length === 0 ? (

@@ -199,6 +199,14 @@ Kolejność, w jakiej ćwiczenia stały wcześniej — najczęściej wykonywane 
 
 W ustawieniach stoi przełącznik wyłączający cały ten dobór i przywracający kolejność po liczbie własnych serii. Domyślnie dobór jest włączony.
 
+### Kolejność tagów w filtrze
+
+Lista tagów nad listą ćwiczeń — w widoku dodawania serii i w bibliotece — jest ułożona według **historii użytkownika**: od tagu, z którego ma najwięcej zapisanych serii, do tego, z którego ma najmniej. Tagi o tej samej liczbie serii stoją między sobą alfabetycznie. Licznik jest liczony per użytkownik, a nie globalnie, i obejmuje serie ćwiczeń, dla których tag jest główny **albo** dodatkowy — czyli dokładnie te, które pokaże filtr po wybraniu tego tagu.
+
+Tagi, z których użytkownik nie ma ani jednej serii, nie są pokazywane domyślnie: słownik tagów jest wspólny dla wszystkich i rośnie niezależnie od tego, co kto robi. Odsłania je jedno naciśnięcie przycisku z liczbą schowanych tagów — bez niego nie dałoby się wybrać tagu, w którym użytkownik zaczyna pracę po raz pierwszy. Gdy użytkownik nie ma jeszcze żadnej serii, schowane są wszystkie tagi.
+
+Na wierzchu zostaje też tag objęty pozycją celu aktywnego cyklu, nawet bez ani jednej serii: lista tagów jest jednocześnie miejscem, w którym widać, gdzie ta robota czeka (patrz „Wybór ćwiczenia z cyklu"). Tak samo zostaje tag właśnie wybrany jako filtr — filtru, którego przycisku nie widać, nie dałoby się zdjąć.
+
 ## Kalendarz
 
 Aplikacja ma zawierać widok kalendarza z widokiem miesiąca i tygodnia. W kafelku dnia ma być widoczna liczba zapisanych serii dla tego dnia.  [play.google](https://play.google.com/store/apps/details?id=com.github.jamesgay.fitnotes&hl=en_US)
@@ -497,6 +505,7 @@ Przykładowe kryteria akceptacyjne dla MVP:
 - po usunięciu serii postęp cyklu zmniejsza się odpowiednio,
 - lista ćwiczeń przy dodawaniu serii stawia na górze ćwiczenia domykające braki aktywnych cykli, a po zapisaniu serii proponuje ćwiczenie angażujące możliwie rozdzielne partie — tak, że dwa ćwiczenia robione na zmianę podpowiadają się naprzemiennie,
 - ćwiczeń cardio ten dobór nie podpowiada, a przełącznik w ustawieniach przywraca kolejność po liczbie własnych serii,
+- lista tagów stawia na początku tagi, z których użytkownik ma najwięcej zapisanych serii, a tagi bez ani jednej jego serii pokazuje dopiero po rozwinięciu,
 - po dodaniu serii rekordowej użytkownik dostaje informację o rekordzie,
 - wykres ćwiczenia pokazuje historię odpowiednich metryk,
 - kalendarz pokazuje liczbę serii dla każdego dnia, a kafelek dnia jest podświetlony tym mocniej, im więcej serii tego dnia zapisano,
