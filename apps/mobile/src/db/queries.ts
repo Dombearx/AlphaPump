@@ -390,23 +390,19 @@ export function exerciseLibrary(db: SqliteDatabase, userId: string, filter: Libr
 export type LibraryRow = Awaited<ReturnType<typeof exerciseLibrary>>[number];
 
 /**
- * Tagi z licznikiem ćwiczeń — chipsy filtra biblioteki.
+ * Przynależność ćwiczenia do tagu — para tag + ćwiczenie, jeden wiersz na parę.
  *
- * Licznik obejmuje ćwiczenia, dla których tag jest główny **albo** dodatkowy,
- * czyli dokładnie to, co pokaże filtr po naciśnięciu chipsa. Tagi bez ani
- * jednego ćwiczenia też są na liście: dopiero co utworzony tag musi dać się
- * wybrać przy dodawaniu pierwszego ćwiczenia z tego obszaru.
+ * Przynależność ma dwa źródła — tag główny i tagi dodatkowe — więc liczymy ją
+ * z sumy obu zbiorów. `UNION` (a nie `UNION ALL`) odsiewa ćwiczenie wskazujące
+ * ten sam tag dwa razy, choć schemat i tak na to nie pozwala; kosztu nie ma,
+ * a wynik przestaje zależeć od tej gwarancji.
+ *
+ * Złączenie zamiast skorelowanego podzapytania jest tu **konieczne**: przy
+ * zapytaniu z jedną tabelą Drizzle pomija kwalifikatory kolumn, więc `tags.id`
+ * i `exercises.id` w podzapytaniu stałyby się tym samym `"id"`.
  */
-export function tagLibrary(db: SqliteDatabase) {
-  // Przynależność ćwiczenia do tagu ma dwa źródła — tag główny i tagi dodatkowe
-  // — więc liczymy ją z sumy obu zbiorów. `UNION` (a nie `UNION ALL`) odsiewa
-  // ćwiczenie wskazujące ten sam tag dwa razy, choć schemat i tak na to nie
-  // pozwala; kosztu nie ma, a wynik przestaje zależeć od tej gwarancji.
-  //
-  // Złączenie zamiast skorelowanego podzapytania jest tu **konieczne**: przy
-  // zapytaniu z jedną tabelą Drizzle pomija kwalifikatory kolumn, więc
-  // `tags.id` i `exercises.id` w podzapytaniu stałyby się tym samym `"id"`.
-  const membership = union(
+function tagMembership(db: SqliteDatabase) {
+  return union(
     db
       .select({ tagId: exercises.primaryTagId, exerciseId: exercises.id })
       .from(exercises)
@@ -417,6 +413,18 @@ export function tagLibrary(db: SqliteDatabase) {
       .innerJoin(exercises, eq(exercises.id, exerciseTags.exerciseId))
       .where(isNull(exercises.deletedAt)),
   ).as('tag_membership');
+}
+
+/**
+ * Tagi z licznikiem ćwiczeń — chipsy filtra biblioteki.
+ *
+ * Licznik obejmuje ćwiczenia, dla których tag jest główny **albo** dodatkowy,
+ * czyli dokładnie to, co pokaże filtr po naciśnięciu chipsa. Tagi bez ani
+ * jednego ćwiczenia też są na liście: dopiero co utworzony tag musi dać się
+ * wybrać przy dodawaniu pierwszego ćwiczenia z tego obszaru.
+ */
+export function tagLibrary(db: SqliteDatabase) {
+  const membership = tagMembership(db);
 
   return db
     .select({
@@ -438,6 +446,35 @@ export function tagLibrary(db: SqliteDatabase) {
 }
 
 export type TagLibraryRow = Awaited<ReturnType<typeof tagLibrary>>[number];
+
+/**
+ * Liczba **własnych** serii użytkownika z danym tagiem — po niej układa się rząd
+ * chipsów (patrz `tag-usage.ts`).
+ *
+ * Seria należy do tagu, jeśli jej ćwiczenie ma ten tag jako główny **albo**
+ * dodatkowy — dokładnie tak samo, jak filtruje chips po naciśnięciu (patrz
+ * `exerciseLibrary`). Inaczej tag dodatkowy („Triceps" dla dipów) zniknąłby
+ * z rzędu, choć po naciśnięciu pokazuje serie, które użytkownik wykonał.
+ *
+ * Tagi bez ani jednej serii **nie mają tu wiersza** — zero jest nieobecnością,
+ * a nie wartością, i ekran podstawia je sam. Liczymy od serii, a nie od tagów,
+ * bo `useLiveQuery` subskrybuje tabelę z `FROM` i przelicza zapytanie po jej
+ * zmianie: licznik ma się odświeżać po zapisaniu serii, a nie po edycji
+ * słownika. (Zapytanie wychodzące **od** podzapytania `useLiveQuery` odrzuca
+ * w ogóle.)
+ */
+export function tagSetCounts(db: SqliteDatabase, userId: string) {
+  const membership = tagMembership(db);
+
+  return db
+    .select({ tagId: membership.tagId, setCount: count(workoutSets.id) })
+    .from(workoutSets)
+    .innerJoin(membership, eq(membership.exerciseId, workoutSets.exerciseId))
+    .where(and(eq(workoutSets.userId, userId), isNull(workoutSets.deletedAt)))
+    .groupBy(membership.tagId);
+}
+
+export type TagSetCountRow = Awaited<ReturnType<typeof tagSetCounts>>[number];
 
 /** Tagi dodatkowe jednego ćwiczenia, w kolejności zapisanej przy edycji. */
 export function additionalTagsOf(db: SqliteDatabase, exerciseId: string) {

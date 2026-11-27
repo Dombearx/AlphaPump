@@ -7,6 +7,12 @@
  * kryteria (sprzęt, poziom) nie są potrzebne, a każdy filtr to kolejny element
  * między użytkownikiem a listą.
  *
+ * Rząd tagów pokazuje domyślnie te, z których użytkownik ma **własne** serie,
+ * od tych z największą ich liczbą; tagi bez ani jednej serii schodzą pod chips
+ * „+N more" (patrz `tag-usage.ts`). Słownik tagów jest wspólny dla wszystkich,
+ * więc rośnie niezależnie od tego, co kto robi, a filtr ma być skrótem do
+ * ćwiczeń, które użytkownika dotyczą — nie spisem całego słownika.
+ *
  * Wszystko jedzie z bazy lokalnej, więc filtrowanie, szukanie i dodawanie
  * działają bez sieci. Ekran nie ma stanu ładowania poza pierwszym renderem
  * zapytania — nie ma tu na co czekać.
@@ -25,11 +31,14 @@ import {
   exerciseLibrary,
   groupAdditionalTags,
   tagLibrary,
+  tagSetCounts,
   type LibraryRow,
   type LibrarySource,
+  type TagLibraryRow,
 } from '../db/queries';
 import { filterExercises } from '../exercise-search';
 import { useLocalizedName } from '../language/provider';
+import { splitTagsByUsage, tagSetCountMap } from '../tag-usage';
 import { Button, Chip, ChipRow, EmptyState, Field, Loading, Row, TagDot } from '../ui/primitives';
 
 const SOURCES: { value: LibrarySource; label: string }[] = [
@@ -48,9 +57,15 @@ export function LibraryScreen() {
   const [query, setQuery] = useState('');
   const [tagId, setTagId] = useState<string | null>(null);
   const [source, setSource] = useState<LibrarySource>('all');
+  /** Czy rząd tagów pokazuje też te, z których nie ma ani jednej serii. */
+  const [allTags, setAllTags] = useState(false);
+
+  const userId = session?.user.id ?? '';
 
   const tags = useLiveQuery(tagLibrary(db));
-  const library = useLiveQuery(exerciseLibrary(db, session?.user.id ?? '', { tagId, source }), [
+  const tagUsage = useLiveQuery(tagSetCounts(db, userId), [userId]);
+  const library = useLiveQuery(exerciseLibrary(db, userId, { tagId, source }), [
+    userId,
     tagId,
     source,
   ]);
@@ -62,8 +77,29 @@ export function LibraryScreen() {
     [extraTags.data],
   );
 
+  // Rząd tagów układa się po liczbie własnych serii, a tagi bez ani jednej
+  // schodzą pod „+N more" — patrz `tag-usage.ts`. Wybrany tag zostaje na
+  // wierzchu, bo filtr bez widocznego chipsa byłby filtrem, którego nie da się
+  // zdjąć.
+  const tagCounts = useMemo(() => tagSetCountMap(tagUsage.data ?? []), [tagUsage.data]);
+  const tagRow = useMemo(
+    () =>
+      splitTagsByUsage(tags.data ?? [], tagCounts, tagId === null ? undefined : new Set([tagId])),
+    [tags.data, tagCounts, tagId],
+  );
+
   if (isPending) return <Loading />;
   if (!session) return <Redirect href="/sign-in" />;
+
+  const tagChip = (tag: TagLibraryRow) => (
+    <Chip
+      key={tag.id}
+      label={`${named(tag)} · ${String(tag.exerciseCount)}`}
+      color={tag.color}
+      selected={tagId === tag.id}
+      onPress={() => setTagId(tagId === tag.id ? null : tag.id)}
+    />
+  );
 
   return (
     <SafeAreaView className="flex-1" edges={['bottom']}>
@@ -107,15 +143,17 @@ export function LibraryScreen() {
       <ScrollView contentContainerClassName="gap-2 px-4 pb-8" keyboardShouldPersistTaps="handled">
         <ChipRow wrap>
           <Chip label="All tags" selected={tagId === null} onPress={() => setTagId(null)} />
-          {(tags.data ?? []).map((tag) => (
+          {tagRow.shown.map(tagChip)}
+          {/* Przełącznik stoi **za** używanymi tagami, a nie na końcu rzędu:
+              inaczej skakałby o całą rozwiniętą resztę przy każdym naciśnięciu. */}
+          {tagRow.hidden.length > 0 && (
             <Chip
-              key={tag.id}
-              label={`${named(tag)} · ${String(tag.exerciseCount)}`}
-              color={tag.color}
-              selected={tagId === tag.id}
-              onPress={() => setTagId(tagId === tag.id ? null : tag.id)}
+              label={allTags ? 'Fewer tags' : `+${String(tagRow.hidden.length)} more`}
+              selected={allTags}
+              onPress={() => setAllTags(!allTags)}
             />
-          ))}
+          )}
+          {allTags && tagRow.hidden.map(tagChip)}
         </ChipRow>
 
         {matches.length === 0 ? (
